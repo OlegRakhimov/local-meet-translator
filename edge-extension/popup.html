@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meet Translator</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>Meet Translator</h1>
+    <p class="muted">API key is only on localhost (Java bridge). Extension uses a local token.</p>
+
+    <div class="row">
+      <label>Server URL</label>
+      <input id="serverUrl" type="text" placeholder="http://127.0.0.1:8799" />
+    </div>
+
+    <div class="row">
+      <label>Auth token</label>
+      <input id="authToken" type="password" placeholder="LOCAL_SOKUJI_TOKEN printed by Java" />
+    </div>
+
+    <div class="grid2">
+      <div class="row">
+        <label>Source language</label>
+        <input id="sourceLang" type="text" placeholder="auto / en / pl / ..." />
+      </div>
+      <div class="row">
+        <label>Target language</label>
+        <input id="targetLang" type="text" placeholder="ru" />
+      </div>
+    </div>
+
+    <div class="row">
+      <label>Chunk seconds</label>
+      <input id="chunkSeconds" type="number" min="2" max="15" step="1" />
+      <div class="hint">Shorter = faster updates, more API calls.</div>
+    </div>
+
+    <div class="row">
+      <label class="inline">
+        <input id="ttsEnabled" type="checkbox" />
+        Speak translations (TTS)
+      </label>
+      <div class="hint">Plays translated audio locally (does not send audio to meeting participants).</div>
+    </div>
+
+    <div class="grid2">
+      <div class="row">
+        <label>TTS voice</label>
+        <select id="ttsVoice"></select>
+      </div>
+      <div class="row">
+        <label>TTS speed</label>
+        <input id="ttsSpeed" type="number" min="0.25" max="4.0" step="0.05" />
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button id="btnHealth" class="secondary">Check server</button>
+      <button id="btnStart">Start</button>
+      <button id="btnStop" class="danger">Stop</button>
+    </div>
+
+    <pre id="log" class="log"></pre>
+
+    <div class="footer">
+      <span id="statusDot" class="dot"></span>
+      <span id="statusText">Idle</span>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Local Call Translator (no key in extension)",
+  "version": "1.2.0",
+  "description": "Captures tab audio (Meet/Zoom/Teams), sends to localhost Java bridge for transcription+translation, displays subtitles overlay.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabCapture",
+    "scripting",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://*.zoom.us/*",
+    "https://app.zoom.us/*",
+    "https://teams.microsoft.com/*",
+    "https://teams.live.com/*"
+  ],
+  "action": {
+    "default_title": "Call Translator",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/*",
+        "https://app.zoom.us/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*"
+      ],
+      "js": [
+        "content_script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
