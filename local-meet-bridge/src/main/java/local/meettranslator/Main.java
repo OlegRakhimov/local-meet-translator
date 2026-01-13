@@ -19,21 +19,6 @@ import java.util.Base64;
 import java.util.Locale;
 import java.util.Objects;
 
-/**
- * Local Sokuji Bridge
- *
- * Goals:
- *  - Keep OPENAI_API_KEY only on your PC (server-side), not in the browser extension.
- *  - Provide localhost endpoints for the extension:
- *      GET  /health
- *      POST /translate-text
- *      POST /transcribe-and-translate
- *      POST /tts (optional; disabled by default)
- *
- * Security:
- *  - Requires header X-Auth-Token == LOCAL_SOKUJI_TOKEN.
- *  - Binds to 127.0.0.1 only.
- */
 public final class Main {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -242,7 +227,7 @@ OpenAiClient client = new OpenAiClient(baseUrl, apiKey, transcribeModel, textMod
         return e.getClass().getSimpleName() + ": " + msg;
     }
 
-    // -------------------- OpenAI client --------------------
+    // OpenAI client
 
     static final class OpenAiClient {
         private final String baseUrl;
@@ -503,7 +488,7 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
         }
     }
 
-    // -------------------- HTTP helpers --------------------
+    // HTTP helpers
 
     private static boolean corsAndMethod(HttpExchange ex, String expectedMethod) throws IOException {
         addCors(ex.getResponseHeaders());
