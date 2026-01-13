@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Meet Translator</title>
+  <title>Local Meet Translator</title>
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <div class="wrap">
-    <h1>Meet Translator</h1>
-    <p class="muted">API key is only on localhost (Java bridge). Extension uses a local token.</p>
+    <h1>Local Meet Translator</h1>
+    <p class="muted">OpenAI API key stays on localhost (Java bridge). The extension uses a local token.</p>
 
     <div class="row">
       <label>Server URL</label>
@@ -18,7 +18,7 @@
 
     <div class="row">
       <label>Auth token</label>
-      <input id="authToken" type="password" placeholder="LOCAL_SOKUJI_TOKEN printed by Java" />
+      <input id="authToken" type="password" placeholder="LOCAL_MEET_TRANSLATOR_TOKEN printed by bridge" />
     </div>
 
     <div class="grid2">
@@ -35,7 +35,7 @@
     <div class="row">
       <label>Chunk seconds</label>
       <input id="chunkSeconds" type="number" min="2" max="15" step="1" />
-      <div class="hint">Shorter = faster updates, more API calls.</div>
+      <div class="hint">Use 4–6 for stability (fewer repeats / fewer false positives).</div>
     </div>
 
     <div class="row">
@@ -43,7 +43,7 @@
         <input id="ttsEnabled" type="checkbox" />
         Speak translations (TTS)
       </label>
-      <div class="hint">Plays translated audio locally (does not send audio to meeting participants).</div>
+      <div class="hint">Plays translated audio locally (does not send audio into the meeting).</div>
     </div>
 
     <div class="grid2">

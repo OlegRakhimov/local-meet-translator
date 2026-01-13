@@ -17,11 +17,11 @@ java {
 }
 
 application {
-    mainClass.set("local.sokuji.Main")
+    mainClass.set("local.meettranslator.Main")
 }
 
 tasks.jar {
     manifest {
-        attributes["Main-Class"] = "local.sokuji.Main"
+        attributes["Main-Class"] = "local.meettranslator.Main"
     }
 }

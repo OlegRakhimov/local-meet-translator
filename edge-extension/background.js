@@ -1,21 +1,9 @@
 let offscreenCreated = false;
 let running = false;
 
-/**
- * Offscreen documents are global per-extension. In MV3 the service worker can be restarted at any time,
- * which resets in-memory flags (offscreenCreated=false) while the offscreen document still exists.
- * If we call createDocument again, Chrome/Edge throws:
- *   "Only a single offscreen document may be created."
- *
- * Fix:
- * - Prefer chrome.offscreen.hasDocument() when available.
- * - Fallback: treat the "single offscreen" error as "already exists".
- * - On STOP, close the offscreen document.
- */
 async function ensureOffscreen() {
   if (offscreenCreated) return;
 
-  // If supported, check whether an offscreen document already exists.
   try {
     if (chrome.offscreen && typeof chrome.offscreen.hasDocument === "function") {
       const has = await chrome.offscreen.hasDocument();
@@ -24,15 +12,13 @@ async function ensureOffscreen() {
         return;
       }
     }
-  } catch (_) {
-    // ignore
-  }
+  } catch (_) {}
 
   try {
     await chrome.offscreen.createDocument({
       url: "offscreen.html",
       reasons: ["USER_MEDIA"],
-      justification: "Need to capture tab audio and record chunks (MediaRecorder not available in service worker)."
+      justification: "Capture tab audio and record chunks (MediaRecorder not available in MV3 service worker)."
     });
     offscreenCreated = true;
   } catch (e) {
@@ -50,11 +36,18 @@ async function closeOffscreenIfPossible() {
     if (chrome.offscreen && typeof chrome.offscreen.closeDocument === "function") {
       await chrome.offscreen.closeDocument();
     }
-  } catch (_) {
-    // ignore
-  } finally {
+  } catch (_) {} finally {
     offscreenCreated = false;
   }
+}
+
+async function ensureTabNotMuted(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab && tab.mutedInfo && tab.mutedInfo.muted) {
+      await chrome.tabs.update(tabId, { muted: false });
+    }
+  } catch (_) {}
 }
 
 function status(kind, text, log) {
@@ -65,16 +58,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
       if (msg?.type === "START") {
-        if (running) {
-          sendResponse({ ok: true, already: true });
-          return;
-        }
+        if (running) return sendResponse({ ok: true, already: true });
 
         const tabId = msg.tabId;
-        if (!tabId) {
-          sendResponse({ ok: false, error: "No tabId" });
-          return;
-        }
+        if (!tabId) return sendResponse({ ok: false, error: "No tabId" });
+
+        await ensureTabNotMuted(tabId);
 
         const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
 
@@ -103,14 +92,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       if (msg?.type === "STOP") {
         if (!running) {
           await closeOffscreenIfPossible();
-          sendResponse({ ok: true, already: true });
-          return;
+          return sendResponse({ ok: true, already: true });
         }
 
         await chrome.runtime.sendMessage({ type: "OFFSCREEN_STOP" });
         running = false;
-
-        // Important: close offscreen so next START won't hit the single-document limitation.
         await closeOffscreenIfPossible();
 
         status("ok", "Stopped", "Stopped capture.");
@@ -131,6 +117,5 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: false, error: String(e) });
     }
   })();
-
   return true;
 });

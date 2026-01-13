@@ -1,5 +1,4 @@
 const $ = (id) => document.getElementById(id);
-
 const VOICES = ["onyx", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "sage", "shimmer", "verse", "marin", "cedar"];
 
 function log(msg) {
@@ -13,7 +12,6 @@ function setStatus(kind, text) {
   const dot = $("statusDot");
   const t = $("statusText");
   t.textContent = text;
-
   if (kind === "ok") dot.style.background = "#3fb950";
   else if (kind === "run") dot.style.background = "#58a6ff";
   else if (kind === "err") dot.style.background = "#f85149";
@@ -37,7 +35,7 @@ async function saveSettings() {
     authToken: $("authToken").value.trim(),
     sourceLang: $("sourceLang").value.trim() || "auto",
     targetLang: $("targetLang").value.trim() || "ru",
-    chunkSeconds: parseInt($("chunkSeconds").value, 10) || 4,
+    chunkSeconds: parseInt($("chunkSeconds").value, 10) || 5,
     ttsEnabled: $("ttsEnabled").checked,
     ttsVoice: $("ttsVoice").value || "onyx",
     ttsSpeed: parseFloat($("ttsSpeed").value) || 1.0
@@ -53,7 +51,7 @@ async function loadSettings() {
     authToken: "",
     sourceLang: "auto",
     targetLang: "ru",
-    chunkSeconds: 4,
+    chunkSeconds: 5,
     ttsEnabled: false,
     ttsVoice: "onyx",
     ttsSpeed: 1.0
@@ -64,11 +62,9 @@ async function loadSettings() {
   $("sourceLang").value = s.sourceLang;
   $("targetLang").value = s.targetLang;
   $("chunkSeconds").value = s.chunkSeconds;
-
   $("ttsEnabled").checked = !!s.ttsEnabled;
   $("ttsVoice").value = s.ttsVoice || "onyx";
   $("ttsSpeed").value = s.ttsSpeed || 1.0;
-
   return s;
 }
 
@@ -79,21 +75,12 @@ async function checkServer() {
     log("Fill Server URL and Auth token first.");
     return;
   }
-
   setStatus("run", "Checking...");
   try {
-    const resp = await fetch(`${s.serverUrl}/health`, {
-      method: "GET",
-      headers: { "X-Auth-Token": s.authToken }
-    });
+    const resp = await fetch(`${s.serverUrl}/health`, { method: "GET", headers: { "X-Auth-Token": s.authToken } });
     const data = await resp.json().catch(() => ({}));
-    if (resp.ok && data.ok) {
-      setStatus("ok", "Server OK");
-      log("Server OK: " + JSON.stringify(data));
-    } else {
-      setStatus("err", "Server error");
-      log(`HTTP ${resp.status}: ${JSON.stringify(data)}`);
-    }
+    if (resp.ok && data.ok) { setStatus("ok", "Server OK"); log("Server OK: " + JSON.stringify(data)); }
+    else { setStatus("err", "Server error"); log(`HTTP ${resp.status}: ${JSON.stringify(data)}`); }
   } catch (e) {
     setStatus("err", "Cannot reach server");
     log("Fetch failed: " + String(e));
@@ -107,16 +94,9 @@ async function start() {
     log("Fill Server URL and Auth token first.");
     return;
   }
-
   setStatus("run", "Starting...");
-
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) {
-    setStatus("err", "No active tab");
-    log("No active tab found.");
-    return;
-  }
-
+  if (!tab?.id) { setStatus("err", "No active tab"); log("No active tab found."); return; }
   const res = await chrome.runtime.sendMessage({
     type: "START",
     tabId: tab.id,
@@ -129,37 +109,24 @@ async function start() {
     ttsVoice: s.ttsVoice,
     ttsSpeed: s.ttsSpeed
   }).catch((e) => ({ ok: false, error: String(e) }));
-
-  if (res?.ok) {
-    setStatus("run", "Running");
-    log("Capture started.");
-  } else {
-    setStatus("err", "Failed to start");
-    log("Start failed: " + (res?.error || "unknown"));
-  }
+  if (res?.ok) { setStatus("run", "Running"); log("Capture started."); }
+  else { setStatus("err", "Failed to start"); log("Start failed: " + (res?.error || "unknown")); }
 }
 
 async function stop() {
   setStatus("run", "Stopping...");
   const res = await chrome.runtime.sendMessage({ type: "STOP" }).catch((e) => ({ ok: false, error: String(e) }));
-  if (res?.ok) {
-    setStatus("ok", "Stopped");
-    log("Stopped.");
-  } else {
-    setStatus("err", "Stop failed");
-    log("Stop failed: " + (res?.error || "unknown"));
-  }
+  if (res?.ok) { setStatus("ok", "Stopped"); log("Stopped."); }
+  else { setStatus("err", "Stop failed"); log("Stop failed: " + (res?.error || "unknown")); }
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
   initVoices();
   await loadSettings();
   setStatus("idle", "Idle");
-
   $("btnHealth").addEventListener("click", checkServer);
   $("btnStart").addEventListener("click", start);
   $("btnStop").addEventListener("click", stop);
-
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === "STATUS") {
       setStatus(msg.kind || "idle", msg.text || "");

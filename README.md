@@ -1,10 +1,19 @@
-# Local Call Translator (Edge Extension + Local Java Bridge)
+# Local Meet Translator (Edge Extension + Local Java Bridge)
 
-Local Call Translator is a self-hosted prototype that provides **near real-time speech translation** for web-based video calls (e.g., **Google Meet**, **Zoom Web**, **Microsoft Teams Web**) by capturing the **tab audio**, transcribing it, translating it, and showing subtitles (and optionally **speaking the translation** locally).
+Local Meet Translator is a self-hosted prototype that provides **near real-time speech translation** for web-based video calls (e.g., **Google Meet**, **Zoom Web**, **Microsoft Teams Web**) by capturing the **tab audio**, transcribing it, translating it, and showing subtitles (and optionally **speaking the translation** locally).
 
 This repository is intended for developers who want a transparent, auditable setup where the **OpenAI API key is never stored inside the browser extension**.
 
 ---
+
+## Standalone (not Sokuji)
+
+This project is standalone and **does not require** the Sokuji extension. If you run other call-translation extensions in parallel, disable them while testing to avoid audio conflicts.
+
+## Not related to Sokuji
+
+This project is standalone and **does not require** the Sokuji extension. If you use other call-translation extensions in parallel, disable them while testing to avoid audio conflicts.
+
 
 ## What problem it solves
 
@@ -53,7 +62,7 @@ Notes:
 ## Key security properties
 
 - **API key never lives in the extension.** It is only in the local Java process environment.
-- The extension authenticates to localhost using a **local token** (`LOCAL_SOKUJI_TOKEN` / `X-Auth-Token` header).
+- The extension authenticates to localhost using a **local token** (`LOCAL_MEET_TRANSLATOR_TOKEN (preferred) / LOCAL_SOKUJI_TOKEN (fallback)` / `X-Auth-Token` header).
 - **Do not expose** the local bridge on non-local interfaces. Keep it bound to `127.0.0.1`.
 
 Threat model notes:
@@ -64,14 +73,14 @@ Threat model notes:
 
 ## Tokens & Languages
 
-### Local token (`LOCAL_SOKUJI_TOKEN`)
-- Each user should generate their **own** `LOCAL_SOKUJI_TOKEN`. This token authorizes the extension to call the localhost bridge (header `X-Auth-Token`).
+### Local token (`LOCAL_MEET_TRANSLATOR_TOKEN (preferred) / LOCAL_SOKUJI_TOKEN (fallback)`)
+- Each user should generate their **own** `LOCAL_MEET_TRANSLATOR_TOKEN (preferred) / LOCAL_SOKUJI_TOKEN (fallback)`. This token authorizes the extension to call the localhost bridge (header `X-Auth-Token`).
 - Do **not** commit the token to GitHub. Set it via environment variables on the machine running the bridge.
 
 Example (PowerShell):
 
 ```powershell
-$env:LOCAL_SOKUJI_TOKEN=([guid]::NewGuid().ToString("N"))
+$env:LOCAL_MEET_TRANSLATOR_TOKEN (preferred) / LOCAL_SOKUJI_TOKEN (fallback)=([guid]::NewGuid().ToString("N"))
 ```
 
 ### Languages (`sourceLang` / `targetLang`)
@@ -118,8 +127,8 @@ Tip: If your calls are consistently in one language (e.g., always English), set 
 
 ```powershell
 $env:OPENAI_API_KEY="sk-..."
-$env:LOCAL_SOKUJI_PORT="8799"
-$env:LOCAL_SOKUJI_TOKEN=([guid]::NewGuid().ToString("N"))
+$env:LOCAL_MEET_TRANSLATOR_PORT="8799"
+$env:LOCAL_MEET_TRANSLATOR_TOKEN (preferred) / LOCAL_SOKUJI_TOKEN (fallback)=([guid]::NewGuid().ToString("N"))
 
 # Recommended models
 $env:OPENAI_TRANSCRIBE_MODEL="whisper-1"
@@ -133,10 +142,10 @@ $env:OPENAI_TTS_FORMAT="mp3"
 $env:OPENAI_TTS_SPEED="1.0"
 ```
 
-2) Run the bridge from `local-sokuji-bridge`:
+2) Run the bridge from `local-meet-bridge`:
 
 ```powershell
-cd .\local-sokuji-bridge
+cd .\local-meet-bridge
 .\gradlew run
 ```
 
@@ -148,7 +157,7 @@ The console prints:
 3) Health check:
 
 ```powershell
-$token=$env:LOCAL_SOKUJI_TOKEN
+$token=$env:LOCAL_MEET_TRANSLATOR_TOKEN (preferred) / LOCAL_SOKUJI_TOKEN (fallback)
 curl.exe http://127.0.0.1:8799/health -H "X-Auth-Token: $token"
 ```
 
@@ -216,7 +225,7 @@ If you miss quiet speech:
 - Use the included offscreen handling fix, and reload the extension in `edge://extensions`.
 
 ### HTTP 401 from localhost
-- Wrong token in popup. Ensure it matches the bridge’s current `LOCAL_SOKUJI_TOKEN`.
+- Wrong token in popup. Ensure it matches the bridge’s current `LOCAL_MEET_TRANSLATOR_TOKEN (preferred) / LOCAL_SOKUJI_TOKEN (fallback)`.
 
 ### HTTP 400 “Invalid file format”
 - Happens when sending non-container fragments.
@@ -241,7 +250,7 @@ If you miss quiet speech:
 
 ## Repository layout
 
-- `local-sokuji-bridge/` — Java localhost bridge (Gradle/Maven project)
+- `local-meet-bridge/` — Java localhost bridge (Gradle/Maven project)
 - `edge-extension/` — Edge/Chrome MV3 extension
 
 ---
