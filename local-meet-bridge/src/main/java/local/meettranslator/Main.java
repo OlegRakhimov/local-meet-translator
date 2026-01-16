@@ -19,6 +19,21 @@ import java.util.Base64;
 import java.util.Locale;
 import java.util.Objects;
 
+/**
+ * Local Meet Translator Bridge
+ *
+ * Goals:
+ *  - Keep OPENAI_API_KEY only on your PC (server-side), not in the browser extension.
+ *  - Provide localhost endpoints for the extension:
+ *      GET  /health
+ *      POST /translate-text
+ *      POST /transcribe-and-translate
+ *      POST /tts (optional; disabled by default)
+ *
+ * Security:
+ *  - Requires header X-Auth-Token == LOCAL_MEET_TRANSLATOR_TOKEN.
+ *  - Binds to 127.0.0.1 only.
+ */
 public final class Main {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -27,23 +42,24 @@ public final class Main {
         String apiKey = envRequired("OPENAI_API_KEY");
 
         String baseUrl = envOr("OPENAI_BASE_URL", "https://api.openai.com");
-        int port = Integer.parseInt(envOr("LOCAL_MEET_TRANSLATOR_PORT", envOr("LOCAL_SOKUJI_PORT", "8799")));
+        int port = Integer.parseInt(envOr("LOCAL_MEET_TRANSLATOR_PORT", "8799"));
 
         // Models
-        String transcribeModel = envOr("OPENAI_TRANSCRIBE_MODEL", "gpt-4o-mini-transcribe");
-        String textModel = envOr("OPENAI_TEXT_MODEL", "gpt-4.1");
+        String transcribeModel = envOr("OPENAI_TRANSCRIBE_MODEL", "whisper-1");
+        String textModel = envOr("OPENAI_TEXT_MODEL", "gpt-4o-mini");
 
         // Optional TTS (disabled by default)
         boolean enableTts = Boolean.parseBoolean(envOr("ENABLE_TTS", "false"));
         String ttsModel = envOr("OPENAI_TTS_MODEL", "gpt-4o-mini-tts");
-        String ttsVoice = envOr("OPENAI_TTS_VOICE", "alloy"); // You can change later
+        String ttsVoice = envOr("OPENAI_TTS_VOICE", "onyx"); // You can change later
         String ttsFormat = envOr("OPENAI_TTS_FORMAT", "mp3"); // mp3, wav, opus, aac, flac, pcm
         String ttsInstructions = envOr("OPENAI_TTS_INSTRUCTIONS", ""); // optional, for gpt-4o-mini-tts
         double ttsSpeed = Double.parseDouble(envOr("OPENAI_TTS_SPEED", "1.0"));
 
         // Local auth token
-        String authToken = envOr("LOCAL_MEET_TRANSLATOR_TOKEN", envOr("LOCAL_SOKUJI_TOKEN", randomToken(40)));
-OpenAiClient client = new OpenAiClient(baseUrl, apiKey, transcribeModel, textModel, enableTts, ttsModel, ttsVoice, ttsFormat, ttsInstructions, ttsSpeed);
+        String authToken = envOr("LOCAL_MEET_TRANSLATOR_TOKEN", randomToken(40));
+
+        OpenAiClient client = new OpenAiClient(baseUrl, apiKey, transcribeModel, textModel, enableTts, ttsModel, ttsVoice, ttsFormat, ttsInstructions, ttsSpeed);
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
 
@@ -54,7 +70,7 @@ OpenAiClient client = new OpenAiClient(baseUrl, apiKey, transcribeModel, textMod
             try {
                 writeJson(ex, 200, MAPPER.createObjectNode()
                         .put("ok", true)
-                        .put("service", "local-meet-bridge"));
+                        .put("service", "local-meet-translator-bridge"));
             } catch (Exception e) {
                 e.printStackTrace(System.err);
                 try {
@@ -227,7 +243,7 @@ OpenAiClient client = new OpenAiClient(baseUrl, apiKey, transcribeModel, textMod
         return e.getClass().getSimpleName() + ": " + msg;
     }
 
-    // OpenAI client
+    // -------------------- OpenAI client --------------------
 
     static final class OpenAiClient {
         private final String baseUrl;
@@ -278,11 +294,33 @@ OpenAiClient client = new OpenAiClient(baseUrl, apiKey, transcribeModel, textMod
         String getDefaultTtsFormat() {
             return ttsFormat;
         }
+        private static String normalizeTranscribeMime(String mime) {
+            if (mime == null) return "application/octet-stream";
+            String m = mime.trim();
+            if (m.isEmpty()) return "application/octet-stream";
+
+            // MediaRecorder often reports a full type like: audio/webm;codecs=opus
+            int semi = m.indexOf(';');
+            if (semi >= 0) m = m.substring(0, semi).trim();
+
+            m = m.toLowerCase(Locale.ROOT);
+
+            // Some browsers produce video/webm even for audio-only streams.
+            if ("video/webm".equals(m)) return "audio/webm";
+
+            // Normalize common aliases.
+            if ("audio/x-wav".equals(m)) return "audio/wav";
+            if ("audio/mp3".equals(m)) return "audio/mpeg";
+            if ("audio/x-m4a".equals(m) || "audio/m4a".equals(m)) return "audio/mp4";
+
+            return m;
+        }
+
 String transcribe(byte[] audio, String audioMime) throws IOException {
             String endpoint = baseUrl + "/v1/audio/transcriptions";
 
             String boundary = "----LocalMeetTranslatorBoundary" + randomToken(12);
-            byte[] multipart = buildMultipart(boundary, audio, audioMime, transcribeModel);
+            byte[] multipart = buildMultipart(boundary, audio, normalizeTranscribeMime(audioMime), transcribeModel);
 
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
@@ -306,10 +344,11 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
 
             JsonNode json = MAPPER.readTree(resp.body());
             JsonNode textNode = json.get("text");
-            if (textNode == null || textNode.asText().isBlank()) {
+            if (textNode == null || textNode.isNull()) {
                 throw new IOException("OpenAI transcribe response has no 'text': " + json);
             }
-            return textNode.asText();
+            // NOTE: Whisper may return an empty string for silence. Treat that as a valid result.
+            return textNode.asText("");
         }
 
         String translateText(String sourceLang, String targetLang, String text) throws IOException {
@@ -488,7 +527,7 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
         }
     }
 
-    // HTTP helpers
+    // -------------------- HTTP helpers --------------------
 
     private static boolean corsAndMethod(HttpExchange ex, String expectedMethod) throws IOException {
         addCors(ex.getResponseHeaders());

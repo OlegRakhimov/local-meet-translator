@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Local Meet Translator (no key in extension)",
-  "version": "1.3.1",
-  "description": "Captures tab audio (Meet/Zoom/Teams), sends to localhost Java bridge for transcription+translation, shows movable subtitles and optional local TTS.",
+  "version": "1.4.0",
+  "description": "Translate web calls with a localhost bridge. Adds optional outgoing mic->translated voice routing via virtual mic.",
   "permissions": [
     "storage",
     "activeTab",
     "tabCapture",
+    "audioCapture",
     "scripting",
     "offscreen",
     "tabs"
@@ -39,5 +40,9 @@
       ],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "options_ui": {
+    "page": "mic_permission.html",
+    "open_in_tab": true
+  }
 }

@@ -1,6 +1,7 @@
 // Movable subtitles overlay (Meet / Zoom / Teams)
 const OVERLAY_ID = "local-meet-translator-overlay";
 const STORAGE_KEY = "lmt_overlay_pos_" + location.host;
+let showOutgoing = false;
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 function px(n) { return `${Math.round(n)}px`; }
@@ -53,20 +54,45 @@ function ensureOverlay() {
   body.style.flexDirection = "column";
   body.style.gap = "6px";
 
-  const text = document.createElement("div");
-  text.id = OVERLAY_ID + "-text";
-  text.style.fontSize = "18px";
-  text.style.lineHeight = "1.35";
-  text.textContent = "—";
+  // Incoming (tab audio) - this is the primary user-facing subtitle.
+  const inText = document.createElement("div");
+  inText.id = OVERLAY_ID + "-in-text";
+  inText.style.fontSize = "18px";
+  inText.style.lineHeight = "1.35";
+  inText.textContent = "—";
 
-  const small = document.createElement("div");
-  small.id = OVERLAY_ID + "-small";
-  small.style.fontSize = "12px";
-  small.style.opacity = "0.75";
-  small.textContent = "";
+  const inSmall = document.createElement("div");
+  inSmall.id = OVERLAY_ID + "-in-small";
+  inSmall.style.fontSize = "12px";
+  inSmall.style.opacity = "0.75";
+  inSmall.textContent = "";
 
-  body.appendChild(text);
-  body.appendChild(small);
+  // Outgoing (mic) - optional debug view.
+  const outWrap = document.createElement("div");
+  outWrap.id = OVERLAY_ID + "-out-wrap";
+  outWrap.style.display = "none";
+  outWrap.style.marginTop = "4px";
+  outWrap.style.paddingTop = "6px";
+  outWrap.style.borderTop = "1px solid rgba(255,255,255,0.12)";
+
+  const outText = document.createElement("div");
+  outText.id = OVERLAY_ID + "-out-text";
+  outText.style.fontSize = "14px";
+  outText.style.opacity = "0.95";
+  outText.textContent = "";
+
+  const outSmall = document.createElement("div");
+  outSmall.id = OVERLAY_ID + "-out-small";
+  outSmall.style.fontSize = "12px";
+  outSmall.style.opacity = "0.65";
+  outSmall.textContent = "";
+
+  outWrap.appendChild(outText);
+  outWrap.appendChild(outSmall);
+
+  body.appendChild(inText);
+  body.appendChild(inSmall);
+  body.appendChild(outWrap);
 
   box.appendChild(header);
   box.appendChild(body);
@@ -127,17 +153,61 @@ function ensureOverlay() {
   return root;
 }
 
-function setSubtitle(translation, transcript) {
+function updateOutgoingVisibility() {
+  const outWrap = document.getElementById(OVERLAY_ID + "-out-wrap");
+  if (!outWrap) return;
+  outWrap.style.display = showOutgoing ? "block" : "none";
+}
+
+function setIncomingSubtitle(translation, transcript) {
   ensureOverlay();
-  const text = document.getElementById(OVERLAY_ID + "-text");
-  const small = document.getElementById(OVERLAY_ID + "-small");
+  const text = document.getElementById(OVERLAY_ID + "-in-text");
+  const small = document.getElementById(OVERLAY_ID + "-in-small");
   if (text) text.textContent = translation || "—";
   if (small) small.textContent = transcript ? `Heard: ${transcript}` : "";
 }
 
+function setOutgoingSubtitle(translation, transcript) {
+  ensureOverlay();
+  updateOutgoingVisibility();
+  if (!showOutgoing) return;
+
+  const text = document.getElementById(OVERLAY_ID + "-out-text");
+  const small = document.getElementById(OVERLAY_ID + "-out-small");
+  if (text) text.textContent = translation ? `You → ${translation}` : "";
+  if (small) small.textContent = transcript ? `Mic: ${transcript}` : "";
+}
+
+async function loadShowOutgoingSetting() {
+  try {
+    const { settings } = await chrome.storage.local.get("settings");
+    showOutgoing = !!(settings && settings.showOutgoingSubtitles);
+    updateOutgoingVisibility();
+  } catch (_) {
+    showOutgoing = false;
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg) => {
   if (!msg || msg.type !== "SUBTITLE") return;
-  setSubtitle(msg.translation || "", msg.transcript || "");
+
+  const ch = msg.channel || "incoming";
+  if (ch === "outgoing") {
+    setOutgoingSubtitle(msg.translation || "", msg.transcript || "");
+  } else {
+    setIncomingSubtitle(msg.translation || "", msg.transcript || "");
+  }
 });
 
 ensureOverlay();
+loadShowOutgoingSetting();
+
+try {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+    if (!changes || !changes.settings) return;
+    const next = changes.settings.newValue;
+    showOutgoing = !!(next && next.showOutgoingSubtitles);
+    updateOutgoingVisibility();
+  });
+} catch (_) {}

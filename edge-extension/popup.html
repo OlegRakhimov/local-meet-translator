@@ -9,7 +9,7 @@
 <body>
   <div class="wrap">
     <h1>Local Meet Translator</h1>
-    <p class="muted">OpenAI API key stays on localhost (Java bridge). The extension uses a local token.</p>
+    <p class="muted">Bridge runs on localhost. The extension uses a local token.</p>
 
     <div class="row">
       <label>Server URL</label>
@@ -18,32 +18,31 @@
 
     <div class="row">
       <label>Auth token</label>
-      <input id="authToken" type="password" placeholder="LOCAL_MEET_TRANSLATOR_TOKEN printed by bridge" />
+      <input id="authToken" type="password" />
     </div>
 
     <div class="grid2">
       <div class="row">
-        <label>Source language</label>
+        <label>Incoming source (tab)</label>
         <input id="sourceLang" type="text" placeholder="auto / en / pl / ..." />
       </div>
       <div class="row">
-        <label>Target language</label>
+        <label>Incoming target (tab)</label>
         <input id="targetLang" type="text" placeholder="ru" />
       </div>
     </div>
 
     <div class="row">
-      <label>Chunk seconds</label>
+      <label>Chunk seconds (tab)</label>
       <input id="chunkSeconds" type="number" min="2" max="15" step="1" />
-      <div class="hint">Use 4–6 for stability (fewer repeats / fewer false positives).</div>
+      <div class="hint">Use 4–6 for stability.</div>
     </div>
 
     <div class="row">
       <label class="inline">
         <input id="ttsEnabled" type="checkbox" />
-        Speak translations (TTS)
+        Speak incoming translations (local TTS)
       </label>
-      <div class="hint">Plays translated audio locally (does not send audio into the meeting).</div>
     </div>
 
     <div class="grid2">
@@ -54,6 +53,62 @@
       <div class="row">
         <label>TTS speed</label>
         <input id="ttsSpeed" type="number" min="0.25" max="4.0" step="0.05" />
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 style="font-size:13px;margin:0 0 6px 0;">Outgoing voice (my mic → translated voice → meeting)</h2>
+      <div class="row">
+        <label class="inline">
+          <input id="micTxEnabled" type="checkbox" />
+          Enable outgoing translated voice
+        </label>
+        <div class="hint">
+          To actually send the translated voice to the other participant, you must route the TTS into a virtual cable output
+          device and select the matching virtual microphone in the meeting app.
+        </div>
+        <div class="hint">If device names are blank, grant mic access once (button below), then reopen the popup.</div>
+      </div>
+
+      <div class="grid2">
+        <div class="row">
+          <label>My speech source</label>
+          <input id="micTxSourceLang" type="text" placeholder="ru" />
+        </div>
+        <div class="row">
+          <label>Meeting language target</label>
+          <input id="micTxTargetLang" type="text" placeholder="en" />
+        </div>
+      </div>
+
+      <div class="row">
+        <label>Mic chunk seconds</label>
+        <input id="micTxChunkSeconds" type="number" min="2" max="15" step="1" />
+        <div class="hint">5 is a good default.</div>
+      </div>
+
+      <div class="row">
+        <button id="btnGrantMic" class="secondary" type="button">Grant mic access (shows device names)</button>
+        <div class="hint">This will prompt for microphone permission and refresh the device list.</div>
+      </div>
+
+      <div class="row">
+        <label>Microphone input device</label>
+        <select id="micDevice"></select>
+      </div>
+
+      <div class="row">
+        <label>TTS output device (sink)</label>
+        <select id="ttsSink"></select>
+        <div class="hint">Select the virtual cable playback device (e.g. “CABLE Input”). If left as default speakers, the other side will not hear the translated voice.</div>
+      </div>
+
+      <div class="row">
+        <label class="inline">
+          <input id="showOutgoingSubtitles" type="checkbox" />
+          Show outgoing voice debug in subtitles overlay (optional)
+        </label>
+        <div class="hint">Recommended OFF. When ON, the overlay will also show what the extension thinks you said.</div>
       </div>
     </div>
 

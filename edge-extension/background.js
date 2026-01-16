@@ -7,10 +7,7 @@ async function ensureOffscreen() {
   try {
     if (chrome.offscreen && typeof chrome.offscreen.hasDocument === "function") {
       const has = await chrome.offscreen.hasDocument();
-      if (has) {
-        offscreenCreated = true;
-        return;
-      }
+      if (has) { offscreenCreated = true; return; }
     }
   } catch (_) {}
 
@@ -18,7 +15,7 @@ async function ensureOffscreen() {
     await chrome.offscreen.createDocument({
       url: "offscreen.html",
       reasons: ["USER_MEDIA"],
-      justification: "Capture tab audio and record chunks (MediaRecorder not available in MV3 service worker)."
+      justification: "Capture tab audio and (optionally) microphone audio in an offscreen document."
     });
     offscreenCreated = true;
   } catch (e) {
@@ -66,7 +63,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await ensureTabNotMuted(tabId);
 
         const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
-
         await ensureOffscreen();
 
         await chrome.runtime.sendMessage({
@@ -75,16 +71,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           tabId,
           serverUrl: msg.serverUrl,
           authToken: msg.authToken,
+
+          // incoming (tab audio)
           sourceLang: msg.sourceLang,
           targetLang: msg.targetLang,
           chunkSeconds: msg.chunkSeconds,
+
+          // local TTS for incoming
           ttsEnabled: msg.ttsEnabled,
           ttsVoice: msg.ttsVoice,
-          ttsSpeed: msg.ttsSpeed
+          ttsSpeed: msg.ttsSpeed,
+
+          // outgoing mic->translated voice (optional)
+          micTxEnabled: msg.micTxEnabled,
+          micTxSourceLang: msg.micTxSourceLang,
+          micTxTargetLang: msg.micTxTargetLang,
+          micDeviceId: msg.micDeviceId,
+          ttsSinkDeviceId: msg.ttsSinkDeviceId,
+          micTxChunkSeconds: msg.micTxChunkSeconds,
+
+          // UI preference: do not mix outgoing debug subtitles into the incoming overlay unless explicitly enabled.
+          showOutgoingSubtitles: msg.showOutgoingSubtitles
         });
 
         running = true;
-        status("run", "Running", "Started tab audio capture.");
+        status("run", "Running", "Started capture.");
         sendResponse({ ok: true });
         return;
       }
@@ -117,5 +128,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: false, error: String(e) });
     }
   })();
+
   return true;
 });

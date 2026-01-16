@@ -52,13 +52,42 @@ Write-Host ("  TOKEN: {0}" -f $env:LOCAL_MEET_TRANSLATOR_TOKEN)
 Write-Host ""
 
 Push-Location $BridgeDir
-Write-Host "Building (Maven)..."
-& mvn -q -DskipTests package
-& mvn -q dependency:copy-dependencies -DincludeScope=runtime
 
-Write-Host "Running bridge (classpath with dependencies)..."
+# Build with Maven if available (optional). The bridge can also run from an existing jar in target/.
+$mvn = Get-Command mvn -ErrorAction SilentlyContinue
+if ($mvn) {
+  Write-Host "Building (Maven)..."
+  & mvn -q -DskipTests package
+} else {
+  Write-Host "Maven (mvn) not found in PATH. Will try to run a prebuilt jar from target/."
+}
+
+$TargetDir = Join-Path $BridgeDir "target"
+$Jar = $null
+
+if (Test-Path $TargetDir) {
+  $Jar = Get-ChildItem -Path $TargetDir -Filter "local-meet-bridge-*.jar" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -notlike "original-*" } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+
+  if (-not $Jar) {
+    $Jar = Get-ChildItem -Path $TargetDir -Filter "*.jar" -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+  }
+}
+
+if (-not $Jar) {
+  throw "Could not find a bridge jar in: $TargetDir
+Install Maven and run: mvn -DskipTests package"
+}
+
+Write-Host "Running bridge (java -jar)..."
+Write-Host ("  JAR:  {0}" -f $Jar.FullName)
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
-& java -cp "target\classes;target\dependency\*" local.meettranslator.Main
+& java -jar $Jar.FullName
+
 Pop-Location

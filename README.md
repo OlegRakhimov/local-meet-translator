@@ -16,6 +16,7 @@ This repository is designed so that the **OpenAI API key is not stored in the br
   - optional TTS (text → speech audio).
 - Displays translated subtitles as an overlay on supported sites.
 - Optional: plays translated speech **locally** (your speakers/headphones).
+- Optional: routes translated speech **into the meeting** so the other participant hears it (requires a virtual audio cable).
 
 ---
 
@@ -26,7 +27,9 @@ This repository is designed so that the **OpenAI API key is not stored in the br
 1) **Browser extension (MV3)**
 - Captures tab audio (`tabCapture` + `offscreen`)
 - Shows overlay subtitles via content script
-- (Optional) Requests TTS audio from the bridge and plays it locally
+- (Optional) Requests TTS audio from the bridge and either:
+  - plays it locally, or
+  - routes it into the meeting via a virtual audio cable (so the other participant hears it)
 
 2) **Local Java bridge (localhost)**
 - Runs on your machine (default `http://127.0.0.1:8799`)
@@ -151,14 +154,24 @@ Stop:
 
 ---
 
-## Optional: local TTS (voice)
+## Voice translation (TTS)
 
-If enabled, the extension can request `/tts` and play translated speech **locally**.
+The project supports two distinct TTS modes:
+
+1) **Local TTS (hear translated speech on your own device)**
+2) **Outgoing translated voice (the other participant hears the translated speech)**
+
+Both modes require TTS to be enabled in the local bridge.
+
+### 1) Local TTS (on your speakers/headphones)
+
+If enabled, the extension requests `/tts` from the bridge and plays translated speech **locally**.
 
 - This does **not** send audio into the meeting.
-- To route TTS into a meeting, you need a virtual microphone/virtual audio cable setup (out of scope by default).
+- This is useful if you want both subtitles and a spoken translation for yourself.
 
 Enable in `.env`:
+
 ```ini
 ENABLE_TTS=true
 OPENAI_TTS_MODEL=gpt-4o-mini-tts
@@ -166,6 +179,55 @@ OPENAI_TTS_VOICE=onyx
 OPENAI_TTS_FORMAT=mp3
 OPENAI_TTS_SPEED=1.0
 ```
+
+### 2) Outgoing translated voice (to the other participant)
+
+This mode implements **asymmetric translation**:
+
+- **You** see translated subtitles of what the **other participant says** (incoming tab audio).
+- **The other participant** hears a **spoken translation** of what **you say** (your mic → translate → TTS → meeting mic).
+
+To achieve this, the translated TTS audio must be routed into the meeting as a microphone input. On Windows this is typically done with a **virtual audio cable**.
+
+#### Required audio routing (Windows)
+
+Install a virtual cable (recommended): **VB-Audio Virtual Cable**.
+
+It exposes two devices:
+- Playback: **CABLE Input** (this is where the extension will play translated TTS)
+- Recording: **CABLE Output** (this is what Google Meet will use as its microphone)
+
+#### Extension configuration (popup)
+
+1) Keep **incoming subtitles** configured normally (tab audio):
+   - Incoming source language (tab): the other participant’s language (or `auto`)
+   - Incoming target language (tab): your language
+
+2) Enable outgoing translated voice:
+   - Turn on **“Enable outgoing translated voice”**
+   - **Microphone input device:** select your **physical microphone** (Realtek / USB mic)
+   - **TTS output device (sink):** select **CABLE Input**
+
+Important:
+- Do **not** select the virtual cable as the microphone input inside the extension.
+- If you route TTS to system speakers instead of the virtual cable, only **you** will hear it.
+
+#### Google Meet configuration
+
+In Google Meet → Settings → Audio:
+- **Microphone:** **CABLE Output**
+- **Speakers:** your normal speakers/headphones
+
+This ensures the meeting receives only the translated TTS voice.
+
+#### Anti-loop / “talking to itself” prevention
+
+If you hear random phrases or the system appears to transcribe its own output, it is almost always a feedback loop.
+
+Use these rules:
+- Physical mic in the extension, virtual cable only as the TTS sink.
+- Meet microphone must be the virtual cable recording device (CABLE Output).
+- Keep “outgoing debug subtitles” disabled unless you are diagnosing issues.
 
 ---
 
@@ -236,4 +298,4 @@ See `LICENSE`.
 
 ---
 
-*Updated: 2026-01-13*
+*Updated: 2026-01-16 (added outgoing voice translation routing)*
