@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Meet Translator — Live call translation</title>
+  <meta name="description" content="Browser extension + local bridge for live call translation: subtitles for you, translated voice for them." />
+  <meta name="robots" content="index,follow" />
+  <meta property="og:title" content="Local Meet Translator" />
+  <meta property="og:description" content="Live call translation: subtitles for you, translated voice for them." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/og.png" />
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar__inner">
+      <a class="brand" href="#top" aria-label="Local Meet Translator">
+        <img class="brand__logo" src="assets/logo.svg" alt="" width="28" height="28" />
+        <span class="brand__name">Local Meet Translator</span>
+      </a>
+      <nav class="nav">
+        <a href="#how">How it works</a>
+        <a href="#setup">Setup</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="topbar__cta">
+        <a class="btn btn--ghost" href="#download">Download</a>
+        <a class="btn btn--primary" href="#install">Install</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="container hero__grid">
+        <div class="hero__copy">
+          <p class="badge">Browser extension + local bridge</p>
+          <h1>Live call translation.<br />Subtitles for you, voice for them.</h1>
+          <p class="lead">
+            Translate web calls in real time without sharing your API key with the browser.
+            Incoming audio becomes translated subtitles. Your speech becomes translated voice routed to the call.
+          </p>
+
+          <div class="cta-row" id="install">
+            <a class="btn btn--primary" href="__CHROME_WEB_STORE_URL__" target="_blank" rel="noopener">
+              Install for Chrome
+            </a>
+            <a class="btn btn--primary" href="__EDGE_ADDONS_URL__" target="_blank" rel="noopener">
+              Install for Edge
+            </a>
+            <a class="btn btn--ghost" href="#download">Download Bridge</a>
+          </div>
+
+          <p class="fineprint">
+            Works best with Google Meet (web). Subtitles-only mode requires no virtual audio devices.
+          </p>
+        </div>
+
+        <div class="hero__card">
+          <div class="card">
+            <div class="card__title">Two independent paths</div>
+            <div class="flow">
+              <div class="flow__col">
+                <div class="flow__label">Incoming (them → you)</div>
+                <div class="pill">Tab audio capture</div>
+                <div class="pill">Transcribe + translate</div>
+                <div class="pill">Subtitles overlay</div>
+              </div>
+              <div class="flow__col">
+                <div class="flow__label">Outgoing (you → them)</div>
+                <div class="pill">Mic capture</div>
+                <div class="pill">Translate + TTS</div>
+                <div class="pill">Virtual mic into call</div>
+              </div>
+            </div>
+            <div class="note">
+              Anti-loop protection prevents the system from transcribing its own TTS.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how">
+      <div class="container">
+        <h2>How it works</h2>
+        <div class="grid-3">
+          <div class="feature">
+            <h3>Extension captures audio</h3>
+            <p>
+              Captures call audio from the active tab for subtitles, and your physical microphone for outgoing translation.
+            </p>
+          </div>
+          <div class="feature">
+            <h3>Local bridge talks to AI</h3>
+            <p>
+              A small local service on <code>localhost</code> handles transcription, translation, and optional TTS.
+              Your API key stays on your machine.
+            </p>
+          </div>
+          <div class="feature">
+            <h3>Clean routing</h3>
+            <p>
+              You see translated subtitles. The other participant hears translated voice via a virtual microphone.
+              Subtitles do not include your own voice by default.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="download">
+      <div class="container">
+        <h2>Download</h2>
+        <p class="lead">
+          The bridge runs locally and requires Java (or a packaged runtime). Choose your platform:
+        </p>
+        <div class="downloads">
+          <div class="download">
+            <div class="download__title">Windows</div>
+            <p class="download__desc">Starter bundle (bridge + scripts). Replace with your real file link.</p>
+            <a class="btn btn--primary" href="downloads/bridge-windows.zip">Download for Windows</a>
+          </div>
+          <div class="download">
+            <div class="download__title">macOS / Linux</div>
+            <p class="download__desc">Provide a tar/zip or a one-line installer. Replace with your real link.</p>
+            <a class="btn btn--ghost" href="__DOWNLOAD_MAC_LINUX_URL__">Download for macOS/Linux</a>
+          </div>
+          <div class="download">
+            <div class="download__title">Source</div>
+            <p class="download__desc">Prefer open source? Link the GitHub repository here.</p>
+            <a class="btn btn--ghost" href="__GITHUB_REPO_URL__" target="_blank" rel="noopener">View on GitHub</a>
+          </div>
+        </div>
+        <p class="fineprint">
+          Tip: for Product Hunt, use a direct product URL (no UTM params). Keep downloads one click away.
+        </p>
+      </div>
+    </section>
+
+    <section class="section" id="setup">
+      <div class="container">
+        <h2>Setup in 3 minutes</h2>
+        <div class="steps">
+          <div class="step">
+            <div class="step__n">1</div>
+            <div>
+              <h3>Install the extension</h3>
+              <p>Install from Chrome Web Store / Edge Add-ons and open the popup.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step__n">2</div>
+            <div>
+              <h3>Start the local bridge</h3>
+              <p>Run the provided script and confirm <code>/health</code> is OK in the extension.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step__n">3</div>
+            <div>
+              <h3>Choose your mode</h3>
+              <ul>
+                <li><strong>Subtitles-only:</strong> no virtual audio required.</li>
+                <li><strong>Voice to the other participant:</strong> route TTS to a virtual mic (VB-Cable).</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout">
+          <h3>Voice mode routing (recommended)</h3>
+          <ol>
+            <li>Extension mic input: <strong>your real microphone</strong></li>
+            <li>Extension TTS sink: <strong>VB-Cable “CABLE Input”</strong></li>
+            <li>Google Meet microphone: <strong>VB-Cable “CABLE Output”</strong></li>
+            <li>Meet speakers: <strong>your real headphones/speakers</strong></li>
+          </ol>
+          <p class="fineprint">
+            This keeps your own TTS out of your mic and prevents “talking to itself”.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="privacy">
+      <div class="container">
+        <h2>Privacy & data</h2>
+        <div class="grid-2">
+          <div class="feature">
+            <h3>API key stays local</h3>
+            <p>
+              The extension talks only to your <code>localhost</code> bridge. Store your AI credentials in a local
+              <code>.env</code> file.
+            </p>
+          </div>
+          <div class="feature">
+            <h3>Consent matters</h3>
+            <p>
+              If you use call recording/transcription features, ensure you have the necessary consent from participants
+              and comply with local regulations.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="faq">
+      <div class="container">
+        <h2>FAQ</h2>
+        <details class="faq" open>
+          <summary>Does this work without a virtual audio cable?</summary>
+          <p>
+            Yes. Subtitles-only mode works without any virtual devices. Voice mode requires routing TTS into the call via
+            a virtual microphone.
+          </p>
+        </details>
+        <details class="faq">
+          <summary>Why do I sometimes see “random phrases”?</summary>
+          <p>
+            Most ASR systems can hallucinate on silence. This project drops low-energy chunks and pauses mic capture during
+            TTS playback to reduce self-feedback.
+          </p>
+        </details>
+        <details class="faq">
+          <summary>Which platforms are supported?</summary>
+          <p>
+            Any web call that runs in the browser can work. Google Meet is the primary target; Zoom/Teams web may vary by
+            permissions and audio routing.
+          </p>
+        </details>
+        <details class="faq">
+          <summary>How do I get support?</summary>
+          <p>
+            Provide diagnostics logs and your audio device routing (mic input, TTS sink, call microphone).
+          </p>
+        </details>
+      </div>
+    </section>
+
+    <section class="section section--footer">
+      <div class="container footer">
+        <div>
+          <div class="footer__brand">Local Meet Translator</div>
+          <div class="footer__meta">© <span id="y"></span> — All rights reserved.</div>
+        </div>
+        <div class="footer__links">
+          <a href="__GITHUB_REPO_URL__" target="_blank" rel="noopener">GitHub</a>
+          <a href="mailto:__SUPPORT_EMAIL__">Support</a>
+          <a href="#privacy">Privacy</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

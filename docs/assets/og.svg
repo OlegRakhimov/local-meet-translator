@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1270" height="760" viewBox="0 0 1270 760">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#0f1a33"/>
+    </linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6EE7FF"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+  </defs>
+  <rect width="1270" height="760" fill="url(#bg)"/>
+  <circle cx="220" cy="170" r="220" fill="#A78BFA" opacity="0.12"/>
+  <circle cx="1040" cy="210" r="260" fill="#6EE7FF" opacity="0.10"/>
+  <rect x="96" y="110" width="1078" height="540" rx="28" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)"/>
+  <g transform="translate(140 170)">
+    <rect x="0" y="0" width="72" height="72" rx="18" fill="url(#g)"/>
+    <path d="M22 30h28M22 42h20" stroke="#07101A" stroke-width="6" stroke-linecap="round" opacity=".85"/>
+  </g>
+  <text x="240" y="212" font-family="ui-sans-serif, system-ui, -apple-system" font-size="54" fill="#E6E8EE" font-weight="700">Local Meet Translator</text>
+  <text x="240" y="270" font-family="ui-sans-serif, system-ui, -apple-system" font-size="28" fill="#98A2B3">Live call translation: subtitles for you, voice for them</text>
+  <g transform="translate(240 340)">
+    <rect x="0" y="0" width="380" height="84" rx="18" fill="url(#g)"/>
+    <text x="36" y="54" font-family="ui-sans-serif, system-ui, -apple-system" font-size="28" fill="#07101A" font-weight="700">Install extension</text>
+  </g>
+  <g transform="translate(640 340)">
+    <rect x="0" y="0" width="380" height="84" rx="18" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.12)"/>
+    <text x="36" y="54" font-family="ui-sans-serif, system-ui, -apple-system" font-size="28" fill="#E6E8EE" font-weight="700">Download bridge</text>
+  </g>
+</svg>
