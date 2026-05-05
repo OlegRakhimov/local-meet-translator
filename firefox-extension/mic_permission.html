@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Meet Translator — Microphone permission</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; max-width: 720px; }
+    h1 { font-size: 18px; margin: 0 0 12px 0; }
+    p { margin: 0 0 10px 0; line-height: 1.35; }
+    .card { border: 1px solid rgba(127,127,127,.35); border-radius: 10px; padding: 14px; margin: 12px 0; }
+    .muted { opacity: .75; }
+    button { font-size: 14px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); cursor: pointer; }
+    button.primary { border-color: transparent; }
+    pre { background: rgba(127,127,127,.12); padding: 10px; border-radius: 8px; overflow: auto; }
+    .ok { color: #2ea043; }
+    .err { color: #f85149; }
+  </style>
+</head>
+<body>
+  <h1>Microphone permission for Local Meet Translator</h1>
+  <p class="muted">Chromium-based browsers often cannot show the microphone permission prompt from an extension popup or offscreen document. This page requests the microphone permission in a normal tab.</p>
+
+  <div class="card">
+    <p><b>Step 1</b>: Click the button below and choose <b>Allow</b> in the browser prompt.</p>
+    <p><button id="btnReq" class="primary">Request microphone access</button></p>
+    <p id="state" class="muted"></p>
+  </div>
+
+  <div class="card">
+    <p><b>Step 2</b>: After it shows <span class="ok">Granted</span>, close this tab and reopen the extension popup.</p>
+    <p class="muted">Then you should see real device names in the dropdowns.</p>
+  </div>
+
+  <pre id="log"></pre>
+
+  <script src="mic_permission.js"></script>
+</body>
+</html>

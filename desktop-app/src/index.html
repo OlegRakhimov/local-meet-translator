@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Meet Translator</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>Local Meet Translator</h1>
+      <p data-i18n="appSubtitle">Desktop controller: bridge, voice conversion, local token, health checks and extension setup.</p>
+    </header>
+
+    <section class="card">
+      <h2 data-i18n="settings">1. Settings</h2>
+      <label><span data-i18n="openaiKey">OpenAI API key</span> <input id="openaiKey" type="password" autocomplete="off" placeholder="sk-..." /></label>
+      <div class="grid">
+        <label><span data-i18n="bridgePort">Bridge port</span> <input id="bridgePort" type="number" value="8799" /></label>
+        <label><span data-i18n="voicePort">Voice conversion port</span> <input id="voicePort" type="number" value="18799" /></label>
+      </div>
+      <div class="grid">
+        <label><span data-i18n="textModel">Text model</span> <input id="textModel" value="gpt-4o-mini" /></label>
+        <label><span data-i18n="transcribeModel">Transcribe model</span> <input id="transcribeModel" value="whisper-1" /></label>
+      </div>
+      <label class="check"><input id="enableTts" type="checkbox" checked /> <span data-i18n="enableTts">Enable TTS for outgoing translated voice</span></label>
+      <label class="check"><input id="enableVoiceConversion" type="checkbox" /> <span data-i18n="enableVc">Enable voice conversion / RVC hook</span></label>
+      <label><span data-i18n="token">Generated extension token</span> <input id="token" readonly /></label>
+      <h3 data-i18n="translationControl">Translation control</h3>
+      <div class="grid">
+        <label><span data-i18n="incomingSource">Incoming source language</span> <input id="extSourceLang" value="auto" placeholder="auto / en / pl / ..." /></label>
+        <label><span data-i18n="incomingTarget">Incoming target language</span> <input id="extTargetLang" value="en" placeholder="en" /></label>
+      </div>
+      <div class="grid">
+        <label><span data-i18n="chunk">Incoming chunk seconds</span> <input id="extChunkSeconds" type="number" min="2" max="15" step="1" value="5" /></label>
+        <label><span data-i18n="ttsVoice">TTS voice</span> <select id="extTtsVoice"></select></label>
+      </div>
+      <div class="grid">
+        <label><span data-i18n="ttsSpeed">TTS speed</span> <input id="extTtsSpeed" type="number" min="0.25" max="4" step="0.05" value="1.0" /></label>
+        <label><span data-i18n="outStyle">Outgoing voice style</span>
+          <select id="extOutVoiceStyle">
+            <option value="openai" data-i18n="openaiVoice">OpenAI voice</option>
+            <option value="rvc" data-i18n="myVoiceRvc">My voice / RVC</option>
+          </select>
+        </label>
+      </div>
+      <label class="check"><input id="extTtsEnabled" type="checkbox" /> <span data-i18n="speakIncoming">Speak incoming translations in browser</span></label>
+
+      <div class="subcard important">
+        <h3><span data-i18n="outgoingTitle">Outgoing voice to meeting</span></h3>
+        <label class="check"><input id="extMicTxEnabled" type="checkbox" /> <span data-i18n="outgoingOn">ON: my microphone → translation → voice into meeting</span></label>
+        <div class="grid">
+          <label><span data-i18n="myLang">I speak</span> <input id="extMicTxSourceLang" value="en" placeholder="en" /></label>
+          <label><span data-i18n="meetingLang">Meeting hears</span> <input id="extMicTxTargetLang" value="en" placeholder="en" /></label>
+        </div>
+        <div class="grid">
+          <label><span data-i18n="micChunk">Mic chunk seconds</span> <input id="extMicTxChunkSeconds" type="number" min="2" max="15" step="1" value="5" /></label>
+          <label><span data-i18n="rvcTag">RVC model tag</span> <input id="extRvcModelTag" placeholder="myvoice" /></label>
+        </div>
+        <div class="grid">
+          <label><span data-i18n="micName">My microphone name contains</span> <input id="extMicDeviceName" data-i18n-placeholder="emptyDefaultMic" placeholder="Empty = system browser microphone; e.g. Realtek / USB / Headset" /></label>
+          <label><span data-i18n="ttsOutputName">Translated voice output name contains</span> <input id="extTtsSinkDeviceName" placeholder="CABLE Input" /></label>
+          <label class="advanced"><span data-i18n="advMicId">Advanced: microphone device ID</span> <input id="extMicDeviceId" data-i18n-placeholder="leaveEmpty" placeholder="Usually leave empty" /></label>
+          <label class="advanced"><span data-i18n="advTtsId">Advanced: TTS output device ID</span> <input id="extTtsSinkDeviceId" data-i18n-placeholder="leaveEmpty" placeholder="Usually leave empty" /></label>
+        </div>
+        <label class="check"><input id="extShowOutgoingSubtitles" type="checkbox" /> <span data-i18n="showOutgoingDebug">Show outgoing debug subtitles</span></label>
+        <p class="hint"><b>Для собеседника:</b> в desktop включи этот блок, <span data-i18n="ttsOutputName">Translated voice output name contains</span> = CABLE Input, а в Meet микрофоном выбери CABLE Output. Без virtual cable собеседник не услышит TTS.</p>
+        <div class="buttons">
+          <button id="enableOutgoingVoice" data-i18n="enableVoiceMeeting">Enable voice to meeting</button>
+          <button id="disableOutgoingVoice" class="secondary" data-i18n="disableVoiceMeeting">Disable voice to meeting</button>
+        </div>
+      </div>
+
+      <p class="hint" data-i18n="startStopHint">Start/Stop lives in this desktop app. Browser extension popup is status-only.</p>
+      <div class="buttons">
+        <button id="save" data-i18n="save">Save .env</button>
+        <button id="openEnv" class="secondary" data-i18n="openEnv">Open .env</button>
+      </div>
+      <p class="hint"><span data-i18n="configPath">Stable config path:</span> <code id="envPath">loading...</code></p>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="services">2. Services</h2>
+      <div class="statusGrid">
+        <div><span id="bridgeDot" class="dot"></span> <span data-i18n="bridge">Bridge</span> <small id="bridgeText">unknown</small></div>
+        <div><span id="voiceDot" class="dot"></span> <span data-i18n="voiceConversion">Voice conversion</span> <small id="voiceText">unknown</small></div>
+        <div><span id="cableDot" class="dot"></span> <span data-i18n="virtualCable">Virtual cable</span> <small id="cableText">unknown</small></div>
+        <div><span id="configDot" class="dot ok"></span> <span data-i18n="extensionConfigServer">Extension config server</span> <small>http://127.0.0.1:18798</small></div>
+      </div>
+      <div class="buttons">
+        <button id="startBridge" data-i18n="startBridge">Start bridge</button>
+        <button id="stopBridge" class="danger" data-i18n="stopBridge">Stop bridge</button>
+        <button id="startVoice" data-i18n="startVoice">Start voice conversion</button>
+        <button id="stopVoice" class="danger" data-i18n="stopVoice">Stop voice</button>
+        <button id="health" class="secondary" data-i18n="check">Check</button>
+        <button id="checkCable" class="secondary" data-i18n="checkCable">Check VB-Cable</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="extension">3. Extension</h2>
+      <p data-i18n="extensionText">Open the actual Meet/Zoom/Teams tab, then control translation here. The browser extension popup is status-only and has no Start/Stop buttons.</p>
+      <div class="buttons">
+        <button id="startTranslation" data-i18n="startTranslation">Start translation in browser</button>
+        <button id="stopTranslation" class="danger" data-i18n="stopTranslation">Stop translation</button>
+        <button id="openExtension" class="secondary" data-i18n="openExtension">Open browser extension folder</button>
+      </div>
+      <p class="hint" data-i18n="extensionHint">If the log says the extension was not invoked for the current page, make sure the active browser tab is Meet/Zoom/Teams, not ChatGPT/chrome://. Popup does not control translation.</p>
+    </section>
+
+    <section class="card">
+      <h2 data-i18n="log">Log</h2>
+      <pre id="log"></pre>
+    </section>
+  </main>
+  <script src="i18n.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

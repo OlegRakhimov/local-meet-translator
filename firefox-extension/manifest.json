@@ -1,18 +1,12 @@
 {
-  "manifest_version": 3,
-  "name": "Local Meet Translator (Edge)",
+  "manifest_version": 2,
+  "name": "Local Meet Translator (Firefox)",
   "version": "1.6.1",
-  "description": "Thin client for Local Meet Translator desktop app in Edge.",
+  "description": "Thin client for Local Meet Translator desktop app in Firefox.",
   "permissions": [
     "storage",
     "activeTab",
-    "tabCapture",
-    "audioCapture",
-    "scripting",
-    "offscreen",
-    "tabs"
-  ],
-  "host_permissions": [
+    "tabs",
     "https://meet.google.com/*",
     "https://*.zoom.us/*",
     "https://app.zoom.us/*",
@@ -21,12 +15,15 @@
     "http://127.0.0.1/*",
     "http://localhost/*"
   ],
-  "action": {
+  "browser_action": {
     "default_title": "Local Meet Translator",
     "default_popup": "popup.html"
   },
   "background": {
-    "service_worker": "background.js"
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": false
   },
   "content_scripts": [
     {
@@ -44,13 +41,15 @@
       "run_at": "document_idle"
     }
   ],
-  "options_ui": {
-    "page": "mic_permission.html",
-    "open_in_tab": true
-  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "local-meet-translator@example.local",
+      "strict_min_version": "109.0"
+    }
   }
 }

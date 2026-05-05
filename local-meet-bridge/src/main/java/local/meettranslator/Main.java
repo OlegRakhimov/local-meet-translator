@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.Executors;
 
 /**
  * Local Meet Translator Bridge
@@ -55,11 +56,23 @@ public final class Main {
         String ttsFormat = envOr("OPENAI_TTS_FORMAT", "mp3"); // mp3, wav, opus, aac, flac, pcm
         String ttsInstructions = envOr("OPENAI_TTS_INSTRUCTIONS", ""); // optional, for gpt-4o-mini-tts
         double ttsSpeed = Double.parseDouble(envOr("OPENAI_TTS_SPEED", "1.0"));
+// Optional voice conversion (e.g., RVC) for outgoing TTS (disabled by default)
+final boolean enableVoiceConversion = Boolean.parseBoolean(envOr("ENABLE_VOICE_CONVERSION", "false"));
+final String voiceConversionUrl = envOr("VOICE_CONVERSION_URL", "http://127.0.0.1:18799");
+final String voiceConversionToken = envOr("VOICE_CONVERSION_TOKEN", "");
+final boolean voiceConversionFallback = Boolean.parseBoolean(envOr("VOICE_CONVERSION_FALLBACK_TO_ORIGINAL", "true"));
+final long voiceConversionTimeoutMs = Long.parseLong(envOr("VOICE_CONVERSION_TIMEOUT_MS", "180000"));
+
 
         // Local auth token
         String authToken = envOr("LOCAL_MEET_TRANSLATOR_TOKEN", randomToken(40));
 
         OpenAiClient client = new OpenAiClient(baseUrl, apiKey, transcribeModel, textModel, enableTts, ttsModel, ttsVoice, ttsFormat, ttsInstructions, ttsSpeed);
+
+        final VoiceConversionClient voiceConversionClient = enableVoiceConversion
+                ? new VoiceConversionClient(voiceConversionUrl, voiceConversionToken, voiceConversionTimeoutMs)
+                : null;
+
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
 
@@ -81,7 +94,40 @@ public final class Main {
             }
         });
 
-        server.createContext("/translate-text", ex -> {
+        server.createContext("/voice/health", ex -> {
+    if (!corsAndMethod(ex, "GET")) return;
+    if (!checkAuth(ex, authToken)) return;
+
+    try {
+        boolean enabled = enableVoiceConversion && (voiceConversionClient != null);
+        boolean reachable = false;
+        String error = "";
+        if (enabled) {
+            try {
+                reachable = voiceConversionClient.ping();
+            } catch (Exception e) {
+                error = safeErr(e);
+            }
+        }
+
+        var obj = MAPPER.createObjectNode()
+                .put("ok", true)
+                .put("enabled", enabled)
+                .put("reachable", reachable);
+        if (!error.isBlank()) obj.put("error", error);
+
+        writeJson(ex, 200, obj);
+    } catch (Exception e) {
+        e.printStackTrace(System.err);
+        try {
+            writeError(ex, 500, "Internal error: " + safeErr(e));
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+});
+
+server.createContext("/translate-text", ex -> {
             if (!corsAndMethod(ex, "POST")) return;
             if (!checkAuth(ex, authToken)) return;
 
@@ -90,7 +136,7 @@ public final class Main {
                 JsonNode req = MAPPER.readTree(body);
 
                 String sourceLang = textOr(req, "sourceLang", "auto");
-                String targetLang = textOr(req, "targetLang", "ru");
+                String targetLang = textOr(req, "targetLang", "en");
                 String text = textOr(req, "text", "");
 
                 if (text.isBlank()) {
@@ -125,7 +171,7 @@ public final class Main {
                 String audioBase64 = textOr(req, "audioBase64", "");
                 String audioMime = textOr(req, "audioMime", "audio/webm");
                 String sourceLang = textOr(req, "sourceLang", "auto");
-                String targetLang = textOr(req, "targetLang", "ru");
+                String targetLang = textOr(req, "targetLang", "en");
 
                 if (audioBase64.isBlank()) {
                     writeError(ex, 400, "audioBase64 is empty");
@@ -173,58 +219,103 @@ public final class Main {
         });
 
         server.createContext("/tts", ex -> {
-            if (!corsAndMethod(ex, "POST")) return;
-            if (!checkAuth(ex, authToken)) return;
+    if (!corsAndMethod(ex, "POST")) return;
+    if (!checkAuth(ex, authToken)) return;
 
-            try {
-                if (!client.isTtsEnabled()) {
-                    writeError(ex, 403, "TTS is disabled. Set ENABLE_TTS=true and restart.");
-                    return;
-                }
+    try {
+        if (!client.isTtsEnabled()) {
+            writeError(ex, 403, "TTS is disabled. Set ENABLE_TTS=true and restart.");
+            return;
+        }
 
-                byte[] body = readBodyLimited(ex, 1_500_000);
-                JsonNode req = MAPPER.readTree(body);
+        byte[] body = readBodyLimited(ex, 1_500_000);
+        JsonNode req = MAPPER.readTree(body);
 
-                String text = textOr(req, "text", "");
-                if (text.isBlank()) {
-                    writeError(ex, 400, "text is empty");
-                    return;
-                }
+        String text = textOr(req, "text", "");
+        if (text.isBlank()) {
+            writeError(ex, 400, "text is empty");
+            return;
+        }
 
-                String voice = textOr(req, "voice", "");
-                String model = textOr(req, "model", "");
-                String responseFormat = textOr(req, "response_format", "");
-                String instructions = textOr(req, "instructions", "");
-                Double speed = null;
-                JsonNode speedNode = req.get("speed");
-                if (speedNode != null && speedNode.isNumber()) {
-                    speed = speedNode.asDouble();
-                }
+        String voice = textOr(req, "voice", "");
+        String model = textOr(req, "model", "");
+        String responseFormat = textOr(req, "response_format", "");
+        String instructions = textOr(req, "instructions", "");
+        Double speed = null;
+        JsonNode speedNode = req.get("speed");
+        if (speedNode != null && speedNode.isNumber()) {
+            speed = speedNode.asDouble();
+        }
 
-                byte[] audio = client.ttsAudio(text,
-                        (voice == null || voice.isBlank()) ? null : voice,
-                        (model == null || model.isBlank()) ? null : model,
-                        (responseFormat == null || responseFormat.isBlank()) ? null : responseFormat,
-                        (instructions == null || instructions.isBlank()) ? null : instructions,
-                        speed);
-                String fmt = (responseFormat == null || responseFormat.isBlank()) ? ttsFormat : responseFormat;
-                String mime = guessAudioMime(fmt);
-                String b64 = Base64.getEncoder().encodeToString(audio);
-
-                writeJson(ex, 200, MAPPER.createObjectNode()
-                        .put("audioMime", mime)
-                        .put("audioBase64", b64));
-            } catch (Exception e) {
-                e.printStackTrace(System.err);
-                try {
-                    writeError(ex, 500, "Internal error: " + safeErr(e));
-                } catch (Exception ignore) {
-                    // ignore
-                }
+        // Optional voice conversion request:
+        // {
+        //   "voiceConversion": { "type": "rvc", "modelTag": "myvoice" }
+        // }
+        JsonNode vcNode = req.get("voiceConversion");
+        String vcType = "";
+        String vcModelTag = "";
+        if (vcNode != null && vcNode.isObject()) {
+            vcType = textOr(vcNode, "type", "");
+            vcModelTag = textOr(vcNode, "modelTag", "");
+            if (vcModelTag.isBlank()) {
+                // Allow alias "model" for compatibility with other clients.
+                vcModelTag = textOr(vcNode, "model", "");
             }
-        });
+        }
+        boolean wantConversion = (vcType != null) && vcType.equalsIgnoreCase("rvc");
 
-        server.setExecutor(null);
+        String effectiveResponseFormat = (responseFormat == null || responseFormat.isBlank()) ? null : responseFormat;
+
+        if (wantConversion) {
+            if (!enableVoiceConversion || voiceConversionClient == null) {
+                writeError(ex, 403, "Voice conversion is disabled. Set ENABLE_VOICE_CONVERSION=true and restart the bridge.");
+                return;
+            }
+            // Force WAV for conversion.
+            effectiveResponseFormat = "wav";
+        }
+
+        byte[] audio = client.ttsAudio(text,
+                (voice == null || voice.isBlank()) ? null : voice,
+                (model == null || model.isBlank()) ? null : model,
+                effectiveResponseFormat,
+                (instructions == null || instructions.isBlank()) ? null : instructions,
+                speed);
+
+        String fmt = (effectiveResponseFormat == null || effectiveResponseFormat.isBlank())
+                ? ttsFormat
+                : effectiveResponseFormat;
+
+        if (wantConversion) {
+            // Always WAV when converting.
+            fmt = "wav";
+            try {
+                audio = voiceConversionClient.convertWav(audio, vcModelTag);
+            } catch (Exception convErr) {
+                if (!voiceConversionFallback) {
+                    throw new IOException("Voice conversion failed: " + safeErr(convErr), convErr);
+                }
+                // Fallback to original WAV.
+            }
+        }
+
+        String mime = guessAudioMime(fmt);
+        String b64 = Base64.getEncoder().encodeToString(audio);
+
+        writeJson(ex, 200, MAPPER.createObjectNode()
+                .put("audioMime", mime)
+                .put("audioBase64", b64));
+    } catch (Exception e) {
+        e.printStackTrace(System.err);
+        try {
+            writeError(ex, 500, "Internal error: " + safeErr(e));
+        } catch (Exception ignore) {
+            // ignore
+        }
+    }
+});
+
+server.setExecutor(Executors.newFixedThreadPool(Math.max(4, Runtime.getRuntime().availableProcessors())));
         server.start();
 
         System.out.println("Local Meet Translator bridge started");
@@ -450,7 +541,7 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
         
                 private static String buildTranslatePrompt(String sourceLang, String targetLang, String text) {
             String src = (sourceLang == null || sourceLang.isBlank()) ? "auto" : sourceLang.trim();
-            String tgt = (targetLang == null || targetLang.isBlank()) ? "ru" : targetLang.trim();
+            String tgt = (targetLang == null || targetLang.isBlank()) ? "en" : targetLang.trim();
 
             return ""
                     + "Task: Translate.\n"
@@ -527,7 +618,111 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
         }
     }
 
-    // -------------------- HTTP helpers --------------------
+    
+// -------------------- Voice conversion client (optional) --------------------
+
+static final class VoiceConversionClient {
+    private final String baseUrl;
+    private final String token;
+    private final Duration timeout;
+    private final HttpClient http;
+
+    VoiceConversionClient(String baseUrl, String token, long timeoutMs) {
+        this.baseUrl = stripTrailingSlash(Objects.requireNonNull(baseUrl));
+        this.token = (token == null) ? "" : token.trim();
+        this.timeout = Duration.ofMillis(Math.max(1_000, timeoutMs));
+        this.http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+    }
+
+    boolean ping() throws IOException {
+        String endpoint = baseUrl + "/health";
+        java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create(endpoint))
+                .timeout(timeout)
+                .GET();
+        if (!token.isBlank()) {
+            b.header("X-Auth-Token", token);
+        }
+
+        java.net.http.HttpResponse<byte[]> resp;
+        try {
+            resp = http.send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IOException("voice-conversion ping interrupted", ie);
+        }
+
+        if (resp.statusCode() / 100 != 2) {
+            return false;
+        }
+
+        JsonNode json = MAPPER.readTree(resp.body());
+        return json.path("ok").asBoolean(false);
+    }
+
+    byte[] convertWav(byte[] wavAudio, String modelTag) throws IOException {
+        if (wavAudio == null || wavAudio.length == 0) {
+            return wavAudio == null ? new byte[0] : wavAudio;
+        }
+
+        String endpoint = baseUrl + "/convert";
+        String b64 = Base64.getEncoder().encodeToString(wavAudio);
+
+        var body = MAPPER.createObjectNode()
+                .put("audioBase64", b64)
+                .put("audioMime", "audio/wav");
+        if (modelTag != null && !modelTag.isBlank()) {
+            body.put("modelTag", modelTag.trim());
+        }
+
+        byte[] jsonBytes = MAPPER.writeValueAsBytes(body);
+
+        java.net.http.HttpRequest.Builder b = java.net.http.HttpRequest.newBuilder()
+                .uri(URI.create(endpoint))
+                .timeout(timeout)
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(jsonBytes));
+
+        if (!token.isBlank()) {
+            b.header("X-Auth-Token", token);
+        }
+
+        java.net.http.HttpResponse<byte[]> resp;
+        try {
+            resp = http.send(b.build(), java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new IOException("voice-conversion convert interrupted", ie);
+        }
+
+        if (resp.statusCode() / 100 != 2) {
+            String msg = new String(resp.body(), StandardCharsets.UTF_8);
+            throw new IOException("voice-conversion failed: HTTP " + resp.statusCode() + " " + msg);
+        }
+
+        JsonNode json = MAPPER.readTree(resp.body());
+        String outB64 = json.path("audioBase64").asText("");
+        if (outB64.isBlank()) {
+            throw new IOException("voice-conversion response missing audioBase64");
+        }
+
+        try {
+            return Base64.getDecoder().decode(outB64);
+        } catch (IllegalArgumentException e) {
+            throw new IOException("voice-conversion returned invalid base64", e);
+        }
+    }
+
+    private static String stripTrailingSlash(String s) {
+        String out = s;
+        while (out.endsWith("/")) out = out.substring(0, out.length() - 1);
+        return out;
+    }
+}
+
+// -------------------- HTTP helpers --------------------
 
     private static boolean corsAndMethod(HttpExchange ex, String expectedMethod) throws IOException {
         addCors(ex.getResponseHeaders());
@@ -589,7 +784,7 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
         byte[] bytes = MAPPER.writeValueAsBytes(json);
         ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         addCors(ex.getResponseHeaders());
-        ex.sendResponseHeaders(status, bytes.length);
+        ex.sendResponseHeaders(status, 0);
         try (OutputStream os = ex.getResponseBody()) {
             os.write(bytes);
         } finally {

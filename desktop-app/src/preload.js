@@ -1,0 +1,17 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('lmt', {
+  load: () => ipcRenderer.invoke('settings:load'),
+  save: (settings) => ipcRenderer.invoke('settings:save', settings),
+  startBridge: () => ipcRenderer.invoke('bridge:start'),
+  stopBridge: () => ipcRenderer.invoke('bridge:stop'),
+  startVoice: () => ipcRenderer.invoke('voice:start'),
+  stopVoice: () => ipcRenderer.invoke('voice:stop'),
+  health: () => ipcRenderer.invoke('health:check'),
+  checkCable: () => ipcRenderer.invoke('audio:checkCable'),
+  openExtension: () => ipcRenderer.invoke('extension:open'),
+  startTranslation: () => ipcRenderer.invoke('extension:startTranslation'),
+  stopTranslation: () => ipcRenderer.invoke('extension:stopTranslation'),
+  openEnv: () => ipcRenderer.invoke('env:open'),
+  onLog: (cb) => ipcRenderer.on('app:log', (_event, line) => cb(line))
+});
