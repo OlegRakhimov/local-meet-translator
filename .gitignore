@@ -1,22 +1,18 @@
-﻿# Secrets
+﻿# secrets
 .env
 .env.*
 !.env.example
 
-# Node / Electron
+# dependencies
 node_modules/
+
+# build outputs
 dist/
 out/
-build-cache/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Java / Maven / Gradle
+build-output/
 target/
 .gradle/
-build/
+coverage/
 
 # IDE / OS
 .idea/
@@ -24,5 +20,15 @@ build/
 .DS_Store
 Thumbs.db
 
-# Local upload helper
-github-upload-work/
+# logs / temp
+*.log
+*.tmp
+*.bak
+tmp/
+temp/
+logs/
+
+# archives
+*.zip
+*.7z
+*.rar

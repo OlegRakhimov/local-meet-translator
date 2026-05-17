@@ -27,6 +27,50 @@ async function updatePermissionState() {
   stateEl.textContent = 'Current permission state: (unavailable)';
 }
 
+function isCableOutputLabel(label) {
+  const s = String(label || '').toLowerCase();
+  return s.includes('cable input') || s.includes('vb-audio') || s.includes('virtual cable');
+}
+
+async function rememberTtsOutputDevice(device) {
+  if (!device || !device.deviceId) return;
+  const obj = await chrome.storage.local.get('settings');
+  const settings = { ...(obj.settings || {}) };
+  settings.ttsSinkDeviceId = device.deviceId;
+  if (device.label) settings.ttsSinkDeviceName = device.label;
+  await chrome.storage.local.set({ settings, audioOutputPermissionGranted: true });
+  log('Saved translated voice output: ' + (device.label || device.deviceId));
+}
+
+async function requestTtsOutputAccess() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+    log('Audio output device enumeration is not available in this browser.');
+    return;
+  }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const outputs = devices.filter(d => d.kind === 'audiooutput');
+  const preferred = outputs.find(d => isCableOutputLabel(d.label));
+
+  if (navigator.mediaDevices.selectAudioOutput) {
+    try {
+      const selected = await navigator.mediaDevices.selectAudioOutput(
+        preferred && preferred.deviceId ? { deviceId: preferred.deviceId } : undefined
+      );
+      await rememberTtsOutputDevice(selected);
+      return;
+    } catch (e) {
+      log('Audio output selection skipped/failed: ' + formatErr(e));
+    }
+  }
+
+  if (preferred) {
+    await rememberTtsOutputDevice(preferred);
+  } else {
+    log('CABLE Input output was not visible. Install/enable VB-Cable, then reopen this page and grant access again.');
+  }
+}
+
 async function requestMic() {
   try {
     log('Requesting microphone access...');
@@ -38,6 +82,7 @@ async function requestMic() {
 
     log('Granted. You can close this tab and reopen the extension popup.');
     stateEl.innerHTML = '<span class="ok">Granted</span>';
+    await requestTtsOutputAccess();
 
     // Optional: try to close the tab after a short delay.
     try {

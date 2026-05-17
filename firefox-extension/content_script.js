@@ -302,5 +302,9 @@ async function pollDesktopCommand() {
   }
 }
 
-setInterval(pollDesktopCommand, 1000);
-setTimeout(pollDesktopCommand, 300);
+setInterval(pollDesktopCommand, 250);
+setTimeout(pollDesktopCommand, 50);
+window.addEventListener("focus", pollDesktopCommand);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) pollDesktopCommand();
+});

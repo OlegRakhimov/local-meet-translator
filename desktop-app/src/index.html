@@ -33,7 +33,7 @@
         <label><span data-i18n="incomingTarget">Incoming target language</span> <input id="extTargetLang" value="en" placeholder="en" /></label>
       </div>
       <div class="grid">
-        <label><span data-i18n="chunk">Incoming chunk seconds</span> <input id="extChunkSeconds" type="number" min="2" max="15" step="1" value="5" /></label>
+        <label><span data-i18n="chunk">Incoming chunk seconds</span> <input id="extChunkSeconds" type="number" min="2" max="15" step="1" value="3" /></label>
         <label><span data-i18n="ttsVoice">TTS voice</span> <select id="extTtsVoice"></select></label>
       </div>
       <div class="grid">
@@ -72,7 +72,7 @@
         </div>
       </div>
 
-      <p class="hint" data-i18n="startStopHint">Start/Stop lives in this desktop app. Browser extension popup is status-only.</p>
+      <p class="hint" data-i18n="startStopHint">Open the extension popup once on the meeting tab to connect capture access. Start/Stop then lives in this desktop app.</p>
       <div class="buttons">
         <button id="save" data-i18n="save">Save .env</button>
         <button id="openEnv" class="secondary" data-i18n="openEnv">Open .env</button>
@@ -100,13 +100,13 @@
 
     <section class="card">
       <h2 data-i18n="extension">3. Extension</h2>
-      <p data-i18n="extensionText">Open the actual Meet/Zoom/Teams tab, then control translation here. The browser extension popup is status-only and has no Start/Stop buttons.</p>
+      <p data-i18n="extensionText">Open the actual Meet/Zoom/Teams tab, click the Local Meet Translator extension icon once, connect that tab, then control translation here.</p>
       <div class="buttons">
         <button id="startTranslation" data-i18n="startTranslation">Start translation in browser</button>
         <button id="stopTranslation" class="danger" data-i18n="stopTranslation">Stop translation</button>
         <button id="openExtension" class="secondary" data-i18n="openExtension">Open browser extension folder</button>
       </div>
-      <p class="hint" data-i18n="extensionHint">If the log says the extension was not invoked for the current page, make sure the active browser tab is Meet/Zoom/Teams, not ChatGPT/chrome://. Popup does not control translation.</p>
+      <p class="hint" data-i18n="extensionHint">If the log says the extension was not invoked, open the extension popup on the Meet/Zoom/Teams tab and press Connect this meeting tab.</p>
     </section>
 
     <section class="card">

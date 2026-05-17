@@ -25,6 +25,8 @@ let appClosing = false;
 let extensionCommandSeq = 0;
 const desktopSessionId = crypto.randomBytes(12).toString('hex');
 let extensionCommand = { seq: 0, sessionId: desktopSessionId, action: 'idle', issuedAt: 0 };
+const extensionClients = new Map();
+let lastExtensionAck = null;
 
 function sendLog(line) {
   const msg = `[${new Date().toISOString().replace('T', ' ').replace('Z', '')}] ${line}`;
@@ -143,7 +145,7 @@ function loadSettings() {
   s.RVC_INFER_TIMEOUT_SEC ||= '180';
   s.EXT_SOURCE_LANG ||= 'auto';
   s.EXT_TARGET_LANG ||= getSystemLanguageCode();
-  s.EXT_CHUNK_SECONDS ||= '5';
+  if (!s.EXT_CHUNK_SECONDS || s.EXT_CHUNK_SECONDS === '5') s.EXT_CHUNK_SECONDS = '3';
   s.EXT_TTS_ENABLED ||= 'false';
   s.EXT_TTS_VOICE ||= 'onyx';
   s.EXT_TTS_SPEED ||= '1.0';
@@ -239,7 +241,7 @@ function getExtensionConfig() {
     authToken: s.LOCAL_MEET_TRANSLATOR_TOKEN,
     sourceLang: s.EXT_SOURCE_LANG || 'auto',
     targetLang: s.EXT_TARGET_LANG || getSystemLanguageCode(),
-    chunkSeconds: intFromEnv(s.EXT_CHUNK_SECONDS, 5, 2, 15),
+    chunkSeconds: intFromEnv(s.EXT_CHUNK_SECONDS, 3, 2, 15),
     ttsEnabled: boolFromEnv(s.EXT_TTS_ENABLED, false),
     ttsVoice: s.EXT_TTS_VOICE || 'onyx',
     ttsSpeed: floatFromEnv(s.EXT_TTS_SPEED, 1.0, 0.25, 4.0),
@@ -260,7 +262,31 @@ function issueExtensionCommand(action) {
   extensionCommandSeq += 1;
   extensionCommand = { seq: extensionCommandSeq, sessionId: desktopSessionId, action, issuedAt: Date.now(), ...getExtensionConfig() };
   sendLog(`Extension command queued: ${action} #${extensionCommand.seq}`);
+  setTimeout(() => {
+    if (extensionCommand.seq !== extensionCommandSeq || extensionCommand.action !== action) return;
+    if (lastExtensionAck && lastExtensionAck.seq === extensionCommand.seq) return;
+    const clients = getRecentExtensionClients();
+    if (!clients.length) {
+      sendLog(`Extension command #${extensionCommand.seq} was not picked up. Reload the Meet/Zoom/Teams tab after reloading the extension; no meeting content script is connected to http://127.0.0.1:18798.`);
+    } else {
+      sendLog(`Extension command #${extensionCommand.seq} has no ACK yet. Connected meeting tab(s): ${clients.map(c => c.url).join(' | ')}`);
+    }
+  }, 3500);
   return extensionCommand;
+}
+function rememberExtensionClient(url) {
+  const clean = String(url || '').trim();
+  if (!clean) return;
+  const key = clean.slice(0, 300);
+  const prev = extensionClients.get(key);
+  extensionClients.set(key, { url: key, lastSeen: Date.now(), firstSeen: prev ? prev.firstSeen : Date.now() });
+}
+function getRecentExtensionClients(maxAgeMs = 15000) {
+  const now = Date.now();
+  for (const [key, client] of extensionClients) {
+    if (now - client.lastSeen > 5 * 60 * 1000) extensionClients.delete(key);
+  }
+  return Array.from(extensionClients.values()).filter(c => now - c.lastSeen <= maxAgeMs);
 }
 function startConfigServer() {
   if (configServer) return;
@@ -284,6 +310,7 @@ function startConfigServer() {
     }
 
     if (url.pathname === '/extension-command') {
+      rememberExtensionClient(url.searchParams.get('url') || '');
       const lastSeqRaw = Number(url.searchParams.get('lastSeq') || '0');
       const clientSessionId = String(url.searchParams.get('sessionId') || '');
       const lastSeq = clientSessionId === desktopSessionId ? lastSeqRaw : 0;
@@ -310,6 +337,7 @@ function startConfigServer() {
         const action = data.action || url.searchParams.get('action') || '?';
         const ok = data.ok === undefined ? true : !!data.ok;
         const text = data.message || data.error || '';
+        lastExtensionAck = { seq: Number(seq), action, ok, at: Date.now() };
         sendLog(`Extension ${ok ? 'ACK' : 'ERROR'} for ${action} #${seq}${text ? ': ' + text : ''}`);
         writeJsonResponse(res, 200, { ok:true });
       });
@@ -401,6 +429,12 @@ ipcMain.handle('extension:startTranslation', async () => {
   const s = loadSettings();
   const b = await requestJson(`http://127.0.0.1:${s.LOCAL_MEET_TRANSLATOR_PORT}/health`, s.LOCAL_MEET_TRANSLATOR_TOKEN);
   if (!b.ok) return { ok:false, message:`Bridge is not ready: ${b.body || 'offline'}` };
+  const clients = getRecentExtensionClients();
+  if (!clients.length) {
+    sendLog('No connected Meet/Zoom/Teams content script seen yet. Open the meeting tab and reload it once after loading/reloading the extension.');
+  } else {
+    sendLog(`Connected meeting tab(s): ${clients.map(c => c.url).join(' | ')}`);
+  }
   const cmd = issueExtensionCommand('start');
   return { ok:true, message:`Start command sent to extension (#${cmd.seq}). Open the meeting tab and keep it loaded; control remains in the desktop app.` };
 });

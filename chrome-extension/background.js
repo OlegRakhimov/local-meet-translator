@@ -36,6 +36,14 @@ async function closeOffscreenIfPossible() {
   }
 }
 
+async function stopCaptureForRestart() {
+  if (running || offscreenCreated) {
+    try { await chrome.runtime.sendMessage({ type: "OFFSCREEN_STOP" }); } catch (_) {}
+    await closeOffscreenIfPossible();
+  }
+  running = false;
+}
+
 async function ensureTabNotMuted(tabId) {
   try {
     const tab = await chrome.tabs.get(tabId);
@@ -45,6 +53,17 @@ async function ensureTabNotMuted(tabId) {
 
 function status(kind, text, log) {
   chrome.runtime.sendMessage({ type: "STATUS", kind, text, log }).catch(() => {});
+}
+
+function friendlyError(e) {
+  const text = String(e && (e.message || e) || "");
+  if (text.includes("Extension has not been invoked") || text.includes("activeTab permission")) {
+    return "Open the Meet tab, click the Local Meet Translator extension icon, and press 'Connect this meeting tab' once. Browser security requires this before tab audio can be captured.";
+  }
+  if (text.includes("Chrome pages cannot be captured")) {
+    return "This tab cannot be captured. Open a real Meet/Zoom/Teams meeting tab and connect it from the extension popup.";
+  }
+  return text || "Unknown extension error";
 }
 
 function isSupportedMeetingUrl(url) {
@@ -58,7 +77,19 @@ function isSupportedMeetingUrl(url) {
 
 async function getStartMessageFromStorage(overrides, tabId) {
   const obj = await chrome.storage.local.get("settings");
-  const s = { ...(obj.settings || {}), ...(overrides || {}) };
+  const stored = obj.settings || {};
+  const incoming = overrides || {};
+  const s = { ...stored, ...incoming };
+
+  // The desktop app can configure the output by name, but it cannot know the
+  // browser-only deviceId returned after the user grants speaker selection.
+  // Keep that saved id instead of overwriting it with an empty desktop value.
+  if (!incoming.ttsSinkDeviceId && stored.ttsSinkDeviceId) {
+    s.ttsSinkDeviceId = stored.ttsSinkDeviceId;
+  }
+  if (!incoming.ttsSinkDeviceName && stored.ttsSinkDeviceName) {
+    s.ttsSinkDeviceName = stored.ttsSinkDeviceName;
+  }
   return {
     type: "START",
     tabId,
@@ -66,7 +97,7 @@ async function getStartMessageFromStorage(overrides, tabId) {
     authToken: s.authToken || "",
     sourceLang: s.sourceLang || "auto",
     targetLang: s.targetLang || "en",
-    chunkSeconds: s.chunkSeconds || 5,
+    chunkSeconds: s.chunkSeconds || 3,
     ttsEnabled: !!s.ttsEnabled,
     ttsVoice: s.ttsVoice || "onyx",
     ttsSpeed: s.ttsSpeed || 1.0,
@@ -109,7 +140,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         if (!tab || !isSupportedMeetingUrl(tab.url)) {
           return sendResponse({ ok:false, error:"Open the popup from a Meet/Zoom/Teams meeting tab, not from this page: " + String(tab && tab.url || "unknown") });
         }
-        if (running) return sendResponse({ ok:true, already:true, message:"Translation is already running." });
+        if (running) await stopCaptureForRestart();
         msg = await getStartMessageFromStorage(msg, tabId);
         try {
           const { type, tabId: _tabId, ...settings } = msg;
@@ -121,7 +152,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         const tabId = sender && sender.tab && sender.tab.id;
         if (!tabId) return sendResponse({ ok:false, error:"Desktop command came without sender tab" });
         if (msg.action === "start") {
-          if (running) return sendResponse({ ok:true, already:true, message:"Translation is already running." });
+          if (running) await stopCaptureForRestart();
           msg = await getStartMessageFromStorage(msg, tabId);
           try {
             const { type, tabId: _tabId, ...settings } = msg;
@@ -135,7 +166,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
       }
 
       if (msg?.type === "START") {
-        if (running) return sendResponse({ ok: true, already: true });
+        if (running) await stopCaptureForRestart();
         const tabId = msg.tabId;
         if (!tabId) return sendResponse({ ok: false, error: "No tabId" });
         await ensureTabNotMuted(tabId);
@@ -192,8 +223,9 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
       sendResponse({ ok: true });
     } catch (e) {
       running = false;
-      status("err", "Error", String(e));
-      sendResponse({ ok: false, error: String(e) });
+      const error = friendlyError(e);
+      status("err", "Error", error);
+      sendResponse({ ok: false, error });
     }
   })();
   return true;

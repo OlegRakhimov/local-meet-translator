@@ -33,7 +33,7 @@ function apply(s) {
   if ($('envPath')) $('envPath').textContent = s.__ENV_PATH || '';
   $('extSourceLang').value = s.EXT_SOURCE_LANG || 'auto';
   $('extTargetLang').value = s.EXT_TARGET_LANG || systemLanguageCode();
-  $('extChunkSeconds').value = s.EXT_CHUNK_SECONDS || '5';
+  $('extChunkSeconds').value = s.EXT_CHUNK_SECONDS || '3';
   $('extTtsEnabled').checked = String(s.EXT_TTS_ENABLED || 'false') === 'true';
   $('extTtsVoice').value = s.EXT_TTS_VOICE || 'onyx';
   $('extTtsSpeed').value = s.EXT_TTS_SPEED || '1.0';
@@ -63,7 +63,7 @@ function readSettings() {
     VOICE_CONVERSION_URL: `http://127.0.0.1:${val('voicePort') || '18799'}`,
     EXT_SOURCE_LANG: val('extSourceLang') || 'auto',
     EXT_TARGET_LANG: val('extTargetLang') || systemLanguageCode(),
-    EXT_CHUNK_SECONDS: val('extChunkSeconds') || '5',
+    EXT_CHUNK_SECONDS: val('extChunkSeconds') || '3',
     EXT_TTS_ENABLED: checked('extTtsEnabled') ? 'true' : 'false',
     EXT_TTS_VOICE: val('extTtsVoice') || 'onyx',
     EXT_TTS_SPEED: val('extTtsSpeed') || '1.0',

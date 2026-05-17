@@ -186,7 +186,7 @@ server.createContext("/translate-text", ex -> {
                     return;
                 }
 
-                String transcript = client.transcribe(audioBytes, audioMime);
+                String transcript = client.transcribe(audioBytes, audioMime, sourceLang);
 
                 // If the chunk is silence, transcription can be empty.
                 // Treat that as a valid (empty) result to avoid spamming HTTP 500.
@@ -407,11 +407,11 @@ server.setExecutor(Executors.newFixedThreadPool(Math.max(4, Runtime.getRuntime()
             return m;
         }
 
-String transcribe(byte[] audio, String audioMime) throws IOException {
+String transcribe(byte[] audio, String audioMime, String sourceLang) throws IOException {
             String endpoint = baseUrl + "/v1/audio/transcriptions";
 
             String boundary = "----LocalMeetTranslatorBoundary" + randomToken(12);
-            byte[] multipart = buildMultipart(boundary, audio, normalizeTranscribeMime(audioMime), transcribeModel);
+            byte[] multipart = buildMultipart(boundary, audio, normalizeTranscribeMime(audioMime), transcribeModel, sourceLang);
 
             java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
@@ -580,7 +580,7 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
             return sb.toString().trim();
         }
 
-        private static byte[] buildMultipart(String boundary, byte[] audioBytes, String audioMime, String model) throws IOException {
+        private static byte[] buildMultipart(String boundary, byte[] audioBytes, String audioMime, String model, String sourceLang) throws IOException {
             String filename = "audio" + guessExt(audioMime);
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -589,6 +589,14 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
             out.write(("Content-Disposition: form-data; name=\"model\"\r\n\r\n").getBytes(StandardCharsets.UTF_8));
             out.write(model.getBytes(StandardCharsets.UTF_8));
             out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+
+            String lang = normalizeLanguageForTranscription(sourceLang);
+            if (!lang.isBlank()) {
+                out.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(("Content-Disposition: form-data; name=\"language\"\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(lang.getBytes(StandardCharsets.UTF_8));
+                out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+            }
 
             out.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
             out.write(("Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n").getBytes(StandardCharsets.UTF_8));
@@ -599,6 +607,17 @@ String transcribe(byte[] audio, String audioMime) throws IOException {
             out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
 
             return out.toByteArray();
+        }
+
+        private static String normalizeLanguageForTranscription(String sourceLang) {
+            if (sourceLang == null) return "";
+            String s = sourceLang.trim().toLowerCase(Locale.ROOT);
+            if (s.isBlank() || "auto".equals(s)) return "";
+            int dash = s.indexOf('-');
+            if (dash > 0) s = s.substring(0, dash);
+            int underscore = s.indexOf('_');
+            if (underscore > 0) s = s.substring(0, underscore);
+            return s.matches("[a-z]{2,3}") ? s : "";
         }
 
         private static String guessExt(String mime) {

@@ -64,6 +64,9 @@ let micSegmentMime = "";
 let micSegmentStartedAt = 0;
 let micLastSpeechAt = 0;
 let micFlushChain = Promise.resolve();
+let micRecorderStartedAt = 0;
+let micSpeechMonitorTimer = null;
+let micCurrentMimeType = "";
 
 // Dedupe
 const DEDUPE_WINDOW_MS = 12000;
@@ -293,7 +296,16 @@ async function setSinkIfSupported(el, deviceId, deviceName) {
     return false;
   }
   try { await el.setSinkId(resolved); return true; }
-  catch (e) { status("err", "TTS sink", "Failed to set sink device: " + String(e)); return false; }
+  catch (e) {
+    if (deviceName) {
+      const byName = await findDeviceIdByName("audiooutput", deviceName);
+      if (byName && byName !== resolved) {
+        try { await el.setSinkId(byName); return true; } catch (_) {}
+      }
+    }
+    status("err", "TTS sink", "Failed to set sink device: " + String(e) + ". Open the extension options / microphone permission page and grant/select CABLE Input.");
+    return false;
+  }
 }
 
 async function playTtsAudio(base64, mime, sinkDeviceId, sinkDeviceName) {
@@ -402,7 +414,7 @@ async function transcribeAndTranslate(blob, sourceLang, targetLang) {
       return null;
     }
 
-    const mime = (blob && blob.type) ? blob.type : "audio/ogg;codecs=opus";
+    const mime = (blob && blob.type) ? blob.type : "audio/webm;codecs=opus";
     status("run", "Running", `Sending: ${blob.size} bytes, type=${mime || "?"}`);
 
     const payload = {
@@ -435,13 +447,14 @@ async function transcribeAndTranslate(blob, sourceLang, targetLang) {
   }
 }
 
-// Prefer OGG/Opus first, then WebM/Opus.
+// Prefer WebM/Opus for OpenAI transcription. Some Chromium builds can record
+// OGG/Opus, but the transcription API may reject those chunks as unsupported.
 function pickMimeType() {
   const candidates = [
-    "audio/ogg;codecs=opus",
-    "audio/ogg",
     "audio/webm;codecs=opus",
-    "audio/webm"
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg"
   ];
   for (const m of candidates) {
     try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (_) {}
@@ -592,65 +605,94 @@ function flushMicSegment(reason) {
 async function startMicRecorder() {
   if (!micStream) return;
   const mimeType = pickMimeType();
-  status("run", "Running", "Mic recorder mime=" + (mimeType || "default") + "; endpointing=phrase/silence");
-  micRecorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
+  micCurrentMimeType = mimeType;
+  status("run", "Running", "Mic recorder mime=" + (mimeType || "default") + "; endpointing=whole-phrase");
   resetMicSegment();
+  if (micSpeechMonitorTimer) clearInterval(micSpeechMonitorTimer);
 
-  micRecorder.ondataavailable = async (ev) => {
-    if (!ev.data || ev.data.size === 0) return;
-    if (ev.data.size < MIN_AUDIO_BLOB_BYTES) return;
-
+  const startSpeechRecording = () => {
+    if (!running || !micTxEnabled || !micStream) return;
+    if (micRecorder && micRecorder.state === "recording") return;
+    resetMicSegment();
     const now = Date.now();
+    micSegmentStartedAt = now;
+    micLastSpeechAt = now;
+    micRecorderStartedAt = now;
 
-    if (MUTE_MIC_DURING_TTS && ttsPlaying) {
-      // Prevent feedback. If the user had finished speaking before TTS started, flush it.
-      if (micSegmentParts.length && now - micLastSpeechAt >= MIC_SILENCE_FLUSH_MS) flushMicSegment("tts-started-after-speech");
+    try {
+      micRecorder = new MediaRecorder(micStream, micCurrentMimeType ? { mimeType: micCurrentMimeType } : undefined);
+    } catch (e) {
+      status("err", "Mic recorder failed", String(e));
       return;
     }
 
-    const peak = micMeter ? micMeter.getPeak() : 1;
-    const speech = !VAD_ENABLED || !micMeter || peak >= MIC_VAD_THRESHOLD;
+    micRecorder.ondataavailable = (ev) => {
+      if (!ev.data || ev.data.size === 0) return;
+      if (ev.data.size < MIN_AUDIO_BLOB_BYTES) return;
+      const mime = ev.data.type || micCurrentMimeType || "audio/webm";
+      const blob = ev.data.type ? ev.data : new Blob([ev.data], { type: mime });
+      micFlushChain = micFlushChain
+        .then(() => processMicSpeechBlob(blob, "whole-phrase"))
+        .catch((e) => status("err", "Outgoing voice failed", String(e)));
+    };
+    micRecorder.onstop = () => {
+      micRecorder = null;
+      resetMicSegment();
+    };
 
-    if (speech && !micSegmentStartedAt) {
-      micSegmentStartedAt = now;
-      micSegmentMime = ev.data.type || mimeType || "audio/webm";
-      status("run", "Outgoing voice", "Speech started; collecting full phrase before translation.");
-    }
-
-    if (micSegmentStartedAt) {
-      micSegmentParts.push(ev.data);
-      if (speech) micLastSpeechAt = now;
-
-      const durationMs = now - micSegmentStartedAt;
-      const silenceMs = now - (micLastSpeechAt || now);
-      if ((durationMs >= MIC_MIN_SEGMENT_MS && silenceMs >= MIC_SILENCE_FLUSH_MS) || durationMs >= MIC_MAX_SEGMENT_MS) {
-        flushMicSegment(durationMs >= MIC_MAX_SEGMENT_MS ? "max-duration" : "silence");
-      }
-    }
-  };
-
-  micRecorder.onstop = () => {
-    flushMicSegment("recorder-stop");
-    // Do not restart while running: this recorder uses timeslice chunks continuously.
-  };
-
-  micRecorder.start(MIC_TIMESLICE_MS);
-  if (micStopTimer) clearInterval(micStopTimer);
-  micStopTimer = setInterval(() => {
     try {
-      if (running && micTxEnabled && micRecorder && micRecorder.state === "recording") {
-        const now = Date.now();
-        if (micSegmentParts.length && micLastSpeechAt && now - micLastSpeechAt >= MIC_SILENCE_FLUSH_MS) flushMicSegment("silence-timer");
+      micRecorder.start();
+      status("run", "Outgoing voice", "Speech started; recording whole phrase.");
+    } catch (e) {
+      status("err", "Mic recorder start failed", String(e));
+      micRecorder = null;
+    }
+  };
+
+  const stopSpeechRecording = (reason) => {
+    if (!micRecorder || micRecorder.state !== "recording") return;
+    status("run", "Outgoing voice", "Speech ended; sending phrase (" + reason + ").");
+    try { micRecorder.stop(); } catch (_) {}
+  };
+
+  micSpeechMonitorTimer = setInterval(() => {
+    try {
+      if (!running || !micTxEnabled || !micStream) return;
+      const now = Date.now();
+      const peak = micMeter ? micMeter.getPeak() : 1;
+      const speech = !VAD_ENABLED || !micMeter || peak >= MIC_VAD_THRESHOLD;
+
+      if (MUTE_MIC_DURING_TTS && ttsPlaying) {
+        stopSpeechRecording("tts-playing");
+        return;
       }
-    } catch (_) {}
-  }, 500);
+
+      if (speech) {
+        if (!micRecorder || micRecorder.state !== "recording") startSpeechRecording();
+        micLastSpeechAt = now;
+      }
+
+      if (micRecorder && micRecorder.state === "recording") {
+        const durationMs = now - (micSegmentStartedAt || now);
+        const silenceMs = now - (micLastSpeechAt || now);
+        if (durationMs >= MIC_MIN_SEGMENT_MS && silenceMs >= MIC_SILENCE_FLUSH_MS) {
+          stopSpeechRecording("silence");
+        } else if (durationMs >= MIC_MAX_SEGMENT_MS) {
+          stopSpeechRecording("max-duration");
+        }
+      }
+    } catch (e) {
+      status("err", "Mic monitor failed", String(e));
+    }
+  }, 200);
 }
 
 async function stopAll() {
   running = false;
   try { if (tabStopTimer) clearTimeout(tabStopTimer); } catch (_) {}
   try { if (micStopTimer) clearInterval(micStopTimer); } catch (_) {}
-  tabStopTimer = null; micStopTimer = null;
+  try { if (micSpeechMonitorTimer) clearInterval(micSpeechMonitorTimer); } catch (_) {}
+  tabStopTimer = null; micStopTimer = null; micSpeechMonitorTimer = null;
   resetMicSegment();
 
   try { if (tabRecorder && tabRecorder.state !== "inactive") tabRecorder.stop(); } catch (_) {}
@@ -684,7 +726,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         tabSourceLang = msg.sourceLang || "auto";
         tabTargetLang = msg.targetLang || "en";
-        tabChunkSeconds = msg.chunkSeconds || 5;
+        tabChunkSeconds = msg.chunkSeconds || 3;
 
         ttsEnabled = !!msg.ttsEnabled;
         ttsVoice = msg.ttsVoice || "onyx";

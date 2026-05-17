@@ -9,7 +9,7 @@
 <body>
   <div class="wrap">
     <h1>Local Meet Translator</h1>
-    <p class="muted" data-i18n="installed">Extension installed. Translation is controlled only from the desktop app.</p>
+    <p class="muted" data-i18n="installed">Open this popup once from the meeting tab to grant capture access. Translation is then controlled from the desktop app.</p>
 
     <div class="card">
       <div class="line"><span data-i18n="desktop">Desktop command server</span><b id="desktopStatus" data-i18n="checking">checking...</b></div>
@@ -17,7 +17,11 @@
       <div class="line"><span data-i18n="state">Last extension state</span><b id="runtimeStatus" data-i18n="idle">idle</b></div>
     </div>
 
-    <p class="hint" data-i18n="hint">Open Meet / Zoom / Teams, then press Start bridge and Start translation in the desktop app. This popup has no start, stop, tab connect, or settings buttons.</p>
+    <div class="actions">
+      <button id="connectTab" type="button" data-i18n="connectTab">Connect this meeting tab</button>
+    </div>
+
+    <p class="hint" data-i18n="hint">Open this popup on the Meet / Zoom / Teams tab first, then use Start bridge and Start translation in the desktop app.</p>
 
     <pre id="log" class="log"></pre>
   </div>

@@ -26,6 +26,11 @@ function isSupportedMeetingUrl(url) {
     || u.startsWith("https://teams.live.com/");
 }
 
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab || null;
+}
+
 async function checkDesktop() {
   try {
     const resp = await fetch("http://127.0.0.1:18798/health", { cache: "no-store" });
@@ -45,18 +50,47 @@ async function checkDesktop() {
 
 async function checkCurrentPage() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = await getActiveTab();
     if (!tab || !tab.url) {
       setText("pageStatus", t("unknown"), "warn");
-      return;
+      return null;
     }
     if (isSupportedMeetingUrl(tab.url)) {
       setText("pageStatus", t("meetingPage"), "ok");
+      return tab;
     } else {
       setText("pageStatus", t("notMeetingPage"), "warn");
+      return null;
     }
   } catch (e) {
     setText("pageStatus", t("cannotRead"), "warn");
+    return null;
+  }
+}
+
+async function connectCurrentMeetingTab() {
+  const btn = $("connectTab");
+  try {
+    if (btn) btn.disabled = true;
+    const tab = await checkCurrentPage();
+    if (!tab || !tab.id) {
+      setText("runtimeStatus", t("notMeetingPage"), "warn");
+      log(t("connectOpenMeeting"));
+      return;
+    }
+    const res = await chrome.runtime.sendMessage({ type: "ARM_CURRENT_TAB", tabId: tab.id });
+    if (res && res.ok) {
+      setText("runtimeStatus", t("connected"), "ok");
+      log(t("connectedLog"));
+    } else {
+      setText("runtimeStatus", t("notReady"), "err");
+      log((res && (res.error || res.message)) || t("connectFailed"));
+    }
+  } catch (e) {
+    setText("runtimeStatus", t("notReady"), "err");
+    log(String(e));
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -64,7 +98,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyI18n();
   setText("runtimeStatus", t("idle"), "warn");
   await checkDesktop();
-  await checkCurrentPage();
+  const tab = await checkCurrentPage();
+  const btn = $("connectTab");
+  if (btn) btn.onclick = connectCurrentMeetingTab;
+  if (tab) await connectCurrentMeetingTab();
 
   try {
     chrome.runtime.onMessage.addListener((msg) => {
