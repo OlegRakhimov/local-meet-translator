@@ -159,7 +159,6 @@ async function ensureContentScriptsInjected(tabId) {
   if (!tabId || !chrome.scripting || typeof chrome.scripting.executeScript !== "function") return;
   // Existing tabs opened before extension installation/reload do not automatically get content_script.js.
   // Injecting manually makes "Connect this meeting tab" work without forcing the user to reload the meeting.
-  try { await chrome.scripting.executeScript({ target: { tabId }, files: ["i18n.js"] }); } catch (_) {}
   try { await chrome.scripting.executeScript({ target: { tabId }, files: ["content_script.js"] }); } catch (_) {}
 }
 
@@ -209,6 +208,36 @@ async function checkDesktopHealth() {
     result = await getDesktopJson("/health");
   }
   return result.ok ? result.data : { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Desktop health check failed.") };
+}
+async function forwardSubtitleToDesktop(message) {
+  const paired = await ensureDesktopToken(false);
+  if (!paired.ok) return paired;
+  let tabUrl = "";
+  if (message && message.tabId) {
+    try {
+      const tab = await chrome.tabs.get(Number(message.tabId));
+      tabUrl = String(tab && tab.url || "");
+    } catch (_) {}
+  }
+  const body = {
+    id: String(message && message.id || ""),
+    channel: message && message.channel === "outgoing" ? "outgoing" : "incoming",
+    translation: String(message && message.translation || ""),
+    transcript: String(message && message.transcript || ""),
+    ts: Number(message && message.ts || Date.now()),
+    tabId: message && message.tabId !== undefined ? String(message.tabId) : "",
+    url: tabUrl,
+    clientId: desktopExtensionClientId || ""
+  };
+  let result = await postDesktopJson("/extension/subtitle", body);
+  if (!result.ok && (result.status === 401 || result.status === 403)) {
+    const repaired = await ensureDesktopToken(true);
+    if (!repaired.ok) return repaired;
+    result = await postDesktopJson("/extension/subtitle", body);
+  }
+  return result.ok
+    ? { ok: true, eventId: String(result.data && result.data.eventId || "") }
+    : { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Desktop subtitle delivery failed.") };
 }
 
 async function ackDesktopCommand(payload) {
@@ -582,9 +611,9 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         return;
       }
 
-      if (msg?.type === "SUBTITLE" && msg.tabId) {
-        chrome.tabs.sendMessage(msg.tabId, msg).catch(() => {});
-        sendResponse({ ok: true });
+      if (msg?.type === "SUBTITLE") {
+        const delivered = await forwardSubtitleToDesktop(msg);
+        sendResponse(delivered);
         return;
       }
       sendResponse({ ok: true });

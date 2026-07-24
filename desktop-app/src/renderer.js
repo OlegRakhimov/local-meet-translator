@@ -99,6 +99,16 @@ function apply(s) {
   $('extOutVoiceStyle').value = s.EXT_OUT_VOICE_STYLE || 'openai';
   $('extRvcModelTag').value = s.EXT_RVC_MODEL_TAG || '';
   $('extShowOutgoingSubtitles').checked = String(s.EXT_SHOW_OUTGOING_SUBTITLES || 'false') === 'true';
+  if ($('subtitleWindowEnabled')) $('subtitleWindowEnabled').checked = String(s.SUBTITLE_WINDOW_ENABLED || 'true') === 'true';
+  if ($('subtitleContentProtection')) $('subtitleContentProtection').checked = String(s.SUBTITLE_WINDOW_CONTENT_PROTECTION || 'true') === 'true';
+  if ($('subtitleAlwaysOnTop')) $('subtitleAlwaysOnTop').checked = String(s.SUBTITLE_WINDOW_ALWAYS_ON_TOP || 'true') === 'true';
+  if ($('subtitleClickThrough')) $('subtitleClickThrough').checked = String(s.SUBTITLE_WINDOW_CLICK_THROUGH || 'false') === 'true';
+  if ($('subtitleShowOriginal')) $('subtitleShowOriginal').checked = String(s.SUBTITLE_WINDOW_SHOW_ORIGINAL || 'true') === 'true';
+  if ($('subtitleShowTranslation')) $('subtitleShowTranslation').checked = String(s.SUBTITLE_WINDOW_SHOW_TRANSLATION || 'true') === 'true';
+  if ($('subtitleFontSize')) $('subtitleFontSize').value = s.SUBTITLE_WINDOW_FONT_SIZE || '28';
+  if ($('subtitleBackgroundOpacity')) $('subtitleBackgroundOpacity').value = s.SUBTITLE_WINDOW_BACKGROUND_OPACITY || '0.82';
+  if ($('subtitleMaxLines')) $('subtitleMaxLines').value = s.SUBTITLE_WINDOW_MAX_LINES || '3';
+  if ($('subtitleHotkey')) $('subtitleHotkey').value = s.SUBTITLE_WINDOW_HOTKEY || 'CommandOrControl+Shift+S';
 }
 function readSettings() {
   return {
@@ -129,13 +139,46 @@ function readSettings() {
     EXT_TTS_SINK_DEVICE_NAME: $('extTtsSinkDeviceName') ? val('extTtsSinkDeviceName') : 'CABLE Input',
     EXT_OUT_VOICE_STYLE: val('extOutVoiceStyle') || 'openai',
     EXT_RVC_MODEL_TAG: val('extRvcModelTag'),
-    EXT_SHOW_OUTGOING_SUBTITLES: checked('extShowOutgoingSubtitles') ? 'true' : 'false'
+    EXT_SHOW_OUTGOING_SUBTITLES: checked('extShowOutgoingSubtitles') ? 'true' : 'false',
+    SUBTITLE_WINDOW_ENABLED: checked('subtitleWindowEnabled') ? 'true' : 'false',
+    SUBTITLE_WINDOW_CONTENT_PROTECTION: checked('subtitleContentProtection') ? 'true' : 'false',
+    SUBTITLE_WINDOW_ALWAYS_ON_TOP: checked('subtitleAlwaysOnTop') ? 'true' : 'false',
+    SUBTITLE_WINDOW_CLICK_THROUGH: checked('subtitleClickThrough') ? 'true' : 'false',
+    SUBTITLE_WINDOW_SHOW_ORIGINAL: checked('subtitleShowOriginal') ? 'true' : 'false',
+    SUBTITLE_WINDOW_SHOW_TRANSLATION: checked('subtitleShowTranslation') ? 'true' : 'false',
+    SUBTITLE_WINDOW_FONT_SIZE: val('subtitleFontSize') || '28',
+    SUBTITLE_WINDOW_BACKGROUND_OPACITY: val('subtitleBackgroundOpacity') || '0.82',
+    SUBTITLE_WINDOW_MAX_LINES: val('subtitleMaxLines') || '3',
+    SUBTITLE_WINDOW_HOTKEY: val('subtitleHotkey') || 'CommandOrControl+Shift+S'
   };
 }
 async function refreshHealth() {
   const h = await window.lmt.health();
   dot('bridgeDot', h.bridge.ok); $('bridgeText').textContent = h.bridge.text;
   dot('voiceDot', h.voice.ok); $('voiceText').textContent = h.voice.text;
+}
+function protectionSummary(protection) {
+  if (!protection) return t('subtitleProtectionUnknown');
+  if (!protection.supported) return t('subtitleProtectionUnsupported');
+  if (protection.applied) return t('subtitleProtectionApplied');
+  if (protection.requested) return t('subtitleProtectionFailed');
+  return t('subtitleProtectionDisabled');
+}
+function renderSubtitleStatus(status) {
+  if (!status) return;
+  const visible = !!status.visible;
+  const protection = status.protection || {};
+  if ($('subtitleWindowDot')) dot('subtitleWindowDot', protection.applied || (!protection.supported && !protection.requested), visible);
+  if ($('subtitleWindowStateText')) {
+    $('subtitleWindowStateText').textContent = visible ? t('subtitleWindowVisible') : t('subtitleWindowHidden');
+  }
+  if ($('subtitleProtectionText')) $('subtitleProtectionText').textContent = protectionSummary(protection);
+  if ($('subtitleClickThrough') && status.settings) $('subtitleClickThrough').checked = !!status.settings.clickThrough;
+}
+async function refreshSubtitleStatus() {
+  const status = await window.lmt.subtitleStatus();
+  renderSubtitleStatus(status);
+  return status;
 }
 try {
   window.lmt.onLog(log);
@@ -167,8 +210,38 @@ window.addEventListener('DOMContentLoaded', async () => {
   applyI18n();
   initVoices();
   resetOutgoingSteps();
-  $('save').onclick = async () => { const r = await window.lmt.save(readSettings()); apply(r.settings); log(r.message); };
+  $('save').onclick = async () => {
+    const r = await window.lmt.save(readSettings());
+    apply(r.settings || {});
+    renderSubtitleStatus(r.subtitle || await window.lmt.subtitleStatus());
+    log(r.message);
+  };
   $('openEnv').onclick = () => window.lmt.openEnv();
+  if ($('showSubtitleWindow')) $('showSubtitleWindow').onclick = async () => {
+    renderSubtitleStatus(await window.lmt.subtitleControl('show'));
+  };
+  if ($('hideSubtitleWindow')) $('hideSubtitleWindow').onclick = async () => {
+    renderSubtitleStatus(await window.lmt.subtitleControl('hide'));
+  };
+  if ($('clearSubtitleWindow')) $('clearSubtitleWindow').onclick = async () => {
+    renderSubtitleStatus(await window.lmt.subtitleControl('clear'));
+  };
+  if ($('testSubtitleProtection')) $('testSubtitleProtection').onclick = async () => {
+    const button = $('testSubtitleProtection');
+    button.disabled = true;
+    try {
+      const result = await window.lmt.subtitleControl('testProtection');
+      renderSubtitleStatus(result.protection ? { ...result, protection: result.protection } : result);
+      log(`[SUBTITLE PROTECTION] ${result.result || 'unknown'}: ${result.detail || ''}`);
+    } finally {
+      button.disabled = false;
+    }
+  };
+  if ($('subtitleClickThrough')) $('subtitleClickThrough').onchange = async () => {
+    const saved = await window.lmt.save(readSettings());
+    apply(saved.settings || {});
+    renderSubtitleStatus(saved.subtitle || await window.lmt.subtitleStatus());
+  };
   if ($('enableOutgoingVoice')) $('enableOutgoingVoice').onclick = async () => {
     const button = $('enableOutgoingVoice');
     log('[UI] Start voice translation clicked.');
@@ -322,6 +395,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadAppInfo();
     const settings = await window.lmt.load();
     apply(settings || {});
+    await refreshSubtitleStatus();
     log('[INIT] Settings loaded; controls are ready.');
   } catch (e) {
     log(`[INIT ERROR] Settings load failed: ${String(e && (e.message || e) || e)}`);

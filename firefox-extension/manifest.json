@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Local Meet Translator (Firefox)",
-  "version": "1.6.7",
+  "version": "1.6.8",
   "description": "Thin client for Local Meet Translator desktop app in Firefox.",
   "permissions": [
     "storage",
@@ -40,20 +40,6 @@
       ],
       "all_frames": true,
       "run_at": "document_start"
-    },
-    {
-      "matches": [
-        "https://meet.google.com/*",
-        "https://*.zoom.us/*",
-        "https://app.zoom.us/*",
-        "https://teams.microsoft.com/*",
-        "https://teams.live.com/*"
-      ],
-      "js": [
-        "i18n.js",
-        "content_script.js"
-      ],
-      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

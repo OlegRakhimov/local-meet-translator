@@ -95,3 +95,16 @@ code { color:#c9d1d9; word-break:break-all; }
   .grid, .statusGrid, .readiness { grid-template-columns:1fr; }
   .wrap { padding:14px; }
 }
+.subtitleWindowSettings .grid { align-items: start; }
+.subtitleState {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:12px 0;
+  padding:10px 12px;
+  border:1px solid #30363d;
+  border-radius:10px;
+  background:#0d1117;
+}
+.subtitleState strong { font-size:13px; }
+.subtitleState small { margin-left:auto; text-align:right; }

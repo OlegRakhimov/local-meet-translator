@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('lmt', {
   appInfo: () => ipcRenderer.invoke('app:info'),
   sessionStatus: () => ipcRenderer.invoke('session:status'),
+  subtitleStatus: () => ipcRenderer.invoke('subtitle-overlay:status'),
+  subtitleControl: (action, payload = {}) => ipcRenderer.invoke('subtitle-overlay:control', action, payload),
   load: () => ipcRenderer.invoke('settings:load'),
   save: (settings) => ipcRenderer.invoke('settings:save', settings),
   startBridge: () => ipcRenderer.invoke('bridge:start'),

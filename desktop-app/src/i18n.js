@@ -106,6 +106,60 @@
     extensionText: "Открой вкладку Meet/Zoom/Teams, нажми иконку Local Meet Translator один раз, подключи эту вкладку, затем управляй переводом здесь.",
     extensionHint: "Если в логе написано, что расширение не invoked, открой popup расширения на вкладке Meet/Zoom/Teams и нажми Подключить эту вкладку встречи."
   });
+  Object.assign(S.en, {
+    subtitleWindowTitle: "Local subtitle window",
+    subtitleWindowDescription: "Incoming translation is shown in a separate protected Electron window, not inside the meeting page.",
+    subtitleWindowNotChecked: "Subtitle window: not checked",
+    subtitleWindowEnabled: "Enable local subtitle window",
+    subtitleContentProtection: "Protect subtitle window from screen capture",
+    subtitleAlwaysOnTop: "Always on top",
+    subtitleClickThrough: "Click-through mode",
+    subtitleShowTranslation: "Show translation",
+    subtitleShowOriginal: "Show original speech",
+    subtitleFontSize: "Subtitle font size",
+    subtitleBackgroundOpacity: "Background opacity",
+    subtitleMaxLines: "Maximum subtitle lines",
+    subtitleHotkey: "Show/hide hotkey",
+    subtitleShareHint: "For maximum reliability, share a browser tab or a specific meeting window. Entire-screen protection depends on Windows and the capture application.",
+    showSubtitleWindow: "Show subtitle window",
+    hideSubtitleWindow: "Hide subtitle window",
+    clearSubtitleWindow: "Clear subtitles",
+    testSubtitleProtection: "Test capture protection",
+    subtitleWindowVisible: "Subtitle window: visible",
+    subtitleWindowHidden: "Subtitle window: hidden",
+    subtitleProtectionUnknown: "Protection status unknown",
+    subtitleProtectionUnsupported: "Capture protection is unsupported on this platform",
+    subtitleProtectionApplied: "Capture protection is enabled",
+    subtitleProtectionFailed: "Capture protection was requested but is not active",
+    subtitleProtectionDisabled: "Capture protection is disabled"
+  });
+  Object.assign(S.ru, {
+    subtitleWindowTitle: "Локальное окно субтитров",
+    subtitleWindowDescription: "Входящий перевод показывается в отдельном защищённом окне Electron, а не внутри страницы видеозвонка.",
+    subtitleWindowNotChecked: "Окно субтитров: не проверено",
+    subtitleWindowEnabled: "Включить локальное окно субтитров",
+    subtitleContentProtection: "Защищать окно субтитров от захвата экрана",
+    subtitleAlwaysOnTop: "Поверх остальных окон",
+    subtitleClickThrough: "Пропускать клики сквозь окно",
+    subtitleShowTranslation: "Показывать перевод",
+    subtitleShowOriginal: "Показывать исходную речь",
+    subtitleFontSize: "Размер шрифта субтитров",
+    subtitleBackgroundOpacity: "Прозрачность фона",
+    subtitleMaxLines: "Максимальное количество строк",
+    subtitleHotkey: "Горячая клавиша показа и скрытия",
+    subtitleShareHint: "Для максимальной надёжности передавайте вкладку браузера или отдельное окно видеозвонка. Защита при передаче всего экрана зависит от Windows и программы захвата.",
+    showSubtitleWindow: "Показать окно субтитров",
+    hideSubtitleWindow: "Скрыть окно субтитров",
+    clearSubtitleWindow: "Очистить субтитры",
+    testSubtitleProtection: "Проверить защиту от захвата",
+    subtitleWindowVisible: "Окно субтитров: показано",
+    subtitleWindowHidden: "Окно субтитров: скрыто",
+    subtitleProtectionUnknown: "Статус защиты неизвестен",
+    subtitleProtectionUnsupported: "Защита от захвата не поддерживается на этой платформе",
+    subtitleProtectionApplied: "Защита от захвата включена",
+    subtitleProtectionFailed: "Защита запрошена, но фактически не включена",
+    subtitleProtectionDisabled: "Защита от захвата выключена"
+  });
   for (const l of ["pl","de","es","it"]) S[l] = S.en;
   window.LMT_I18N = { lang, t: (k) => (S[lang] && S[lang][k]) || S.en[k] || k };
 })();

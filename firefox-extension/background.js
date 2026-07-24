@@ -117,6 +117,33 @@ async function getDesktopJson(path, params = {}) {
   return { ok: resp.ok && data.ok !== false, status: resp.status, data };
 }
 
+async function forwardSubtitleToDesktop(message) {
+  const paired = desktopExtensionToken ? { ok: true } : await loadExtensionIdentity();
+  if (!desktopExtensionToken && !(paired && paired.paired)) {
+    return { ok: false, error: "Desktop extension token is missing. Pair the extension first." };
+  }
+  const body = {
+    id: String(message && message.id || ""),
+    channel: message && message.channel === "outgoing" ? "outgoing" : "incoming",
+    translation: String(message && message.translation || ""),
+    transcript: String(message && message.transcript || ""),
+    ts: Number(message && message.ts || Date.now()),
+    tabId: message && message.tabId !== undefined ? String(message.tabId) : String(activeTabId || ""),
+    url: String(message && message.url || activeTabUrl || ""),
+    clientId: String(extensionClientId || "")
+  };
+  let result = await postDesktopJson("/extension/subtitle", body);
+  if (!result.ok && (result.status === 401 || result.status === 403)) {
+    await loadExtensionIdentity();
+    result = await postDesktopJson("/extension/subtitle", body);
+  }
+  return result.ok
+    ? { ok: true, eventId: String(result.data && result.data.eventId || "") }
+    : { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Desktop subtitle delivery failed.") };
+}
+
+globalThis.LMTDesktopSubtitles = Object.freeze({ send: forwardSubtitleToDesktop });
+
 function friendlyError(error) {
   const text = String(error && (error.message || error) || "");
   if (text.includes("Could not establish connection") || text.includes("Receiving end does not exist")) {

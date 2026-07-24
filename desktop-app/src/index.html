@@ -95,6 +95,37 @@
         </details>
       </div>
 
+      <div class="subcard important subtitleWindowSettings">
+        <h3 data-i18n="subtitleWindowTitle">Local subtitle window</h3>
+        <p class="hint" data-i18n="subtitleWindowDescription">Incoming translation is shown in a separate protected Electron window, not inside the meeting page.</p>
+        <div id="subtitleWindowState" class="subtitleState" role="status">
+          <span id="subtitleWindowDot" class="dot"></span>
+          <strong id="subtitleWindowStateText" data-i18n="subtitleWindowNotChecked">Subtitle window: not checked</strong>
+          <small id="subtitleProtectionText"></small>
+        </div>
+        <div class="grid">
+          <label class="check"><input id="subtitleWindowEnabled" type="checkbox" /> <span data-i18n="subtitleWindowEnabled">Enable local subtitle window</span></label>
+          <label class="check"><input id="subtitleContentProtection" type="checkbox" /> <span data-i18n="subtitleContentProtection">Protect subtitle window from screen capture</span></label>
+          <label class="check"><input id="subtitleAlwaysOnTop" type="checkbox" /> <span data-i18n="subtitleAlwaysOnTop">Always on top</span></label>
+          <label class="check"><input id="subtitleClickThrough" type="checkbox" /> <span data-i18n="subtitleClickThrough">Click-through mode</span></label>
+          <label class="check"><input id="subtitleShowTranslation" type="checkbox" /> <span data-i18n="subtitleShowTranslation">Show translation</span></label>
+          <label class="check"><input id="subtitleShowOriginal" type="checkbox" /> <span data-i18n="subtitleShowOriginal">Show original speech</span></label>
+        </div>
+        <div class="grid">
+          <label><span data-i18n="subtitleFontSize">Subtitle font size</span> <input id="subtitleFontSize" type="number" min="16" max="56" step="1" value="28" /></label>
+          <label><span data-i18n="subtitleBackgroundOpacity">Background opacity</span> <input id="subtitleBackgroundOpacity" type="number" min="0.2" max="1" step="0.05" value="0.82" /></label>
+          <label><span data-i18n="subtitleMaxLines">Maximum subtitle lines</span> <input id="subtitleMaxLines" type="number" min="1" max="8" step="1" value="3" /></label>
+          <label><span data-i18n="subtitleHotkey">Show/hide hotkey</span> <input id="subtitleHotkey" value="CommandOrControl+Shift+S" /></label>
+        </div>
+        <p class="hint" data-i18n="subtitleShareHint">For maximum reliability, share a browser tab or a specific meeting window. Entire-screen protection depends on Windows and the capture application.</p>
+        <div class="buttons">
+          <button id="showSubtitleWindow" type="button" data-i18n="showSubtitleWindow">Show subtitle window</button>
+          <button id="hideSubtitleWindow" type="button" class="secondary" data-i18n="hideSubtitleWindow">Hide subtitle window</button>
+          <button id="clearSubtitleWindow" type="button" class="secondary" data-i18n="clearSubtitleWindow">Clear subtitles</button>
+          <button id="testSubtitleProtection" type="button" class="secondary" data-i18n="testSubtitleProtection">Test capture protection</button>
+        </div>
+      </div>
+
       <p class="hint" data-i18n="startStopHint">For voice translation, use the green button in the block above. The extension popup only connects the active meeting tab.</p>
       <div class="buttons">
         <button id="save" data-i18n="save">Save .env</button>

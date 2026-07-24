@@ -579,13 +579,21 @@ async function processIncomingAudioChunk(arrayBuffer, mimeType, generation) {
   lastIncomingTranslationNorm = normalizeForDedupe(translation);
   lastIncomingAt = now;
 
-  await browser.tabs.sendMessage(tabId, {
-    type: "SUBTITLE",
+  const desktopSubtitle = globalThis.LMTDesktopSubtitles;
+  if (!desktopSubtitle || typeof desktopSubtitle.send !== "function") {
+    status("err", "Local subtitle window", "Desktop subtitle transport is unavailable.");
+    return;
+  }
+  const delivered = await desktopSubtitle.send({
     channel: "incoming",
     translation,
     transcript,
-    ts: now
-  }).catch(() => {});
+    ts: now,
+    tabId
+  }).catch(error => ({ ok: false, error: String(error && (error.message || error) || error) }));
+  if (!delivered || !delivered.ok) {
+    status("err", "Local subtitle window", String(delivered && delivered.error || "Could not deliver subtitles to desktop."));
+  }
 }
 
 async function startMicCapture() {
@@ -674,7 +682,10 @@ async function processMicSpeechBlob(blob, reason) {
   lastMicNorm = norm; lastMicAt = now;
 
   if (showOutgoingSubtitles) {
-    browser.tabs.sendMessage(tabId, { type: "SUBTITLE", channel: "outgoing", translation, transcript: "YOU: " + transcript, ts: now }).catch(() => {});
+    const desktopSubtitle = globalThis.LMTDesktopSubtitles;
+    if (desktopSubtitle && typeof desktopSubtitle.send === "function") {
+      desktopSubtitle.send({ channel: "outgoing", translation, transcript: "YOU: " + transcript, ts: now, tabId }).catch(() => {});
+    }
   }
 
   if (!translation) return;

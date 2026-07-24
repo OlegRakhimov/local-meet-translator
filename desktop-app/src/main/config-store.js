@@ -38,6 +38,17 @@ const SETTINGS_ORDER = [
   'EXT_OUT_VOICE_STYLE',
   'EXT_RVC_MODEL_TAG',
   'EXT_SHOW_OUTGOING_SUBTITLES',
+  'SUBTITLE_WINDOW_ENABLED',
+  'SUBTITLE_WINDOW_CONTENT_PROTECTION',
+  'SUBTITLE_WINDOW_ALWAYS_ON_TOP',
+  'SUBTITLE_WINDOW_CLICK_THROUGH',
+  'SUBTITLE_WINDOW_SHOW_ORIGINAL',
+  'SUBTITLE_WINDOW_SHOW_TRANSLATION',
+  'SUBTITLE_WINDOW_FONT_SIZE',
+  'SUBTITLE_WINDOW_BACKGROUND_OPACITY',
+  'SUBTITLE_WINDOW_MAX_LINES',
+  'SUBTITLE_WINDOW_HOTKEY',
+  'SUBTITLE_WINDOW_CLICK_THROUGH_HOTKEY',
   'VOICE_CONVERSION_HOST',
   'VOICE_CONVERSION_PORT',
   'RVC_INFER_CMD',
@@ -255,6 +266,17 @@ function createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPat
     result.EXT_OUT_VOICE_STYLE ||= 'openai';
     result.EXT_RVC_MODEL_TAG ||= '';
     result.EXT_SHOW_OUTGOING_SUBTITLES ||= 'false';
+    result.SUBTITLE_WINDOW_ENABLED ||= 'true';
+    result.SUBTITLE_WINDOW_CONTENT_PROTECTION ||= process.platform === 'win32' || process.platform === 'darwin' ? 'true' : 'false';
+    result.SUBTITLE_WINDOW_ALWAYS_ON_TOP ||= 'true';
+    result.SUBTITLE_WINDOW_CLICK_THROUGH ||= 'false';
+    result.SUBTITLE_WINDOW_SHOW_ORIGINAL ||= 'true';
+    result.SUBTITLE_WINDOW_SHOW_TRANSLATION ||= 'true';
+    result.SUBTITLE_WINDOW_FONT_SIZE ||= '28';
+    result.SUBTITLE_WINDOW_BACKGROUND_OPACITY ||= '0.82';
+    result.SUBTITLE_WINDOW_MAX_LINES ||= '3';
+    result.SUBTITLE_WINDOW_HOTKEY ||= 'CommandOrControl+Shift+S';
+    result.SUBTITLE_WINDOW_CLICK_THROUGH_HOTKEY ||= 'CommandOrControl+Shift+X';
 
     Object.defineProperties(result, {
       __ENV_PATH: { value: envPath, enumerable: false, configurable: false, writable: false },

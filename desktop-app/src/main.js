@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen, globalShortcut, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -8,6 +8,7 @@ const { createConfigStore, boolFromEnv, intFromEnv, floatFromEnv } = require('./
 const { SessionStateMachine, SESSION_STATES } = require('./main/session-state');
 const { createWindowManager } = require('./main/window-manager');
 const { ExtensionClientRegistry, ExtensionCommandCoordinator } = require('./main/extension-state');
+const { createSubtitleOverlayController, sanitizeSubtitleEvent } = require('./main/subtitle-overlay');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('local.meet.translator.desktop');
@@ -20,11 +21,13 @@ const repoRoot = isPackaged ? process.resourcesPath : path.resolve(__dirname, '.
 const userConfigDir = path.join(app.getPath('appData'), 'Local Meet Translator');
 const envPath = path.join(userConfigDir, '.env');
 const legacyEnvPath = path.join(repoRoot, '.env');
+const subtitleWindowStatePath = path.join(userConfigDir, 'subtitle-window-state.json');
 const extensionPath = isPackaged ? path.join(repoRoot, 'browser-extensions') : repoRoot;
 const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPath });
 const { loadSettings, saveSettings, migrateLegacyEnvIfNeeded, getSystemLanguageCode } = configStore;
 const translationSession = new SessionStateMachine({ mode: 'translator' });
 let windowManager;
+let subtitleOverlay;
 let bridgeProc = null;
 let voiceProc = null;
 let configServer = null;
@@ -131,6 +134,42 @@ function spawnLogged(cmd, args, options, tag) {
 function writeJsonResponse(res, status, obj) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(obj));
+}
+function readJsonRequest(req, maxBytes = 128 * 1024) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    let size = 0;
+    let settled = false;
+    const fail = (statusCode, message) => {
+      if (settled) return;
+      settled = true;
+      const error = new Error(message);
+      error.statusCode = statusCode;
+      reject(error);
+    };
+    req.on('data', chunk => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > maxBytes) {
+        fail(413, 'Request body is too large.');
+        req.removeAllListeners('data');
+        req.resume();
+        return;
+      }
+      body += chunk.toString('utf8');
+    });
+    req.on('end', () => {
+      if (settled) return;
+      settled = true;
+      try { resolve(body ? JSON.parse(body) : {}); }
+      catch (_) {
+        const error = new Error('Invalid JSON body.');
+        error.statusCode = 400;
+        reject(error);
+      }
+    });
+    req.on('error', error => fail(400, error.message || 'Could not read request body.'));
+  });
 }
 function getExtensionConfig() {
   const s = loadSettings();
@@ -298,6 +337,29 @@ function startConfigServer() {
       return;
     }
 
+    if (url.pathname === '/extension/subtitle' && req.method === 'POST') {
+      if (!requireExtensionToken(req, res, extensionToken)) return;
+      readJsonRequest(req, 64 * 1024)
+        .then(data => {
+          const event = sanitizeSubtitleEvent({
+            ...data,
+            clientId: data.clientId || '',
+            tabId: data.tabId || '',
+            url: data.url || ''
+          });
+          if (!subtitleOverlay) {
+            writeJsonResponse(res, 503, { ok: false, error: 'Subtitle window is not initialized.' });
+            return;
+          }
+          subtitleOverlay.pushSubtitle(event);
+          writeJsonResponse(res, 200, { ok: true, eventId: event.id });
+        })
+        .catch(error => {
+          writeJsonResponse(res, error.statusCode || 400, { ok: false, error: error.message || 'Invalid subtitle event.' });
+        });
+      return;
+    }
+
     if (url.pathname === '/extension-client/armed' && req.method === 'POST') {
       if (!requireExtensionToken(req, res, extensionToken)) return;
       let body = '';
@@ -431,17 +493,32 @@ function initializeWindowManager() {
       killProcessTree(voiceProc, 'voice');
       setTimeout(() => {
         try { if (configServer) configServer.close(); } catch (_) {}
+        try { if (subtitleOverlay) subtitleOverlay.destroy(); } catch (_) {}
         try { windowManager.destroyMainWindow(); } catch (_) {}
         app.quit();
       }, 800);
     }
   });
+  subtitleOverlay = createSubtitleOverlayController({
+    BrowserWindow,
+    screen,
+    globalShortcut,
+    desktopCapturer,
+    preloadPath: path.join(__dirname, 'subtitle-preload.js'),
+    htmlPath: path.join(__dirname, 'subtitle-overlay.html'),
+    statePath: subtitleWindowStatePath,
+    loadSettings,
+    saveSettings,
+    sendLog,
+    platform: process.platform
+  });
+  subtitleOverlay.initialize();
   return windowManager.createMainWindow();
 }
 app.whenReady().then(() => {
   const migration = migrateLegacyEnvIfNeeded();
-  startConfigServer();
   initializeWindowManager();
+  startConfigServer();
   setTimeout(() => {
     sendLog(`Config path: ${envPath}`);
     if (migration.migrated) sendLog(`Migrated legacy .env from: ${migration.source}`);
@@ -455,12 +532,32 @@ app.on('before-quit', () => {
   killProcessTree(bridgeProc, 'bridge');
   killProcessTree(voiceProc, 'voice');
   try { if (configServer) configServer.close(); } catch (_) {}
+  try { if (subtitleOverlay) subtitleOverlay.destroy(); } catch (_) {}
 });
 
 ipcMain.handle('app:info', () => ({ name: app.getName(), version: app.getVersion(), platform: process.platform, packaged: isPackaged }));
 ipcMain.handle('session:status', () => translationSession.snapshot());
+ipcMain.handle('subtitle-overlay:status', () => subtitleOverlay ? subtitleOverlay.snapshot() : { visible:false, status:'unavailable' });
+ipcMain.handle('subtitle-overlay:control', async (_event, action, payload = {}) => {
+  if (!subtitleOverlay) return { ok:false, message:'Subtitle window is not initialized.' };
+  switch (String(action || '')) {
+    case 'show': return subtitleOverlay.show();
+    case 'hide': return subtitleOverlay.hide();
+    case 'toggle': return subtitleOverlay.toggle();
+    case 'clear': return subtitleOverlay.clear();
+    case 'pause': return subtitleOverlay.setPaused(!!payload.paused);
+    case 'clickThrough': return subtitleOverlay.setClickThrough(!!payload.enabled);
+    case 'testProtection': return await subtitleOverlay.testContentProtection();
+    case 'rehome': subtitleOverlay.rehome(); return { ok:true, ...subtitleOverlay.snapshot() };
+    default: return { ok:false, message:`Unknown subtitle window action: ${String(action || '')}` };
+  }
+});
 ipcMain.handle('settings:load', () => loadSettings());
-ipcMain.handle('settings:save', (_e, settings) => ({ ok:true, settings: saveSettings(settings), message: `Saved ${envPath}` }));
+ipcMain.handle('settings:save', (_e, settings) => {
+  const saved = saveSettings(settings);
+  if (subtitleOverlay) subtitleOverlay.updateSettings(saved);
+  return { ok:true, settings: saved, subtitle: subtitleOverlay ? subtitleOverlay.snapshot() : null, message: `Saved ${envPath}` };
+});
 ipcMain.handle('env:open', () => { if (!fs.existsSync(envPath)) saveSettings({}); shell.openPath(envPath); return { ok:true }; });
 ipcMain.handle('extension:open', () => { shell.openPath(extensionPath); return { ok:true, message: extensionPath }; });
 ipcMain.handle('bridge:start', () => startBridgeInternal());
@@ -568,15 +665,18 @@ ipcMain.handle('extension:startTranslation', async (_event, options = {}) => {
     const msg = 'Subtitle command was delivered to the meeting tab, but ACK did not return. Treating it as started because the tab is connected and polling commands.';
     sendLog(`[warn] ${msg}`);
     translationSession.transition(SESSION_STATES.LISTENING);
+    if (subtitleOverlay) { subtitleOverlay.setStatus('listening'); subtitleOverlay.show(); }
     return { ok:true, state:'running-unconfirmed', message:msg, details:{ ackMissing:true, incomingReady:true }, meetingUrl:target.url };
   }
   if (!ack.ok) { translationSession.markError(ack.text || 'The browser extension could not start translation.'); return { ok:false, state:'extension-error', message:ack.text || 'The browser extension could not start translation.', details:ack.details || {} }; }
   translationSession.transition(SESSION_STATES.LISTENING);
+  if (subtitleOverlay) { subtitleOverlay.setStatus('listening'); subtitleOverlay.show(); }
   return { ok:true, state:'running', message:ack.text || 'Translation is running.', details:ack.details || {}, meetingUrl:target.url };
 });
 ipcMain.handle('extension:stopTranslation', async () => {
   if (!extensionClientRegistry.getActive() && !chooseExtensionClient()) {
     translationSession.stop();
+    if (subtitleOverlay) subtitleOverlay.setStatus('idle');
     return { ok:true, state:'stopped', message:'Translation is already stopped.' };
   }
   if (![SESSION_STATES.IDLE, SESSION_STATES.COMPLETED, SESSION_STATES.STOPPING].includes(translationSession.state)) {
@@ -588,7 +688,12 @@ ipcMain.handle('extension:stopTranslation', async () => {
     translationSession.markError('The meeting tab did not confirm stop.');
     return { ok:false, state:'timeout', message:'The meeting tab did not confirm stop.' };
   }
-  if (ack.ok) translationSession.stop();
-  else translationSession.markError(ack.text || 'Could not stop translation.');
+  if (ack.ok) {
+    translationSession.stop();
+    if (subtitleOverlay) subtitleOverlay.setStatus('idle');
+  } else {
+    translationSession.markError(ack.text || 'Could not stop translation.');
+    if (subtitleOverlay) subtitleOverlay.setStatus('error');
+  }
   return { ok:ack.ok, state:ack.ok ? 'stopped' : 'extension-error', message:ack.text || (ack.ok ? 'Translation stopped.' : 'Could not stop translation.') };
 });

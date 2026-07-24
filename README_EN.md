@@ -74,7 +74,7 @@ desktop-app\dist\
 Run the installer named like:
 
 ```text
-Local Meet Translator-1.0.2-Setup-x64.exe
+Local Meet Translator-1.0.7-Setup-x64.exe
 ```
 
 After installation, a **Local Meet Translator** shortcut appears on the desktop and in the Start menu.
@@ -351,3 +351,36 @@ Outgoing voice style = OpenAI voice
 ## 13. Security
 
 The OpenAI API key is stored locally in the desktop app `.env` file. It should not be copied into the browser extension and should not be included in archives shared with other people.
+
+## 14. Local protected subtitle window
+
+Starting with desktop version `1.0.8`, incoming subtitles are no longer injected into the Google Meet, Zoom, or Teams page DOM. The extension sends transcript and translation events to the local desktop app, and Electron renders them in a separate window.
+
+Data flow:
+
+```text
+tab audio → extension → Java bridge → extension → localhost:18798/extension/subtitle → protected Electron window
+```
+
+The **Local subtitle window** section provides:
+
+- enable/disable;
+- always-on-top;
+- capture protection;
+- click-through mode;
+- original and translated text controls;
+- font size;
+- background opacity;
+- maximum visible lines;
+- a local protection self-test.
+
+Default shortcuts:
+
+```text
+Ctrl+Shift+S — show or hide the subtitle window
+Ctrl+Shift+X — toggle click-through mode
+```
+
+On Windows, Electron applies the operating-system window protection before sensitive subtitle content is loaded. The desktop status reports whether protection was actually applied.
+
+For maximum reliability, share a browser tab or a specific meeting window. Entire-screen behavior depends on Windows and the capture application. The built-in self-test is useful, but it does not replace a manual Google Meet, Zoom, or Teams preview test.
