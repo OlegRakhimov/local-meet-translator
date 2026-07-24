@@ -384,3 +384,31 @@ Ctrl+Shift+X — toggle click-through mode
 On Windows, Electron applies the operating-system window protection before sensitive subtitle content is loaded. The desktop status reports whether protection was actually applied.
 
 For maximum reliability, share a browser tab or a specific meeting window. Entire-screen behavior depends on Windows and the capture application. The built-in self-test is useful, but it does not replace a manual Google Meet, Zoom, or Teams preview test.
+
+## 15. Stage 3: repeat suppression and candidate profile
+
+Desktop `1.0.9` and extensions `1.6.9` add two layers of incoming subtitle repeat suppression:
+
+1. the extension keeps a short incoming phrase history and avoids re-sending a phrase from a later audio chunk;
+2. the desktop app checks events again by meeting tab, extension client and translation channel before rendering them.
+
+A genuine longer completion is preserved: it replaces the earlier partial line instead of creating another subtitle line. Translation models, languages and translated wording are not changed by this logic.
+
+### Candidate profile
+
+The desktop app now includes **Candidate Profile and Confirmed Facts**. Data is stored locally at:
+
+```text
+%APPDATA%\Local Meet Translator\candidate-profile.json
+```
+
+The profile contains identity, target role, location, languages, skills, experience, projects, education, imported resume text and factual statements.
+
+Facts have two independent flags:
+
+- `confirmed` — reviewed by the user and eligible for future assistant grounding;
+- `locked` — must not be automatically rewritten or replaced.
+
+This stage imports `JSON`, `TXT` and `MD`. Text documents are loaded only for manual review. The app does not automatically convert resume text into facts and does not send the profile to OpenAI when it is saved.
+
+PDF and DOCX text extraction will be added in a separate stage after the profile and answer-library workflow is stable.

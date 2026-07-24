@@ -92,7 +92,8 @@ function sanitizeSubtitleEvent(payload = {}) {
     ts: Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now(),
     clientId: cleanText(payload.clientId, 256),
     tabId: cleanText(payload.tabId, 128),
-    url: cleanText(payload.url, 2048)
+    url: cleanText(payload.url, 2048),
+    replaceEventId: cleanText(payload.replaceEventId, 128)
   };
 }
 
@@ -385,11 +386,17 @@ function createSubtitleOverlayController({
 
   function pushSubtitle(payload) {
     const event = sanitizeSubtitleEvent(payload);
-    history.push(event);
+    if (event.replaceEventId) {
+      const replaceIndex = history.findIndex(item => item && item.id === event.replaceEventId);
+      if (replaceIndex >= 0) history.splice(replaceIndex, 1, event);
+      else history.push(event);
+    } else {
+      history.push(event);
+    }
     if (history.length > MAX_HISTORY_ITEMS) history = history.slice(-MAX_HISTORY_ITEMS);
     if (settings.enabled) show();
     if (!paused) send('subtitle-overlay:event', event);
-    return { ok: true, accepted: true, eventId: event.id, ...snapshot() };
+    return { ok: true, accepted: true, eventId: event.id, replaceEventId: event.replaceEventId, ...snapshot() };
   }
 
   function updateSettings(nextSettings) {

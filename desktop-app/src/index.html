@@ -134,8 +134,52 @@
       <p class="hint"><span data-i18n="configPath">Stable config path:</span> <code id="envPath">loading...</code></p>
     </section>
 
+
+    <section class="card candidateProfileCard">
+      <h2 data-i18n="candidateProfileTitle">2. Candidate Profile and Confirmed Facts</h2>
+      <p class="hint" data-i18n="candidateProfileDescription">This local profile is the only factual basis for future interview suggestions. Nothing is sent automatically.</p>
+      <div id="candidateProfileStatus" class="profileStatus" role="status">
+        <span id="candidateProfileDot" class="dot"></span>
+        <strong id="candidateProfileStatusText" data-i18n="candidateProfileNotLoaded">Candidate profile: not loaded</strong>
+        <small id="candidateProfilePath"></small>
+      </div>
+      <div class="grid">
+        <label><span data-i18n="candidateFullName">Full name</span><input id="candidateFullName" autocomplete="name" /></label>
+        <label><span data-i18n="candidateTargetRole">Target role</span><input id="candidateTargetRole" placeholder="Android Developer / Flutter Developer" /></label>
+        <label><span data-i18n="candidateLocation">Location</span><input id="candidateLocation" placeholder="Poznań, Poland" /></label>
+        <label><span data-i18n="candidateLanguages">Languages, one per line</span><textarea id="candidateLanguages" rows="3" placeholder="Russian — native&#10;Polish — working proficiency&#10;English — B1"></textarea></label>
+      </div>
+      <label><span data-i18n="candidateSummary">Professional summary</span><textarea id="candidateSummary" rows="4"></textarea></label>
+      <div class="grid">
+        <label><span data-i18n="candidateSkills">Skills, one per line</span><textarea id="candidateSkills" rows="7"></textarea></label>
+        <label><span data-i18n="candidateEducation">Education and courses</span><textarea id="candidateEducation" rows="7"></textarea></label>
+      </div>
+      <div class="grid">
+        <label><span data-i18n="candidateExperience">Experience</span><textarea id="candidateExperience" rows="8"></textarea></label>
+        <label><span data-i18n="candidateProjects">Projects</span><textarea id="candidateProjects" rows="8"></textarea></label>
+      </div>
+      <label><span data-i18n="candidateResumeText">Imported resume/source text</span><textarea id="candidateResumeText" rows="9" readonly></textarea></label>
+      <p class="hint"><span data-i18n="candidateResumeSource">Imported source:</span> <code id="candidateResumeSource">—</code></p>
+      <div class="subcard confirmedFactsCard">
+        <h3 data-i18n="confirmedFactsTitle">Confirmed facts</h3>
+        <p class="hint" data-i18n="confirmedFactsDescription">Enter one fact per line. The future assistant may use only facts explicitly marked as confirmed.</p>
+        <textarea id="candidateFacts" rows="9" placeholder="I built Work Time Calculator from scratch.&#10;I use Kotlin and Jetpack Compose.&#10;I have published applications in Google Play."></textarea>
+        <div class="grid">
+          <label class="check"><input id="candidateFactsConfirmed" type="checkbox" /> <span data-i18n="confirmedFactsCheckbox">I confirm that these facts are accurate</span></label>
+          <label class="check"><input id="candidateFactsLocked" type="checkbox" /> <span data-i18n="lockedFactsCheckbox">Lock these facts against automatic rewriting</span></label>
+        </div>
+      </div>
+      <p class="hint" data-i18n="candidateImportHint">Stage 3 imports JSON, TXT and MD. TXT/MD content is loaded for review; facts are never generated automatically.</p>
+      <div class="buttons">
+        <button id="saveCandidateProfile" type="button" data-i18n="saveCandidateProfile">Save candidate profile</button>
+        <button id="importCandidateProfile" type="button" class="secondary" data-i18n="importCandidateProfile">Import profile / resume text</button>
+        <button id="exportCandidateProfile" type="button" class="secondary" data-i18n="exportCandidateProfile">Export JSON</button>
+        <button id="resetCandidateProfile" type="button" class="danger" data-i18n="resetCandidateProfile">Clear local profile</button>
+      </div>
+    </section>
+
     <section class="card">
-      <h2 data-i18n="services">2. Services</h2>
+      <h2 data-i18n="services">3. Services</h2>
       <div class="statusGrid">
         <div><span id="bridgeDot" class="dot"></span> <span data-i18n="bridge">Bridge</span> <small id="bridgeText">unknown</small></div>
         <div><span id="voiceDot" class="dot"></span> <span data-i18n="voiceConversion">Voice conversion</span> <small id="voiceText">unknown</small></div>
@@ -153,7 +197,7 @@
     </section>
 
     <section class="card">
-      <h2 data-i18n="extension">3. Extension</h2>
+      <h2 data-i18n="extension">4. Extension</h2>
       <p data-i18n="extensionText">Open the actual Meet/Zoom/Teams tab, click the Local Meet Translator extension icon once, connect that tab, then control translation here.</p>
       <h3 data-i18n="subtitlesOnly">Subtitles for me</h3>
       <div class="buttons">

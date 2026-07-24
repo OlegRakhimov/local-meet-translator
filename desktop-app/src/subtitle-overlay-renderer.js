@@ -110,7 +110,13 @@ function applySnapshot(next) {
 
 window.lmtSubtitle.onState(applySnapshot);
 window.lmtSubtitle.onEvent((item) => {
-  history.push(item);
+  if (item && item.replaceEventId) {
+    const index = history.findIndex(existing => existing && existing.id === item.replaceEventId);
+    if (index >= 0) history.splice(index, 1, item);
+    else history.push(item);
+  } else {
+    history.push(item);
+  }
   if (history.length > 50) history = history.slice(-50);
   renderHistory();
 });

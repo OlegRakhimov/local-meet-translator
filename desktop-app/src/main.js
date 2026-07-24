@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, screen, globalShortcut, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, screen, globalShortcut, desktopCapturer, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -9,6 +9,8 @@ const { SessionStateMachine, SESSION_STATES } = require('./main/session-state');
 const { createWindowManager } = require('./main/window-manager');
 const { ExtensionClientRegistry, ExtensionCommandCoordinator } = require('./main/extension-state');
 const { createSubtitleOverlayController, sanitizeSubtitleEvent } = require('./main/subtitle-overlay');
+const { createSubtitleDedupeGuard } = require('./main/subtitle-dedupe');
+const { createCandidateProfileStore } = require('./main/candidate-profile-store');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('local.meet.translator.desktop');
@@ -22,10 +24,13 @@ const userConfigDir = path.join(app.getPath('appData'), 'Local Meet Translator')
 const envPath = path.join(userConfigDir, '.env');
 const legacyEnvPath = path.join(repoRoot, '.env');
 const subtitleWindowStatePath = path.join(userConfigDir, 'subtitle-window-state.json');
+const candidateProfilePath = path.join(userConfigDir, 'candidate-profile.json');
 const extensionPath = isPackaged ? path.join(repoRoot, 'browser-extensions') : repoRoot;
 const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPath });
 const { loadSettings, saveSettings, migrateLegacyEnvIfNeeded, getSystemLanguageCode } = configStore;
 const translationSession = new SessionStateMachine({ mode: 'translator' });
+const subtitleDedupe = createSubtitleDedupeGuard();
+const candidateProfileStore = createCandidateProfileStore({ profilePath: candidateProfilePath });
 let windowManager;
 let subtitleOverlay;
 let bridgeProc = null;
@@ -351,8 +356,30 @@ function startConfigServer() {
             writeJsonResponse(res, 503, { ok: false, error: 'Subtitle window is not initialized.' });
             return;
           }
-          subtitleOverlay.pushSubtitle(event);
-          writeJsonResponse(res, 200, { ok: true, eventId: event.id });
+          const decision = subtitleDedupe.evaluate(event, event.ts || Date.now());
+          if (!decision.accepted) {
+            writeJsonResponse(res, 200, {
+              ok: true,
+              accepted: false,
+              duplicate: true,
+              reason: decision.reason,
+              eventId: event.id,
+              duplicateOf: decision.duplicateOf || ''
+            });
+            return;
+          }
+          const deliveredEvent = decision.replaceEventId
+            ? { ...event, replaceEventId: decision.replaceEventId }
+            : event;
+          subtitleOverlay.pushSubtitle(deliveredEvent);
+          writeJsonResponse(res, 200, {
+            ok: true,
+            accepted: true,
+            duplicate: false,
+            reason: decision.reason,
+            eventId: event.id,
+            replaceEventId: decision.replaceEventId || ''
+          });
         })
         .catch(error => {
           writeJsonResponse(res, error.statusCode || 400, { ok: false, error: error.message || 'Invalid subtitle event.' });
@@ -550,6 +577,48 @@ ipcMain.handle('subtitle-overlay:control', async (_event, action, payload = {}) 
     case 'testProtection': return await subtitleOverlay.testContentProtection();
     case 'rehome': subtitleOverlay.rehome(); return { ok:true, ...subtitleOverlay.snapshot() };
     default: return { ok:false, message:`Unknown subtitle window action: ${String(action || '')}` };
+  }
+});
+ipcMain.handle('candidate-profile:load', () => candidateProfileStore.load());
+ipcMain.handle('candidate-profile:save', (_event, profile) => candidateProfileStore.save(profile || {}));
+ipcMain.handle('candidate-profile:reset', () => candidateProfileStore.reset());
+ipcMain.handle('candidate-profile:import', async () => {
+  const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
+  const options = {
+    title: 'Import candidate profile or resume text',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Candidate profile / resume text', extensions: ['json', 'txt', 'md'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  };
+  const selection = parent
+    ? await dialog.showOpenDialog(parent, options)
+    : await dialog.showOpenDialog(options);
+  if (selection.canceled || !selection.filePaths || !selection.filePaths[0]) {
+    return { ok: false, canceled: true };
+  }
+  try {
+    return candidateProfileStore.importFromPath(selection.filePaths[0]);
+  } catch (error) {
+    return { ok: false, error: error.message || String(error) };
+  }
+});
+ipcMain.handle('candidate-profile:export', async (_event, profile) => {
+  const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
+  const options = {
+    title: 'Export candidate profile',
+    defaultPath: 'local-meet-translator-candidate-profile.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  };
+  const selection = parent
+    ? await dialog.showSaveDialog(parent, options)
+    : await dialog.showSaveDialog(options);
+  if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+  try {
+    return candidateProfileStore.exportToPath(selection.filePath, profile || {});
+  } catch (error) {
+    return { ok: false, error: error.message || String(error) };
   }
 });
 ipcMain.handle('settings:load', () => loadSettings());

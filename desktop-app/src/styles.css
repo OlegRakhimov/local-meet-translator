@@ -7,7 +7,9 @@ p { color:#8b949e; }
 .card { background:#161b22; border:1px solid #30363d; border-radius:16px; padding:18px; margin:14px 0; box-shadow:0 10px 30px rgba(0,0,0,.22); }
 h2 { margin:0 0 14px; font-size: 17px; }
 label { display:block; margin:10px 0; font-size:13px; color:#c9d1d9; }
-input { width:100%; box-sizing:border-box; margin-top:5px; padding:10px 12px; border-radius:10px; border:1px solid #30363d; background:#0d1117; color:#e6edf3; }
+input, textarea { width:100%; box-sizing:border-box; margin-top:5px; padding:10px 12px; border-radius:10px; border:1px solid #30363d; background:#0d1117; color:#e6edf3; font:inherit; }
+textarea { resize:vertical; min-height:76px; line-height:1.45; }
+textarea[readonly] { color:#8b949e; background:#0a0e13; }
 .check { display:flex; align-items:center; gap:10px; }
 .check input { width:auto; margin:0; }
 .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
@@ -108,3 +110,18 @@ code { color:#c9d1d9; word-break:break-all; }
 }
 .subtitleState strong { font-size:13px; }
 .subtitleState small { margin-left:auto; text-align:right; }
+
+.candidateProfileCard .confirmedFactsCard { border-color:#1f6feb; }
+.profileStatus {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:12px 0;
+  padding:10px 12px;
+  border:1px solid #30363d;
+  border-radius:10px;
+  background:#0d1117;
+}
+.profileStatus strong { font-size:13px; }
+.profileStatus small { margin-left:auto; max-width:52%; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.candidateProfileCard code { font-size:12px; }

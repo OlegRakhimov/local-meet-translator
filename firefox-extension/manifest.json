@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Local Meet Translator (Firefox)",
-  "version": "1.6.8",
+  "version": "1.6.9",
   "description": "Thin client for Local Meet Translator desktop app in Firefox.",
   "permissions": [
     "storage",

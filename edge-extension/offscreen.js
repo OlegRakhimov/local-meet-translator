@@ -99,6 +99,7 @@ let lastMicGateLogAt = 0;
 const OUTGOING_HISTORY_MS = 30000;
 let recentMicHistory = [];
 let recentSpokenHistory = [];
+let recentTabHistory = [];
 
 // Dedupe
 const DEDUPE_WINDOW_MS = 12000;
@@ -171,7 +172,11 @@ function isNearDuplicate(norm, lastNorm, now, lastAt) {
   // Drop a shorter repeated fragment, but do NOT drop a longer completion that contains
   // the previous partial phrase. Example: keep "I want to explain the issue" after "I want".
   if (lastNorm.includes(norm)) return true;
-  return jaccardTokens(norm, lastNorm) >= DEDUPE_JACCARD;
+  if (norm.includes(lastNorm) && norm.length >= lastNorm.length + 5) return false;
+  const currentWords = normTokens(norm).length;
+  const previousWords = normTokens(lastNorm).length;
+  const sizeClose = Math.abs(currentWords - previousWords) <= Math.max(2, Math.ceil(previousWords * 0.3));
+  return sizeClose && jaccardTokens(norm, lastNorm) >= DEDUPE_JACCARD;
 }
 
 function isLikelyRepeatForTts(norm, lastNorm, now, lastAt) {
@@ -490,6 +495,20 @@ function rememberHistory(norm, history, now) {
   if (history.length > 12) history.splice(0, history.length - 12);
 }
 
+function isIncomingHistoryDuplicate(norm, now) {
+  if (!norm) return false;
+  pruneHistory(recentTabHistory, now, 20000);
+  return recentTabHistory.some(item => {
+    if (norm === item.norm || item.norm.includes(norm)) return true;
+    // Keep a genuine longer completion instead of discarding the completed sentence.
+    if (norm.includes(item.norm) && norm.length >= item.norm.length + 5) return false;
+    const currentWords = normTokens(norm).length;
+    const previousWords = normTokens(item.norm).length;
+    const sizeClose = Math.abs(currentWords - previousWords) <= Math.max(2, Math.ceil(previousWords * 0.3));
+    return sizeClose && jaccardTokens(norm, item.norm) >= 0.86;
+  });
+}
+
 function stopAndDiscardCurrentMicSegment(reason) {
   const recorder = micRecorder;
   if (!recorder || recorder.state !== "recording") return;
@@ -734,8 +753,12 @@ async function startTabRecorder() {
     }
 
     const norm = normalizeForDedupe(transcript);
-    if (isNearDuplicate(norm, lastTabNorm, now, lastTabAt)) return;
+    if (isNearDuplicate(norm, lastTabNorm, now, lastTabAt) || isIncomingHistoryDuplicate(norm, now)) {
+      status("run", "Incoming subtitles", "Skipped repeated incoming phrase.");
+      return;
+    }
     lastTabNorm = norm; lastTabAt = now;
+    rememberHistory(norm, recentTabHistory, now);
     lastIncomingTranscriptNorm = norm;
     lastIncomingTranslationNorm = normalizeForDedupe(translation);
     lastIncomingAt = now;

@@ -152,6 +152,84 @@ function readSettings() {
     SUBTITLE_WINDOW_HOTKEY: val('subtitleHotkey') || 'CommandOrControl+Shift+S'
   };
 }
+function splitProfileLines(value) {
+  const seen = new Set();
+  const result = [];
+  for (const raw of String(value || '').split(/\r?\n/)) {
+    const text = raw.trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+  }
+  return result;
+}
+
+function candidateProfileFromUi() {
+  const confirmed = $('candidateFactsConfirmed') ? checked('candidateFactsConfirmed') : false;
+  const locked = $('candidateFactsLocked') ? checked('candidateFactsLocked') : false;
+  return {
+    fullName: val('candidateFullName'),
+    targetRole: val('candidateTargetRole'),
+    location: val('candidateLocation'),
+    professionalSummary: val('candidateSummary'),
+    skills: splitProfileLines(val('candidateSkills')),
+    languages: splitProfileLines(val('candidateLanguages')),
+    experience: val('candidateExperience'),
+    projects: val('candidateProjects'),
+    education: val('candidateEducation'),
+    resumeText: val('candidateResumeText'),
+    resumeSource: $('candidateResumeSource') ? String($('candidateResumeSource').textContent || '').trim().replace(/^—$/, '') : '',
+    confirmedFacts: splitProfileLines(val('candidateFacts')).map(text => ({
+      text,
+      source: 'manual',
+      category: 'general',
+      confirmed,
+      locked
+    }))
+  };
+}
+
+function applyCandidateProfile(profile = {}) {
+  if ($('candidateFullName')) $('candidateFullName').value = profile.fullName || '';
+  if ($('candidateTargetRole')) $('candidateTargetRole').value = profile.targetRole || '';
+  if ($('candidateLocation')) $('candidateLocation').value = profile.location || '';
+  if ($('candidateSummary')) $('candidateSummary').value = profile.professionalSummary || '';
+  if ($('candidateSkills')) $('candidateSkills').value = Array.isArray(profile.skills) ? profile.skills.join('\n') : String(profile.skills || '');
+  if ($('candidateLanguages')) $('candidateLanguages').value = Array.isArray(profile.languages) ? profile.languages.join('\n') : String(profile.languages || '');
+  if ($('candidateExperience')) $('candidateExperience').value = profile.experience || '';
+  if ($('candidateProjects')) $('candidateProjects').value = profile.projects || '';
+  if ($('candidateEducation')) $('candidateEducation').value = profile.education || '';
+  if ($('candidateResumeText')) $('candidateResumeText').value = profile.resumeText || '';
+  if ($('candidateResumeSource')) $('candidateResumeSource').textContent = profile.resumeSource || '—';
+  const facts = Array.isArray(profile.confirmedFacts) ? profile.confirmedFacts : [];
+  if ($('candidateFacts')) $('candidateFacts').value = facts.map(item => item && item.text ? item.text : '').filter(Boolean).join('\n');
+  if ($('candidateFactsConfirmed')) $('candidateFactsConfirmed').checked = facts.length > 0 && facts.every(item => item && item.confirmed !== false);
+  if ($('candidateFactsLocked')) $('candidateFactsLocked').checked = facts.length > 0 && facts.every(item => item && item.locked === true);
+}
+
+function renderCandidateProfileStatus(result = {}) {
+  const profile = result.profile || result || {};
+  const facts = Array.isArray(profile.confirmedFacts) ? profile.confirmedFacts : [];
+  const confirmedCount = facts.filter(item => item && item.confirmed !== false).length;
+  const loaded = !!(profile.fullName || profile.targetRole || profile.resumeText || facts.length);
+  if ($('candidateProfileDot')) dot('candidateProfileDot', loaded || result.ok !== false, false);
+  if ($('candidateProfileStatusText')) {
+    $('candidateProfileStatusText').textContent = loaded
+      ? `${t('candidateProfileLoaded')} · ${confirmedCount} ${t('candidateConfirmedFactsCount')}`
+      : t('candidateProfileEmpty');
+  }
+  if ($('candidateProfilePath')) $('candidateProfilePath').textContent = result.path || result.filePath || '';
+  if (result.warning) log(`[PROFILE WARNING] ${result.warning}`);
+}
+
+async function loadCandidateProfile() {
+  const result = await window.lmt.candidateProfileLoad();
+  applyCandidateProfile(result.profile || {});
+  renderCandidateProfileStatus(result);
+  return result;
+}
+
 async function refreshHealth() {
   const h = await window.lmt.health();
   dot('bridgeDot', h.bridge.ok); $('bridgeText').textContent = h.bridge.text;
@@ -382,6 +460,45 @@ window.addEventListener('DOMContentLoaded', async () => {
       return result;
     });
   };
+  if ($('saveCandidateProfile')) $('saveCandidateProfile').onclick = async () => {
+    await runUiAction('Save candidate profile clicked.', 'saveCandidateProfile', async () => {
+      const result = await window.lmt.candidateProfileSave(candidateProfileFromUi());
+      applyCandidateProfile(result.profile || {});
+      renderCandidateProfileStatus(result);
+      log(`[PROFILE] ${t('candidateProfileSaved')}`);
+      return result;
+    });
+  };
+  if ($('importCandidateProfile')) $('importCandidateProfile').onclick = async () => {
+    await runUiAction('Import candidate profile clicked.', 'importCandidateProfile', async () => {
+      const result = await window.lmt.candidateProfileImport();
+      if (!result || result.canceled) return result;
+      if (!result.ok) throw new Error(result.error || 'Candidate profile import failed.');
+      applyCandidateProfile(result.profile || {});
+      renderCandidateProfileStatus(result);
+      log(`[PROFILE] ${t('candidateProfileImportedReview')}`);
+      return result;
+    });
+  };
+  if ($('exportCandidateProfile')) $('exportCandidateProfile').onclick = async () => {
+    await runUiAction('Export candidate profile clicked.', 'exportCandidateProfile', async () => {
+      const result = await window.lmt.candidateProfileExport(candidateProfileFromUi());
+      if (result && !result.canceled && !result.ok) throw new Error(result.error || 'Candidate profile export failed.');
+      if (result && result.ok) log(`[PROFILE] ${t('candidateProfileExported')}: ${result.filePath || ''}`);
+      return result;
+    });
+  };
+  if ($('resetCandidateProfile')) $('resetCandidateProfile').onclick = async () => {
+    if (!window.confirm(t('candidateProfileResetConfirm'))) return;
+    await runUiAction('Reset candidate profile clicked.', 'resetCandidateProfile', async () => {
+      const result = await window.lmt.candidateProfileReset();
+      applyCandidateProfile(result.profile || {});
+      renderCandidateProfileStatus(result);
+      log(`[PROFILE] ${t('candidateProfileCleared')}`);
+      return result;
+    });
+  };
+
   if ($('extAudioIsolationMode')) $('extAudioIsolationMode').onchange = () => {
     const isolationMode = checked('extAudioIsolationMode');
     $('extTtsEnabled').disabled = isolationMode;
@@ -396,7 +513,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     const settings = await window.lmt.load();
     apply(settings || {});
     await refreshSubtitleStatus();
-    log('[INIT] Settings loaded; controls are ready.');
+    await loadCandidateProfile();
+    log('[INIT] Settings and candidate profile loaded; controls are ready.');
   } catch (e) {
     log(`[INIT ERROR] Settings load failed: ${String(e && (e.message || e) || e)}`);
   }

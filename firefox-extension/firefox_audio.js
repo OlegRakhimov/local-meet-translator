@@ -92,6 +92,7 @@ let lastMicAt = 0;
 
 let lastSpokenNorm = "";
 let lastSpokenAt = 0;
+let recentTabHistory = [];
 
 function status(kind, text, log) {
   browser.runtime.sendMessage({ type: "STATUS", kind, text, log }).catch(() => {});
@@ -135,7 +136,11 @@ function isNearDuplicate(norm, lastNorm, now, lastAt) {
   // Drop a shorter repeated fragment, but do NOT drop a longer completion that contains
   // the previous partial phrase. Example: keep "I want to explain the issue" after "I want".
   if (lastNorm.includes(norm)) return true;
-  return jaccardTokens(norm, lastNorm) >= DEDUPE_JACCARD;
+  if (norm.includes(lastNorm) && norm.length >= lastNorm.length + 5) return false;
+  const currentWords = normTokens(norm).length;
+  const previousWords = normTokens(lastNorm).length;
+  const sizeClose = Math.abs(currentWords - previousWords) <= Math.max(2, Math.ceil(previousWords * 0.3));
+  return sizeClose && jaccardTokens(norm, lastNorm) >= DEDUPE_JACCARD;
 }
 
 function isLikelyRepeatForTts(norm, lastNorm, now, lastAt) {
@@ -182,6 +187,30 @@ function isRecentPureEcho(norm, otherNorm, now, otherAt, windowMs, threshold = E
   if (!norm || !otherNorm || !otherAt) return false;
   if (now - otherAt > windowMs) return false;
   return isNearPureEcho(norm, otherNorm, threshold);
+}
+
+function pruneIncomingHistory(now, windowMs = 20000) {
+  recentTabHistory = recentTabHistory.filter(item => now - item.at <= windowMs);
+  if (recentTabHistory.length > 12) recentTabHistory.splice(0, recentTabHistory.length - 12);
+}
+
+function isIncomingHistoryDuplicate(norm, now) {
+  if (!norm) return false;
+  pruneIncomingHistory(now);
+  return recentTabHistory.some(item => {
+    if (norm === item.norm || item.norm.includes(norm)) return true;
+    if (norm.includes(item.norm) && norm.length >= item.norm.length + 5) return false;
+    const currentWords = normTokens(norm).length;
+    const previousWords = normTokens(item.norm).length;
+    const sizeClose = Math.abs(currentWords - previousWords) <= Math.max(2, Math.ceil(previousWords * 0.3));
+    return sizeClose && jaccardTokens(norm, item.norm) >= 0.86;
+  });
+}
+
+function rememberIncomingHistory(norm, now) {
+  if (!norm) return;
+  pruneIncomingHistory(now);
+  recentTabHistory.push({ norm, at: now });
 }
 
 function shouldSuppressIncoming(transcript, translation, now) {
@@ -573,8 +602,12 @@ async function processIncomingAudioChunk(arrayBuffer, mimeType, generation) {
   }
 
   const norm = normalizeForDedupe(transcript);
-  if (isNearDuplicate(norm, lastTabNorm, now, lastTabAt)) return;
+  if (isNearDuplicate(norm, lastTabNorm, now, lastTabAt) || isIncomingHistoryDuplicate(norm, now)) {
+    status("run", "Incoming subtitles", "Skipped repeated incoming phrase.");
+    return;
+  }
   lastTabNorm = norm; lastTabAt = now;
+  rememberIncomingHistory(norm, now);
   lastIncomingTranscriptNorm = norm;
   lastIncomingTranslationNorm = normalizeForDedupe(translation);
   lastIncomingAt = now;
