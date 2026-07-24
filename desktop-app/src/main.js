@@ -11,6 +11,7 @@ const { ExtensionClientRegistry, ExtensionCommandCoordinator } = require('./main
 const { createSubtitleOverlayController, sanitizeSubtitleEvent } = require('./main/subtitle-overlay');
 const { createSubtitleDedupeGuard } = require('./main/subtitle-dedupe');
 const { createCandidateProfileStore } = require('./main/candidate-profile-store');
+const { createAnswerLibraryStore } = require('./main/answer-library-store');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('local.meet.translator.desktop');
@@ -25,18 +26,22 @@ const envPath = path.join(userConfigDir, '.env');
 const legacyEnvPath = path.join(repoRoot, '.env');
 const subtitleWindowStatePath = path.join(userConfigDir, 'subtitle-window-state.json');
 const candidateProfilePath = path.join(userConfigDir, 'candidate-profile.json');
+const answerLibraryPath = path.join(userConfigDir, 'answer-library.json');
 const extensionPath = isPackaged ? path.join(repoRoot, 'browser-extensions') : repoRoot;
 const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPath });
 const { loadSettings, saveSettings, migrateLegacyEnvIfNeeded, getSystemLanguageCode } = configStore;
 const translationSession = new SessionStateMachine({ mode: 'translator' });
 const subtitleDedupe = createSubtitleDedupeGuard();
 const candidateProfileStore = createCandidateProfileStore({ profilePath: candidateProfilePath });
+const answerLibraryStore = createAnswerLibraryStore({ libraryPath: answerLibraryPath });
 let windowManager;
 let subtitleOverlay;
 let bridgeProc = null;
 let voiceProc = null;
 let configServer = null;
 let appClosing = false;
+let closeConfirmationPending = false;
+let workspaceDirtyState = { candidateProfile: false, answerLibrary: false };
 const desktopSessionId = crypto.randomBytes(12).toString('hex');
 const extensionCommandCoordinator = new ExtensionCommandCoordinator({ sessionId: desktopSessionId });
 const extensionClientRegistry = new ExtensionClientRegistry();
@@ -510,20 +515,42 @@ function initializeWindowManager() {
     BrowserWindow,
     preloadPath: path.join(__dirname, 'preload.js'),
     htmlPath: path.join(__dirname, 'index.html'),
-    onCloseRequested: (event) => {
+    onCloseRequested: (event, mainWindow) => {
       if (appClosing) return;
-      appClosing = true;
       event.preventDefault();
-      issueExtensionCommand('stop');
-      translationSession.stop();
-      killProcessTree(bridgeProc, 'bridge');
-      killProcessTree(voiceProc, 'voice');
-      setTimeout(() => {
-        try { if (configServer) configServer.close(); } catch (_) {}
-        try { if (subtitleOverlay) subtitleOverlay.destroy(); } catch (_) {}
-        try { windowManager.destroyMainWindow(); } catch (_) {}
-        app.quit();
-      }, 800);
+      if (closeConfirmationPending) return;
+      closeConfirmationPending = true;
+      const hasUnsavedWorkspaceChanges = !!(workspaceDirtyState.candidateProfile || workspaceDirtyState.answerLibrary);
+      Promise.resolve().then(async () => {
+        if (hasUnsavedWorkspaceChanges) {
+          const result = await dialog.showMessageBox(mainWindow, {
+            type: 'warning',
+            buttons: ['Exit without saving', 'Cancel'],
+            defaultId: 1,
+            cancelId: 1,
+            noLink: true,
+            title: 'Unsaved interview workspace changes',
+            message: 'The candidate profile or Answer Library has unsaved changes.',
+            detail: 'Save the changes first, or choose Exit without saving.'
+          });
+          if (result.response !== 0) return;
+        }
+        appClosing = true;
+        issueExtensionCommand('stop');
+        translationSession.stop();
+        killProcessTree(bridgeProc, 'bridge');
+        killProcessTree(voiceProc, 'voice');
+        setTimeout(() => {
+          try { if (configServer) configServer.close(); } catch (_) {}
+          try { if (subtitleOverlay) subtitleOverlay.destroy(); } catch (_) {}
+          try { windowManager.destroyMainWindow(); } catch (_) {}
+          app.quit();
+        }, 800);
+      }).catch(error => {
+        sendLog(`Close confirmation failed: ${error.message || error}`);
+      }).finally(() => {
+        closeConfirmationPending = false;
+      });
     }
   });
   subtitleOverlay = createSubtitleOverlayController({
@@ -563,6 +590,12 @@ app.on('before-quit', () => {
 });
 
 ipcMain.handle('app:info', () => ({ name: app.getName(), version: app.getVersion(), platform: process.platform, packaged: isPackaged }));
+ipcMain.on('workspace:dirty-state', (_event, state = {}) => {
+  workspaceDirtyState = {
+    candidateProfile: state.candidateProfile === true,
+    answerLibrary: state.answerLibrary === true
+  };
+});
 ipcMain.handle('session:status', () => translationSession.snapshot());
 ipcMain.handle('subtitle-overlay:status', () => subtitleOverlay ? subtitleOverlay.snapshot() : { visible:false, status:'unavailable' });
 ipcMain.handle('subtitle-overlay:control', async (_event, action, payload = {}) => {
@@ -617,6 +650,48 @@ ipcMain.handle('candidate-profile:export', async (_event, profile) => {
   if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
   try {
     return candidateProfileStore.exportToPath(selection.filePath, profile || {});
+  } catch (error) {
+    return { ok: false, error: error.message || String(error) };
+  }
+});
+ipcMain.handle('answer-library:load', () => answerLibraryStore.load());
+ipcMain.handle('answer-library:save', (_event, library) => answerLibraryStore.save(library || {}));
+ipcMain.handle('answer-library:reset', () => answerLibraryStore.reset());
+ipcMain.handle('answer-library:import', async () => {
+  const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
+  const options = {
+    title: 'Import Answer Library',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Answer Library JSON', extensions: ['json'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  };
+  const selection = parent
+    ? await dialog.showOpenDialog(parent, options)
+    : await dialog.showOpenDialog(options);
+  if (selection.canceled || !selection.filePaths || !selection.filePaths[0]) {
+    return { ok: false, canceled: true };
+  }
+  try {
+    return answerLibraryStore.importFromPath(selection.filePaths[0]);
+  } catch (error) {
+    return { ok: false, error: error.message || String(error) };
+  }
+});
+ipcMain.handle('answer-library:export', async (_event, library) => {
+  const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
+  const options = {
+    title: 'Export Answer Library',
+    defaultPath: 'local-meet-translator-answer-library.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  };
+  const selection = parent
+    ? await dialog.showSaveDialog(parent, options)
+    : await dialog.showSaveDialog(options);
+  if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+  try {
+    return answerLibraryStore.exportToPath(selection.filePath, library || {});
   } catch (error) {
     return { ok: false, error: error.message || String(error) };
   }

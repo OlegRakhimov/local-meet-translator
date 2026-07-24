@@ -62,6 +62,77 @@ function resetOutgoingSteps() {
 }
 
 const VOICES = ['onyx', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'sage', 'shimmer', 'verse'];
+
+let currentView = 'home';
+let suppressCandidateDirty = false;
+let candidateProfileBaseline = '';
+let candidateProfileStoredProfile = {};
+let candidateProfileStoragePath = '';
+let candidateProfileDirty = false;
+let answerLibraryState = { schemaVersion: 1, entries: [], updatedAt: '' };
+let selectedAnswerId = '';
+let answerEditorDirty = false;
+let suppressAnswerDirty = false;
+
+function stableJson(value) {
+  return JSON.stringify(value || {});
+}
+
+function notifyWorkspaceDirtyState() {
+  try {
+    if (window.lmt && typeof window.lmt.setWorkspaceDirty === 'function') {
+      window.lmt.setWorkspaceDirty({ candidateProfile: candidateProfileDirty, answerLibrary: answerEditorDirty });
+    }
+  } catch (_) {}
+}
+
+function setCandidateProfileDirty(dirty) {
+  candidateProfileDirty = !!dirty;
+  const banner = $('candidateProfileDirtyBanner');
+  if (banner) banner.hidden = !candidateProfileDirty;
+  notifyWorkspaceDirtyState();
+}
+
+function setAnswerEditorDirty(dirty) {
+  answerEditorDirty = !!dirty;
+  const banner = $('answerLibraryDirtyBanner');
+  if (banner) banner.hidden = !answerEditorDirty;
+  notifyWorkspaceDirtyState();
+}
+
+function confirmDiscardCurrentView() {
+  if (currentView === 'candidate-profile' && candidateProfileDirty) {
+    if (!window.confirm(t('discardUnsavedProfileChanges'))) return false;
+    applyCandidateProfile(candidateProfileStoredProfile, { markClean: true });
+    renderCandidateProfileStatus({ ok: true, profile: candidateProfileStoredProfile, path: candidateProfileStoragePath });
+  }
+  if (currentView === 'answer-library' && answerEditorDirty) {
+    if (!window.confirm(t('discardUnsavedAnswerChanges'))) return false;
+    const savedEntry = (answerLibraryState.entries || []).find(entry => entry.id === selectedAnswerId);
+    applyAnswerEntry(savedEntry || emptyAnswerEntry(), { markClean: true });
+    renderAnswerEntryList();
+  }
+  return true;
+}
+
+function showView(view, options = {}) {
+  const targetView = String(view || 'home');
+  if (!options.force && targetView !== currentView && !confirmDiscardCurrentView()) return false;
+  document.querySelectorAll('.appView').forEach(element => {
+    const active = element.dataset.view === targetView;
+    element.hidden = !active;
+    element.classList.toggle('active', active);
+  });
+  currentView = targetView;
+  document.body.classList.toggle('focusedMode', targetView !== 'home');
+  window.scrollTo({ top: 0, behavior: 'auto' });
+  return true;
+}
+
+function createClientId(prefix = 'entry') {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 function initVoices() {
   const el = $('extTtsVoice');
   if (!el) return;
@@ -190,22 +261,34 @@ function candidateProfileFromUi() {
   };
 }
 
-function applyCandidateProfile(profile = {}) {
-  if ($('candidateFullName')) $('candidateFullName').value = profile.fullName || '';
-  if ($('candidateTargetRole')) $('candidateTargetRole').value = profile.targetRole || '';
-  if ($('candidateLocation')) $('candidateLocation').value = profile.location || '';
-  if ($('candidateSummary')) $('candidateSummary').value = profile.professionalSummary || '';
-  if ($('candidateSkills')) $('candidateSkills').value = Array.isArray(profile.skills) ? profile.skills.join('\n') : String(profile.skills || '');
-  if ($('candidateLanguages')) $('candidateLanguages').value = Array.isArray(profile.languages) ? profile.languages.join('\n') : String(profile.languages || '');
-  if ($('candidateExperience')) $('candidateExperience').value = profile.experience || '';
-  if ($('candidateProjects')) $('candidateProjects').value = profile.projects || '';
-  if ($('candidateEducation')) $('candidateEducation').value = profile.education || '';
-  if ($('candidateResumeText')) $('candidateResumeText').value = profile.resumeText || '';
-  if ($('candidateResumeSource')) $('candidateResumeSource').textContent = profile.resumeSource || '—';
-  const facts = Array.isArray(profile.confirmedFacts) ? profile.confirmedFacts : [];
-  if ($('candidateFacts')) $('candidateFacts').value = facts.map(item => item && item.text ? item.text : '').filter(Boolean).join('\n');
-  if ($('candidateFactsConfirmed')) $('candidateFactsConfirmed').checked = facts.length > 0 && facts.every(item => item && item.confirmed !== false);
-  if ($('candidateFactsLocked')) $('candidateFactsLocked').checked = facts.length > 0 && facts.every(item => item && item.locked === true);
+function applyCandidateProfile(profile = {}, options = {}) {
+  suppressCandidateDirty = true;
+  try {
+    if ($('candidateFullName')) $('candidateFullName').value = profile.fullName || '';
+    if ($('candidateTargetRole')) $('candidateTargetRole').value = profile.targetRole || '';
+    if ($('candidateLocation')) $('candidateLocation').value = profile.location || '';
+    if ($('candidateSummary')) $('candidateSummary').value = profile.professionalSummary || '';
+    if ($('candidateSkills')) $('candidateSkills').value = Array.isArray(profile.skills) ? profile.skills.join('\n') : String(profile.skills || '');
+    if ($('candidateLanguages')) $('candidateLanguages').value = Array.isArray(profile.languages) ? profile.languages.join('\n') : String(profile.languages || '');
+    if ($('candidateExperience')) $('candidateExperience').value = profile.experience || '';
+    if ($('candidateProjects')) $('candidateProjects').value = profile.projects || '';
+    if ($('candidateEducation')) $('candidateEducation').value = profile.education || '';
+    if ($('candidateResumeText')) $('candidateResumeText').value = profile.resumeText || '';
+    if ($('candidateResumeSource')) $('candidateResumeSource').textContent = profile.resumeSource || '—';
+    const facts = Array.isArray(profile.confirmedFacts) ? profile.confirmedFacts : [];
+    if ($('candidateFacts')) $('candidateFacts').value = facts.map(item => item && item.text ? item.text : '').filter(Boolean).join('\n');
+    if ($('candidateFactsConfirmed')) $('candidateFactsConfirmed').checked = facts.length > 0 && facts.every(item => item && item.confirmed !== false);
+    if ($('candidateFactsLocked')) $('candidateFactsLocked').checked = facts.length > 0 && facts.every(item => item && item.locked === true);
+  } finally {
+    suppressCandidateDirty = false;
+  }
+  if (options.markClean !== false) {
+    candidateProfileBaseline = stableJson(candidateProfileFromUi());
+    candidateProfileStoredProfile = JSON.parse(candidateProfileBaseline || '{}');
+    setCandidateProfileDirty(false);
+  } else {
+    setCandidateProfileDirty(stableJson(candidateProfileFromUi()) !== candidateProfileBaseline);
+  }
 }
 
 function renderCandidateProfileStatus(result = {}) {
@@ -213,21 +296,206 @@ function renderCandidateProfileStatus(result = {}) {
   const facts = Array.isArray(profile.confirmedFacts) ? profile.confirmedFacts : [];
   const confirmedCount = facts.filter(item => item && item.confirmed !== false).length;
   const loaded = !!(profile.fullName || profile.targetRole || profile.resumeText || facts.length);
-  if ($('candidateProfileDot')) dot('candidateProfileDot', loaded || result.ok !== false, false);
-  if ($('candidateProfileStatusText')) {
-    $('candidateProfileStatusText').textContent = loaded
-      ? `${t('candidateProfileLoaded')} · ${confirmedCount} ${t('candidateConfirmedFactsCount')}`
-      : t('candidateProfileEmpty');
+  const statusText = loaded
+    ? `${t('candidateProfileLoaded')} · ${confirmedCount} ${t('candidateConfirmedFactsCount')}`
+    : t('candidateProfileEmpty');
+  for (const dotId of ['candidateProfileDot', 'candidateProfileScreenDot']) {
+    if ($(dotId)) dot(dotId, loaded || result.ok !== false, false);
   }
-  if ($('candidateProfilePath')) $('candidateProfilePath').textContent = result.path || result.filePath || '';
+  for (const statusId of ['candidateProfileStatusText', 'candidateProfileScreenStatusText']) {
+    if ($(statusId)) $(statusId).textContent = statusText;
+  }
+  const profilePath = result.path || candidateProfileStoragePath || '';
+  for (const pathId of ['candidateProfilePath', 'candidateProfileScreenPath']) {
+    if ($(pathId)) $(pathId).textContent = profilePath;
+  }
+  if ($('candidateProfileIdentity')) {
+    const identity = [profile.fullName, profile.targetRole].filter(Boolean).join(' · ');
+    $('candidateProfileIdentity').textContent = identity || t('candidateProfileNoIdentity');
+  }
+  if ($('candidateProfileFactSummary')) {
+    $('candidateProfileFactSummary').textContent = confirmedCount
+      ? `${confirmedCount} ${t('candidateConfirmedFactsCount')}`
+      : t('candidateProfileNoFacts');
+  }
   if (result.warning) log(`[PROFILE WARNING] ${result.warning}`);
 }
 
 async function loadCandidateProfile() {
   const result = await window.lmt.candidateProfileLoad();
-  applyCandidateProfile(result.profile || {});
+  candidateProfileStoragePath = result.path || candidateProfileStoragePath;
+  applyCandidateProfile(result.profile || {}, { markClean: true });
   renderCandidateProfileStatus(result);
   return result;
+}
+
+function emptyAnswerEntry() {
+  return {
+    id: '',
+    question: '',
+    intent: '',
+    level: 'B1',
+    style: 'simple',
+    answer: '',
+    firstSentence: '',
+    keywords: [],
+    groundingFacts: [],
+    locked: false,
+    createdAt: '',
+    updatedAt: ''
+  };
+}
+
+function answerEntryFromUi() {
+  return {
+    id: val('answerEntryId'),
+    question: val('answerQuestion'),
+    intent: val('answerIntent'),
+    level: val('answerLevel') || 'B1',
+    style: val('answerStyle') || 'simple',
+    answer: val('answerText'),
+    firstSentence: val('answerFirstSentence'),
+    keywords: splitProfileLines(val('answerKeywords')),
+    groundingFacts: splitProfileLines(val('answerGroundingFacts')),
+    locked: checked('answerLocked')
+  };
+}
+
+function applyAnswerEntry(entry = {}, options = {}) {
+  const value = { ...emptyAnswerEntry(), ...entry };
+  suppressAnswerDirty = true;
+  try {
+    $('answerEntryId').value = value.id || '';
+    $('answerQuestion').value = value.question || '';
+    $('answerIntent').value = value.intent || '';
+    $('answerLevel').value = value.level || 'B1';
+    $('answerStyle').value = value.style || 'simple';
+    $('answerText').value = value.answer || '';
+    $('answerFirstSentence').value = value.firstSentence || '';
+    $('answerKeywords').value = Array.isArray(value.keywords) ? value.keywords.join('\n') : String(value.keywords || '');
+    $('answerGroundingFacts').value = Array.isArray(value.groundingFacts) ? value.groundingFacts.join('\n') : String(value.groundingFacts || '');
+    $('answerLocked').checked = value.locked === true;
+  } finally {
+    suppressAnswerDirty = false;
+  }
+  selectedAnswerId = value.id || '';
+  if (options.markClean !== false) setAnswerEditorDirty(false);
+}
+
+function renderAnswerLibraryStatus(result = {}) {
+  const library = result.library || result || answerLibraryState;
+  const entries = Array.isArray(library.entries) ? library.entries : [];
+  const lockedCount = entries.filter(entry => entry && entry.locked === true).length;
+  if ($('answerLibraryDot')) dot('answerLibraryDot', result.ok !== false, false);
+  if ($('answerLibraryStatusText')) {
+    $('answerLibraryStatusText').textContent = entries.length
+      ? `${t('answerLibraryLoaded')} · ${entries.length} ${t('savedAnswersCount')}`
+      : t('answerLibraryEmpty');
+  }
+  if ($('answerLibraryPath')) $('answerLibraryPath').textContent = result.path || result.filePath || '';
+  if ($('answerLibraryCount')) {
+    $('answerLibraryCount').textContent = entries.length
+      ? `${entries.length} ${t('savedAnswersCount')}`
+      : t('answerLibraryEmpty');
+  }
+  if ($('answerLibraryLockedCount')) {
+    $('answerLibraryLockedCount').textContent = lockedCount
+      ? `${lockedCount} ${t('lockedAnswersCount')}`
+      : t('answerLibraryNoLocked');
+  }
+  if ($('answerLibraryScreenCount')) $('answerLibraryScreenCount').textContent = String(entries.length);
+  if (result.warning) log(`[ANSWER LIBRARY WARNING] ${result.warning}`);
+}
+
+function renderAnswerEntryList() {
+  const list = $('answerEntryList');
+  const empty = $('answerEmptyState');
+  if (!list) return;
+  const entries = Array.isArray(answerLibraryState.entries) ? answerLibraryState.entries : [];
+  list.innerHTML = '';
+  if (empty) empty.hidden = entries.length > 0;
+  for (const entry of entries) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `answerListItem${entry.id === selectedAnswerId ? ' selected' : ''}`;
+    button.dataset.answerId = entry.id;
+    const question = document.createElement('strong');
+    question.textContent = entry.question || t('untitledAnswer');
+    const meta = document.createElement('span');
+    meta.textContent = [entry.level || 'B1', t(`answerStyle_${entry.style || 'simple'}`), entry.locked ? t('lockedLabel') : ''].filter(Boolean).join(' · ');
+    button.append(question, meta);
+    button.onclick = () => selectAnswerEntry(entry.id);
+    list.appendChild(button);
+  }
+}
+
+function selectAnswerEntry(id, options = {}) {
+  if (!options.force && answerEditorDirty && !window.confirm(t('discardUnsavedAnswerChanges'))) return false;
+  const entry = (answerLibraryState.entries || []).find(item => item.id === id);
+  if (!entry) return false;
+  applyAnswerEntry(entry, { markClean: true });
+  renderAnswerEntryList();
+  return true;
+}
+
+function applyAnswerLibrary(library = {}, options = {}) {
+  answerLibraryState = {
+    schemaVersion: Number(library.schemaVersion) || 1,
+    entries: Array.isArray(library.entries) ? library.entries.map(entry => ({ ...entry })) : [],
+    updatedAt: library.updatedAt || ''
+  };
+  const selectedExists = answerLibraryState.entries.some(entry => entry.id === selectedAnswerId);
+  if (!selectedExists) selectedAnswerId = answerLibraryState.entries[0]?.id || '';
+  if (selectedAnswerId) {
+    const selected = answerLibraryState.entries.find(entry => entry.id === selectedAnswerId);
+    applyAnswerEntry(selected || emptyAnswerEntry(), { markClean: options.markClean !== false });
+  } else {
+    applyAnswerEntry(emptyAnswerEntry(), { markClean: options.markClean !== false });
+  }
+  renderAnswerEntryList();
+  renderAnswerLibraryStatus({ ...options, library: answerLibraryState, ok: options.ok !== false, path: options.path || '' });
+}
+
+async function loadAnswerLibrary() {
+  const result = await window.lmt.answerLibraryLoad();
+  applyAnswerLibrary(result.library || {}, { ...result, markClean: true });
+  return result;
+}
+
+async function persistAnswerLibrary(messageKey = 'answerLibrarySaved') {
+  const result = await window.lmt.answerLibrarySave(answerLibraryState);
+  applyAnswerLibrary(result.library || {}, { ...result, markClean: true });
+  log(`[ANSWER LIBRARY] ${t(messageKey)}`);
+  return result;
+}
+
+async function saveCurrentAnswer() {
+  const entry = answerEntryFromUi();
+  if (!entry.question) throw new Error(t('answerQuestionRequired'));
+  if (!entry.answer) throw new Error(t('answerTextRequired'));
+  const now = new Date().toISOString();
+  if (!entry.id) entry.id = createClientId('answer');
+  const previous = (answerLibraryState.entries || []).find(item => item.id === entry.id);
+  const stored = {
+    ...previous,
+    ...entry,
+    createdAt: previous?.createdAt || now,
+    updatedAt: now,
+    order: previous?.order ?? answerLibraryState.entries.length
+  };
+  const index = answerLibraryState.entries.findIndex(item => item.id === stored.id);
+  if (index >= 0) answerLibraryState.entries[index] = stored;
+  else answerLibraryState.entries.push(stored);
+  selectedAnswerId = stored.id;
+  return persistAnswerLibrary('answerSaved');
+}
+
+async function deleteCurrentAnswer() {
+  if (!selectedAnswerId) return { ok: true };
+  if (!window.confirm(t('deleteAnswerConfirm'))) return { ok: false, canceled: true };
+  answerLibraryState.entries = (answerLibraryState.entries || []).filter(entry => entry.id !== selectedAnswerId);
+  selectedAnswerId = answerLibraryState.entries[0]?.id || '';
+  return persistAnswerLibrary('answerDeleted');
 }
 
 async function refreshHealth() {
@@ -284,10 +552,41 @@ window.addEventListener('unhandledrejection', (event) => {
   log(`[RENDERER PROMISE ERROR] ${String(reason && (reason.message || reason) || reason || 'Unknown rejection')}`);
 });
 
+function bindDirtyTracking() {
+  const profileRoot = $('candidateProfileScreen');
+  if (profileRoot) {
+    profileRoot.querySelectorAll('input, textarea, select').forEach(control => {
+      if (control.id === 'candidateResumeText') return;
+      const mark = () => {
+        if (suppressCandidateDirty) return;
+        setCandidateProfileDirty(stableJson(candidateProfileFromUi()) !== candidateProfileBaseline);
+      };
+      control.addEventListener('input', mark);
+      control.addEventListener('change', mark);
+    });
+  }
+  const answerRoot = $('answerLibraryScreen');
+  if (answerRoot) {
+    answerRoot.querySelectorAll('.answerEditor input, .answerEditor textarea, .answerEditor select').forEach(control => {
+      if (control.id === 'answerEntryId') return;
+      const mark = () => { if (!suppressAnswerDirty) setAnswerEditorDirty(true); };
+      control.addEventListener('input', mark);
+      control.addEventListener('change', mark);
+    });
+  }
+}
+
+window.addEventListener('beforeunload', (event) => {
+  if (!candidateProfileDirty && !answerEditorDirty) return;
+  event.preventDefault();
+  event.returnValue = '';
+});
+
 window.addEventListener('DOMContentLoaded', async () => {
   applyI18n();
   initVoices();
   resetOutgoingSteps();
+  bindDirtyTracking();
   $('save').onclick = async () => {
     const r = await window.lmt.save(readSettings());
     apply(r.settings || {});
@@ -460,22 +759,30 @@ window.addEventListener('DOMContentLoaded', async () => {
       return result;
     });
   };
-  if ($('saveCandidateProfile')) $('saveCandidateProfile').onclick = async () => {
-    await runUiAction('Save candidate profile clicked.', 'saveCandidateProfile', async () => {
+  if ($('openCandidateProfile')) $('openCandidateProfile').onclick = () => showView('candidate-profile');
+  if ($('backFromCandidateProfile')) $('backFromCandidateProfile').onclick = () => showView('home');
+  if ($('openAnswerLibrary')) $('openAnswerLibrary').onclick = () => showView('answer-library');
+  if ($('backFromAnswerLibrary')) $('backFromAnswerLibrary').onclick = () => showView('home');
+  const saveProfileAction = async (buttonId) => {
+    await runUiAction('Save candidate profile clicked.', buttonId, async () => {
       const result = await window.lmt.candidateProfileSave(candidateProfileFromUi());
-      applyCandidateProfile(result.profile || {});
+      candidateProfileStoragePath = result.path || candidateProfileStoragePath;
+      applyCandidateProfile(result.profile || {}, { markClean: true });
       renderCandidateProfileStatus(result);
       log(`[PROFILE] ${t('candidateProfileSaved')}`);
       return result;
     });
   };
+  if ($('saveCandidateProfileTop')) $('saveCandidateProfileTop').onclick = () => saveProfileAction('saveCandidateProfileTop');
+  if ($('saveCandidateProfile')) $('saveCandidateProfile').onclick = () => saveProfileAction('saveCandidateProfile');
   if ($('importCandidateProfile')) $('importCandidateProfile').onclick = async () => {
     await runUiAction('Import candidate profile clicked.', 'importCandidateProfile', async () => {
       const result = await window.lmt.candidateProfileImport();
       if (!result || result.canceled) return result;
       if (!result.ok) throw new Error(result.error || 'Candidate profile import failed.');
-      applyCandidateProfile(result.profile || {});
+      applyCandidateProfile(result.profile || {}, { markClean: false });
       renderCandidateProfileStatus(result);
+      setCandidateProfileDirty(true);
       log(`[PROFILE] ${t('candidateProfileImportedReview')}`);
       return result;
     });
@@ -492,9 +799,56 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (!window.confirm(t('candidateProfileResetConfirm'))) return;
     await runUiAction('Reset candidate profile clicked.', 'resetCandidateProfile', async () => {
       const result = await window.lmt.candidateProfileReset();
-      applyCandidateProfile(result.profile || {});
+      candidateProfileStoragePath = result.path || candidateProfileStoragePath;
+      applyCandidateProfile(result.profile || {}, { markClean: true });
       renderCandidateProfileStatus(result);
       log(`[PROFILE] ${t('candidateProfileCleared')}`);
+      return result;
+    });
+  };
+
+  if ($('newAnswerEntry')) $('newAnswerEntry').onclick = () => {
+    if (answerEditorDirty && !window.confirm(t('discardUnsavedAnswerChanges'))) return;
+    selectedAnswerId = '';
+    applyAnswerEntry(emptyAnswerEntry(), { markClean: true });
+    renderAnswerEntryList();
+  };
+  if ($('saveAnswerEntry')) $('saveAnswerEntry').onclick = async () => {
+    await runUiAction('Save Answer Library entry clicked.', 'saveAnswerEntry', saveCurrentAnswer);
+  };
+  if ($('deleteAnswerEntry')) $('deleteAnswerEntry').onclick = async () => {
+    await runUiAction('Delete Answer Library entry clicked.', 'deleteAnswerEntry', deleteCurrentAnswer);
+  };
+  if ($('importAnswerLibrary')) $('importAnswerLibrary').onclick = async () => {
+    await runUiAction('Import Answer Library clicked.', 'importAnswerLibrary', async () => {
+      if (answerEditorDirty && !window.confirm(t('discardUnsavedAnswerChanges'))) return { ok: false, canceled: true };
+      const imported = await window.lmt.answerLibraryImport();
+      if (!imported || imported.canceled) return imported;
+      if (!imported.ok) throw new Error(imported.error || 'Answer Library import failed.');
+      if (!window.confirm(t('replaceAnswerLibraryConfirm'))) return { ok: false, canceled: true };
+      answerLibraryState = imported.library || { entries: [] };
+      selectedAnswerId = answerLibraryState.entries?.[0]?.id || '';
+      const saved = await window.lmt.answerLibrarySave(answerLibraryState);
+      applyAnswerLibrary(saved.library || {}, { ...saved, markClean: true });
+      log(`[ANSWER LIBRARY] ${t('answerLibraryImported')}`);
+      return saved;
+    });
+  };
+  if ($('exportAnswerLibrary')) $('exportAnswerLibrary').onclick = async () => {
+    await runUiAction('Export Answer Library clicked.', 'exportAnswerLibrary', async () => {
+      const result = await window.lmt.answerLibraryExport(answerLibraryState);
+      if (result && !result.canceled && !result.ok) throw new Error(result.error || 'Answer Library export failed.');
+      if (result && result.ok) log(`[ANSWER LIBRARY] ${t('answerLibraryExported')}: ${result.filePath || ''}`);
+      return result;
+    });
+  };
+  if ($('resetAnswerLibrary')) $('resetAnswerLibrary').onclick = async () => {
+    if (!window.confirm(t('resetAnswerLibraryConfirm'))) return;
+    await runUiAction('Reset Answer Library clicked.', 'resetAnswerLibrary', async () => {
+      const result = await window.lmt.answerLibraryReset();
+      selectedAnswerId = '';
+      applyAnswerLibrary(result.library || {}, { ...result, markClean: true });
+      log(`[ANSWER LIBRARY] ${t('answerLibraryCleared')}`);
       return result;
     });
   };
@@ -514,7 +868,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     apply(settings || {});
     await refreshSubtitleStatus();
     await loadCandidateProfile();
-    log('[INIT] Settings and candidate profile loaded; controls are ready.');
+    await loadAnswerLibrary();
+    log('[INIT] Settings, candidate profile and Answer Library loaded; controls are ready.');
   } catch (e) {
     log(`[INIT ERROR] Settings load failed: ${String(e && (e.message || e) || e)}`);
   }

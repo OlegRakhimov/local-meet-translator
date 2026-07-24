@@ -24,6 +24,9 @@ for (const extension of ['chrome-extension', 'edge-extension', 'firefox-extensio
 }
 
 const pkg = JSON.parse(read('desktop-app/package.json'));
-if (pkg.version !== '1.0.9') throw new Error('desktop-app: expected version 1.0.9');
+const versionParts = String(pkg.version || '').split('.').map(Number);
+if (versionParts.length !== 3 || versionParts.some(Number.isNaN) || versionParts[0] !== 1 || versionParts[1] !== 0 || versionParts[2] < 9) {
+  throw new Error('desktop-app: expected version 1.0.9 or newer');
+}
 
 console.log('Stage 3 profile and subtitle dedupe validation: OK');

@@ -125,3 +125,182 @@ code { color:#c9d1d9; word-break:break-all; }
 .profileStatus strong { font-size:13px; }
 .profileStatus small { margin-left:auto; max-width:52%; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .candidateProfileCard code { font-size:12px; }
+
+[hidden] { display: none !important; }
+select {
+  width:100%;
+  box-sizing:border-box;
+  margin-top:5px;
+  padding:10px 12px;
+  border-radius:10px;
+  border:1px solid #30363d;
+  background:#0d1117;
+  color:#e6edf3;
+  font:inherit;
+}
+body.focusedMode .wrap { max-width: 1180px; }
+.appView { animation: viewIn .16s ease-out; }
+@keyframes viewIn { from { opacity:.7; transform:translateY(4px); } to { opacity:1; transform:none; } }
+.navigationCard { padding:20px; }
+.navigationCardHeader {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+}
+.navigationCardHeader h2 { margin:2px 0 6px; font-size:20px; }
+.navigationCardHeader .hint { max-width:640px; margin-top:4px; }
+.eyebrow {
+  margin:0;
+  color:#58a6ff;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  font-size:11px;
+  font-weight:700;
+}
+.summaryChips { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.summaryChip {
+  display:inline-flex;
+  align-items:center;
+  min-height:28px;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid #30363d;
+  background:#0d1117;
+  color:#c9d1d9;
+  font-size:12px;
+}
+.focusedView { padding-bottom:28px; }
+.screenToolbar {
+  position:sticky;
+  top:0;
+  z-index:20;
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto;
+  align-items:center;
+  gap:16px;
+  margin:0 0 16px;
+  padding:14px 16px;
+  border:1px solid #30363d;
+  border-radius:16px;
+  background:rgba(13,17,23,.96);
+  box-shadow:0 12px 28px rgba(0,0,0,.28);
+  backdrop-filter:blur(10px);
+}
+.screenToolbarTitle h2 { margin:2px 0 4px; font-size:22px; }
+.screenToolbarTitle p:not(.eyebrow) { margin:0; font-size:12px; }
+.backButton { min-width:92px; }
+.screenStatus { margin:0 0 14px; }
+.dirtyBanner {
+  margin:0 0 14px;
+  padding:11px 13px;
+  border:1px solid #9e6a03;
+  border-radius:10px;
+  background:rgba(187,128,9,.14);
+  color:#e3b341;
+  font-size:13px;
+  font-weight:600;
+}
+.editorSection {
+  margin:12px 0;
+  border:1px solid #30363d;
+  border-radius:14px;
+  background:#161b22;
+  overflow:hidden;
+}
+.editorSection[open] { border-color:#3d444d; }
+.editorSection > summary {
+  cursor:pointer;
+  padding:14px 16px;
+  color:#e6edf3;
+  font-size:14px;
+  font-weight:700;
+  user-select:none;
+  background:#161b22;
+}
+.editorSection > summary:hover { background:#1b2129; }
+.sectionBody { padding:2px 16px 16px; border-top:1px solid #30363d; }
+.screenActions { margin:18px 0 0; }
+.answerWorkspace {
+  display:grid;
+  grid-template-columns:310px minmax(0,1fr);
+  gap:14px;
+  align-items:start;
+}
+.answerSidebar,
+.answerEditor {
+  border:1px solid #30363d;
+  border-radius:14px;
+  background:#161b22;
+  padding:14px;
+}
+.answerSidebar {
+  position:sticky;
+  top:112px;
+  max-height:calc(100vh - 140px);
+  overflow:auto;
+}
+.sidebarHeader {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  padding:2px 2px 12px;
+}
+.sidebarHeader span {
+  min-width:28px;
+  padding:3px 8px;
+  border-radius:999px;
+  background:#30363d;
+  text-align:center;
+  font-size:12px;
+}
+.answerEntryList { display:grid; gap:8px; }
+.answerListItem {
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:5px;
+  padding:10px 11px;
+  border:1px solid #30363d;
+  border-radius:10px;
+  background:#0d1117;
+  color:#e6edf3;
+  text-align:left;
+}
+.answerListItem:hover { border-color:#58a6ff; }
+.answerListItem.selected { border-color:#2f81f7; background:rgba(31,111,235,.12); }
+.answerListItem strong {
+  width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:13px;
+}
+.answerListItem span { color:#8b949e; font-size:11px; }
+.emptyState {
+  margin:12px 0;
+  padding:20px 12px;
+  border:1px dashed #30363d;
+  border-radius:10px;
+  text-align:center;
+  font-size:12px;
+}
+.verticalButtons { display:grid; grid-template-columns:1fr; margin-top:16px; }
+.threeColumns { grid-template-columns:repeat(3,1fr); }
+.answerEditor label:first-of-type { margin-top:0; }
+@media (max-width: 900px) {
+  .answerWorkspace { grid-template-columns:1fr; }
+  .answerSidebar { position:static; max-height:none; }
+  .screenToolbar { grid-template-columns:1fr; }
+  .screenToolbar > button { width:100%; }
+  .threeColumns { grid-template-columns:1fr; }
+}
+@media (max-width: 720px) {
+  .navigationCardHeader { flex-direction:column; }
+  .navigationCardHeader button { width:100%; }
+  .screenToolbar { top:0; border-radius:12px; }
+  .profileStatus { align-items:flex-start; flex-wrap:wrap; }
+  .profileStatus small { max-width:100%; margin-left:18px; text-align:left; white-space:normal; }
+}

@@ -412,3 +412,32 @@ Facts have two independent flags:
 This stage imports `JSON`, `TXT` and `MD`. Text documents are loaded only for manual review. The app does not automatically convert resume text into facts and does not send the profile to OpenAI when it is saved.
 
 PDF and DOCX text extraction will be added in a separate stage after the profile and answer-library workflow is stable.
+
+## 16. Stage 4: focused profile and Answer Library screens
+
+Desktop `1.0.10` reduces the main controller page and moves interview data into focused in-app screens.
+
+The main page now keeps compact cards for:
+
+- **Candidate profile** — identity, target role and confirmed-fact count;
+- **Answer Library** — saved and locked answer counts.
+
+**Open profile** navigates to a dedicated screen inside the same desktop window. The existing profile file is preserved without migration:
+
+```text
+%APPDATA%\Local Meet Translator\candidate-profile.json
+```
+
+Profile groups are collapsible: basic information, skills and education, experience and projects, imported source, and confirmed facts. Leaving the screen or closing the app with unsaved changes produces a warning.
+
+### Answer Library
+
+Reviewed answers are stored locally at:
+
+```text
+%APPDATA%\Local Meet Translator\answer-library.json
+```
+
+Each entry contains the interview question, intent/category, English level (`A2`, `B1`, `B2`), answer style (`simple`, `technical`, `STAR`, `general`), prepared answer, first sentence, keywords, grounding facts and a `locked` flag.
+
+Stage 4 is manual-only: the app does not generate answers or send them to OpenAI. The library can be imported from or exported to JSON.

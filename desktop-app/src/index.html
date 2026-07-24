@@ -13,6 +13,7 @@
       <p data-i18n="appSubtitle">Desktop controller: bridge, voice conversion, local token, health checks and extension setup.</p>
     </header>
 
+    <section id="homeScreen" class="appView active" data-view="home">
     <section class="card">
       <h2 data-i18n="settings">1. Settings</h2>
       <label><span data-i18n="openaiKey">OpenAI API key</span> <input id="openaiKey" type="password" autocomplete="off" placeholder="sk-..." /></label>
@@ -135,46 +136,43 @@
     </section>
 
 
-    <section class="card candidateProfileCard">
-      <h2 data-i18n="candidateProfileTitle">2. Candidate Profile and Confirmed Facts</h2>
-      <p class="hint" data-i18n="candidateProfileDescription">This local profile is the only factual basis for future interview suggestions. Nothing is sent automatically.</p>
+    <section class="card navigationCard candidateProfileCard">
+      <div class="navigationCardHeader">
+        <div>
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="candidateProfileCompactTitle">Candidate profile</h2>
+          <p class="hint" data-i18n="candidateProfileCompactDescription">Keep resume details and confirmed facts on a separate focused screen.</p>
+        </div>
+        <button id="openCandidateProfile" type="button" data-i18n="openCandidateProfile">Open profile</button>
+      </div>
       <div id="candidateProfileStatus" class="profileStatus" role="status">
         <span id="candidateProfileDot" class="dot"></span>
         <strong id="candidateProfileStatusText" data-i18n="candidateProfileNotLoaded">Candidate profile: not loaded</strong>
         <small id="candidateProfilePath"></small>
       </div>
-      <div class="grid">
-        <label><span data-i18n="candidateFullName">Full name</span><input id="candidateFullName" autocomplete="name" /></label>
-        <label><span data-i18n="candidateTargetRole">Target role</span><input id="candidateTargetRole" placeholder="Android Developer / Flutter Developer" /></label>
-        <label><span data-i18n="candidateLocation">Location</span><input id="candidateLocation" placeholder="Poznań, Poland" /></label>
-        <label><span data-i18n="candidateLanguages">Languages, one per line</span><textarea id="candidateLanguages" rows="3" placeholder="Russian — native&#10;Polish — working proficiency&#10;English — B1"></textarea></label>
+      <div class="summaryChips" aria-label="Candidate profile summary">
+        <span id="candidateProfileIdentity" class="summaryChip" data-i18n="candidateProfileNoIdentity">Name and role are not filled in</span>
+        <span id="candidateProfileFactSummary" class="summaryChip" data-i18n="candidateProfileNoFacts">No confirmed facts yet</span>
       </div>
-      <label><span data-i18n="candidateSummary">Professional summary</span><textarea id="candidateSummary" rows="4"></textarea></label>
-      <div class="grid">
-        <label><span data-i18n="candidateSkills">Skills, one per line</span><textarea id="candidateSkills" rows="7"></textarea></label>
-        <label><span data-i18n="candidateEducation">Education and courses</span><textarea id="candidateEducation" rows="7"></textarea></label>
-      </div>
-      <div class="grid">
-        <label><span data-i18n="candidateExperience">Experience</span><textarea id="candidateExperience" rows="8"></textarea></label>
-        <label><span data-i18n="candidateProjects">Projects</span><textarea id="candidateProjects" rows="8"></textarea></label>
-      </div>
-      <label><span data-i18n="candidateResumeText">Imported resume/source text</span><textarea id="candidateResumeText" rows="9" readonly></textarea></label>
-      <p class="hint"><span data-i18n="candidateResumeSource">Imported source:</span> <code id="candidateResumeSource">—</code></p>
-      <div class="subcard confirmedFactsCard">
-        <h3 data-i18n="confirmedFactsTitle">Confirmed facts</h3>
-        <p class="hint" data-i18n="confirmedFactsDescription">Enter one fact per line. The future assistant may use only facts explicitly marked as confirmed.</p>
-        <textarea id="candidateFacts" rows="9" placeholder="I built Work Time Calculator from scratch.&#10;I use Kotlin and Jetpack Compose.&#10;I have published applications in Google Play."></textarea>
-        <div class="grid">
-          <label class="check"><input id="candidateFactsConfirmed" type="checkbox" /> <span data-i18n="confirmedFactsCheckbox">I confirm that these facts are accurate</span></label>
-          <label class="check"><input id="candidateFactsLocked" type="checkbox" /> <span data-i18n="lockedFactsCheckbox">Lock these facts against automatic rewriting</span></label>
+    </section>
+
+    <section class="card navigationCard answerLibraryCard">
+      <div class="navigationCardHeader">
+        <div>
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="answerLibraryTitle">Answer Library</h2>
+          <p class="hint" data-i18n="answerLibraryDescription">Store reviewed interview answers separately from translation controls.</p>
         </div>
+        <button id="openAnswerLibrary" type="button" data-i18n="openAnswerLibrary">Open Answer Library</button>
       </div>
-      <p class="hint" data-i18n="candidateImportHint">Stage 3 imports JSON, TXT and MD. TXT/MD content is loaded for review; facts are never generated automatically.</p>
-      <div class="buttons">
-        <button id="saveCandidateProfile" type="button" data-i18n="saveCandidateProfile">Save candidate profile</button>
-        <button id="importCandidateProfile" type="button" class="secondary" data-i18n="importCandidateProfile">Import profile / resume text</button>
-        <button id="exportCandidateProfile" type="button" class="secondary" data-i18n="exportCandidateProfile">Export JSON</button>
-        <button id="resetCandidateProfile" type="button" class="danger" data-i18n="resetCandidateProfile">Clear local profile</button>
+      <div class="profileStatus" role="status">
+        <span id="answerLibraryDot" class="dot"></span>
+        <strong id="answerLibraryStatusText" data-i18n="answerLibraryNotLoaded">Answer Library: not loaded</strong>
+        <small id="answerLibraryPath"></small>
+      </div>
+      <div class="summaryChips">
+        <span id="answerLibraryCount" class="summaryChip" data-i18n="answerLibraryEmpty">No saved answers</span>
+        <span id="answerLibraryLockedCount" class="summaryChip" data-i18n="answerLibraryNoLocked">No locked answers</span>
       </div>
     </section>
 
@@ -211,6 +209,146 @@
     <section class="card">
       <h2 data-i18n="log">Log</h2>
       <pre id="log"></pre>
+    </section>
+    </section>
+
+    <section id="candidateProfileScreen" class="appView focusedView" data-view="candidate-profile" hidden>
+      <div class="screenToolbar">
+        <button id="backFromCandidateProfile" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="candidateProfileScreenTitle">Candidate profile</h2>
+          <p data-i18n="candidateProfileDescription">This local profile is the only factual basis for future interview suggestions. Nothing is sent automatically.</p>
+        </div>
+        <button id="saveCandidateProfileTop" type="button" data-i18n="saveCandidateProfile">Save candidate profile</button>
+      </div>
+
+      <div id="candidateProfileScreenStatus" class="profileStatus screenStatus" role="status">
+        <span id="candidateProfileScreenDot" class="dot"></span>
+        <strong id="candidateProfileScreenStatusText" data-i18n="candidateProfileNotLoaded">Candidate profile: not loaded</strong>
+        <small id="candidateProfileScreenPath"></small>
+      </div>
+      <div id="candidateProfileDirtyBanner" class="dirtyBanner" hidden data-i18n="unsavedProfileChanges">There are unsaved profile changes.</div>
+
+      <details class="editorSection" open>
+        <summary data-i18n="profileBasicSection">Basic information</summary>
+        <div class="sectionBody">
+          <div class="grid">
+            <label><span data-i18n="candidateFullName">Full name</span><input id="candidateFullName" autocomplete="name" /></label>
+            <label><span data-i18n="candidateTargetRole">Target role</span><input id="candidateTargetRole" placeholder="Android Developer / Flutter Developer" /></label>
+            <label><span data-i18n="candidateLocation">Location</span><input id="candidateLocation" placeholder="Poznań, Poland" /></label>
+            <label><span data-i18n="candidateLanguages">Languages, one per line</span><textarea id="candidateLanguages" rows="4" placeholder="Russian — native&#10;Polish — working proficiency&#10;English — B1"></textarea></label>
+          </div>
+          <label><span data-i18n="candidateSummary">Professional summary</span><textarea id="candidateSummary" rows="5"></textarea></label>
+        </div>
+      </details>
+
+      <details class="editorSection" open>
+        <summary data-i18n="profileSkillsEducationSection">Skills and education</summary>
+        <div class="sectionBody grid">
+          <label><span data-i18n="candidateSkills">Skills, one per line</span><textarea id="candidateSkills" rows="9"></textarea></label>
+          <label><span data-i18n="candidateEducation">Education and courses</span><textarea id="candidateEducation" rows="9"></textarea></label>
+        </div>
+      </details>
+
+      <details class="editorSection" open>
+        <summary data-i18n="profileExperienceProjectsSection">Experience and projects</summary>
+        <div class="sectionBody grid">
+          <label><span data-i18n="candidateExperience">Experience</span><textarea id="candidateExperience" rows="11"></textarea></label>
+          <label><span data-i18n="candidateProjects">Projects</span><textarea id="candidateProjects" rows="11"></textarea></label>
+        </div>
+      </details>
+
+      <details class="editorSection">
+        <summary data-i18n="profileImportedSourceSection">Imported resume source</summary>
+        <div class="sectionBody">
+          <label><span data-i18n="candidateResumeText">Imported resume/source text</span><textarea id="candidateResumeText" rows="12" readonly></textarea></label>
+          <p class="hint"><span data-i18n="candidateResumeSource">Imported source:</span> <code id="candidateResumeSource">—</code></p>
+        </div>
+      </details>
+
+      <details class="editorSection confirmedFactsCard" open>
+        <summary data-i18n="confirmedFactsTitle">Confirmed facts</summary>
+        <div class="sectionBody">
+          <p class="hint" data-i18n="confirmedFactsDescription">Enter one fact per line. The future assistant may use only facts explicitly marked as confirmed.</p>
+          <textarea id="candidateFacts" rows="12" placeholder="I built Work Time Calculator from scratch.&#10;I use Kotlin and Jetpack Compose.&#10;I have published applications in Google Play."></textarea>
+          <div class="grid">
+            <label class="check"><input id="candidateFactsConfirmed" type="checkbox" /> <span data-i18n="confirmedFactsCheckbox">I confirm that these facts are accurate</span></label>
+            <label class="check"><input id="candidateFactsLocked" type="checkbox" /> <span data-i18n="lockedFactsCheckbox">Lock these facts against automatic rewriting</span></label>
+          </div>
+        </div>
+      </details>
+
+      <p class="hint" data-i18n="candidateImportHint">Stage 3 imports JSON, TXT and MD. TXT/MD content is loaded for review; facts are never generated automatically.</p>
+      <div class="buttons screenActions">
+        <button id="saveCandidateProfile" type="button" data-i18n="saveCandidateProfile">Save candidate profile</button>
+        <button id="importCandidateProfile" type="button" class="secondary" data-i18n="importCandidateProfile">Import profile / resume text</button>
+        <button id="exportCandidateProfile" type="button" class="secondary" data-i18n="exportCandidateProfile">Export JSON</button>
+        <button id="resetCandidateProfile" type="button" class="danger" data-i18n="resetCandidateProfile">Clear local profile</button>
+      </div>
+    </section>
+
+    <section id="answerLibraryScreen" class="appView focusedView" data-view="answer-library" hidden>
+      <div class="screenToolbar">
+        <button id="backFromAnswerLibrary" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="answerLibraryTitle">Answer Library</h2>
+          <p data-i18n="answerLibraryScreenDescription">Create and lock reviewed answers. Stage 4 stores them locally and does not generate or send them automatically.</p>
+        </div>
+        <button id="newAnswerEntry" type="button" class="secondary" data-i18n="newAnswer">New answer</button>
+      </div>
+
+      <div class="answerWorkspace">
+        <aside class="answerSidebar">
+          <div class="sidebarHeader">
+            <strong data-i18n="savedAnswers">Saved answers</strong>
+            <span id="answerLibraryScreenCount">0</span>
+          </div>
+          <div id="answerEntryList" class="answerEntryList"></div>
+          <p id="answerEmptyState" class="emptyState" data-i18n="answerLibraryEmpty">No saved answers</p>
+          <div class="buttons verticalButtons">
+            <button id="importAnswerLibrary" type="button" class="secondary" data-i18n="importAnswerLibrary">Import JSON</button>
+            <button id="exportAnswerLibrary" type="button" class="secondary" data-i18n="exportAnswerLibrary">Export JSON</button>
+            <button id="resetAnswerLibrary" type="button" class="danger" data-i18n="resetAnswerLibrary">Clear library</button>
+          </div>
+        </aside>
+
+        <div class="answerEditor">
+          <div id="answerLibraryDirtyBanner" class="dirtyBanner" hidden data-i18n="unsavedAnswerChanges">There are unsaved answer changes.</div>
+          <input id="answerEntryId" type="hidden" />
+          <label><span data-i18n="answerQuestion">Interview question</span><textarea id="answerQuestion" rows="3" placeholder="Tell me about yourself"></textarea></label>
+          <div class="grid threeColumns">
+            <label><span data-i18n="answerIntent">Intent / category</span><input id="answerIntent" placeholder="introduction / experience / conflict" /></label>
+            <label><span data-i18n="answerLevel">English level</span>
+              <select id="answerLevel">
+                <option value="A2">A2</option>
+                <option value="B1" selected>B1</option>
+                <option value="B2">B2</option>
+              </select>
+            </label>
+            <label><span data-i18n="answerStyle">Answer style</span>
+              <select id="answerStyle">
+                <option value="simple" data-i18n="answerStyleSimple">Simple</option>
+                <option value="technical" data-i18n="answerStyleTechnical">Technical</option>
+                <option value="star" data-i18n="answerStyleStar">STAR</option>
+                <option value="general" data-i18n="answerStyleGeneral">General</option>
+              </select>
+            </label>
+          </div>
+          <label><span data-i18n="answerText">Prepared answer</span><textarea id="answerText" rows="12"></textarea></label>
+          <label><span data-i18n="answerFirstSentence">First sentence / speaking start</span><textarea id="answerFirstSentence" rows="2"></textarea></label>
+          <div class="grid">
+            <label><span data-i18n="answerKeywords">Keywords, one per line</span><textarea id="answerKeywords" rows="7"></textarea></label>
+            <label><span data-i18n="answerGroundingFacts">Confirmed facts used, one per line</span><textarea id="answerGroundingFacts" rows="7"></textarea></label>
+          </div>
+          <label class="check"><input id="answerLocked" type="checkbox" /> <span data-i18n="answerLocked">Lock this reviewed answer against automatic rewriting</span></label>
+          <div class="buttons screenActions">
+            <button id="saveAnswerEntry" type="button" data-i18n="saveAnswer">Save answer</button>
+            <button id="deleteAnswerEntry" type="button" class="danger" data-i18n="deleteAnswer">Delete answer</button>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
   <script src="i18n.js"></script>
