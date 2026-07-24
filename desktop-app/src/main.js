@@ -4,6 +4,10 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const { spawn, execFile } = require('child_process');
+const { createConfigStore, boolFromEnv, intFromEnv, floatFromEnv } = require('./main/config-store');
+const { SessionStateMachine, SESSION_STATES } = require('./main/session-state');
+const { createWindowManager } = require('./main/window-manager');
+const { ExtensionClientRegistry, ExtensionCommandCoordinator } = require('./main/extension-state');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('local.meet.translator.desktop');
@@ -17,17 +21,17 @@ const userConfigDir = path.join(app.getPath('appData'), 'Local Meet Translator')
 const envPath = path.join(userConfigDir, '.env');
 const legacyEnvPath = path.join(repoRoot, '.env');
 const extensionPath = isPackaged ? path.join(repoRoot, 'browser-extensions') : repoRoot;
-let mainWindow;
+const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPath });
+const { loadSettings, saveSettings, migrateLegacyEnvIfNeeded, getSystemLanguageCode } = configStore;
+const translationSession = new SessionStateMachine({ mode: 'translator' });
+let windowManager;
 let bridgeProc = null;
 let voiceProc = null;
 let configServer = null;
 let appClosing = false;
-let extensionCommandSeq = 0;
 const desktopSessionId = crypto.randomBytes(12).toString('hex');
-let extensionCommand = { seq: 0, sessionId: desktopSessionId, action: 'idle', issuedAt: 0 };
-const extensionClients = new Map();
-let lastExtensionAck = null;
-let activeExtensionClientId = '';
+const extensionCommandCoordinator = new ExtensionCommandCoordinator({ sessionId: desktopSessionId });
+const extensionClientRegistry = new ExtensionClientRegistry();
 const extensionClientLogState = new Map();
 const deliveredCommandLogKeys = new Set();
 const ALLOWED_EXTENSION_ORIGIN_RE = /^(moz-extension|chrome-extension|edge-extension):\/\/[a-z0-9-]+$/i;
@@ -35,206 +39,11 @@ const ALLOWED_EXTENSION_ORIGIN_RE = /^(moz-extension|chrome-extension|edge-exten
 function sendLog(line) {
   const msg = `[${new Date().toISOString().replace('T', ' ').replace('Z', '')}] ${line}`;
   try {
-    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents || mainWindow.webContents.isDestroyed()) return;
-    mainWindow.webContents.send('app:log', msg);
+    if (!windowManager) return;
+    windowManager.send('app:log', msg);
   } catch (_) {
     // Window is already closing/destroyed. Logging must never crash the app.
   }
-}
-function parseDotEnv(text) {
-  const out = {};
-  for (const raw of String(text || '').split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
-    const idx = line.indexOf('=');
-    if (idx < 1) continue;
-    const k = line.slice(0, idx).trim();
-    let v = line.slice(idx + 1).trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-      const quote = v[0];
-      v = v.slice(1, -1);
-      if (quote === '"') {
-        v = v
-          .replace(/\\n/g, '\n')
-          .replace(/\\r/g, '\r')
-          .replace(/\\"/g, '"')
-          .replace(/\\\\/g, '\\');
-      }
-    }
-    out[k] = v;
-  }
-  return out;
-}
-function renderDotEnv(obj) {
-  const order = ['OPENAI_API_KEY','LOCAL_MEET_TRANSLATOR_PORT','LOCAL_MEET_TRANSLATOR_TOKEN','DESKTOP_EXTENSION_TOKEN','DESKTOP_EXTENSION_PAIRING_CODE','OPENAI_TRANSCRIBE_MODEL','OPENAI_TEXT_MODEL','ENABLE_TTS','OPENAI_TTS_MODEL','OPENAI_TTS_VOICE','OPENAI_TTS_FORMAT','OPENAI_TTS_SPEED','ENABLE_VOICE_CONVERSION','VOICE_CONVERSION_URL','VOICE_CONVERSION_TOKEN','VOICE_CONVERSION_FALLBACK_TO_ORIGINAL','VOICE_CONVERSION_TIMEOUT_MS','EXT_SOURCE_LANG','EXT_TARGET_LANG','EXT_CHUNK_SECONDS','EXT_AUDIO_ISOLATION_MODE','EXT_TTS_ENABLED','EXT_TTS_VOICE','EXT_TTS_SPEED','EXT_MIC_TX_ENABLED','EXT_MIC_TX_SOURCE_LANG','EXT_MIC_TX_TARGET_LANG','EXT_MIC_TX_CHUNK_SECONDS','EXT_MIC_DEVICE_ID','EXT_MIC_DEVICE_NAME','EXT_TTS_SINK_DEVICE_ID','EXT_TTS_SINK_DEVICE_NAME','EXT_OUT_VOICE_STYLE','EXT_RVC_MODEL_TAG','EXT_SHOW_OUTGOING_SUBTITLES','VOICE_CONVERSION_HOST','VOICE_CONVERSION_PORT','RVC_INFER_CMD','RVC_INFER_TIMEOUT_SEC'];
-  const lines = ['# Local Meet Translator desktop-generated config. Do not commit this file.'];
-  const used = new Set();
-  const formatValue = (value) => {
-    const s = String(value ?? '');
-    if (s === '') return '';
-    if (/[\r\n"\\#:=\s]/.test(s)) {
-      return `"${s.replace(/\\/g, '\\\\').replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/"/g, '\\"')}"`;
-    }
-    return s;
-  };
-  for (const k of order) { if (obj[k] !== undefined) { lines.push(`${k}=${formatValue(obj[k])}`); used.add(k); } }
-  for (const [k,v] of Object.entries(obj)) {
-    if (k.startsWith('__')) continue;
-    if (!used.has(k)) lines.push(`${k}=${formatValue(v)}`);
-  }
-  return lines.join('\n') + '\n';
-}
-
-function generatePairingCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const groups = [];
-  for (let g = 0; g < 3; g += 1) {
-    let part = '';
-    for (let i = 0; i < 4; i += 1) part += alphabet[crypto.randomInt(0, alphabet.length)];
-    groups.push(part);
-  }
-  return groups.join('-');
-}
-
-function ensureUserConfigDir() {
-  fs.mkdirSync(userConfigDir, { recursive: true });
-}
-function looksLikeUsefulEnv(file) {
-  try {
-    if (!file || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return false;
-    const parsed = parseDotEnv(fs.readFileSync(file, 'utf8'));
-    return !!(parsed.OPENAI_API_KEY || parsed.LOCAL_MEET_TRANSLATOR_TOKEN || parsed.LOCAL_MEET_TRANSLATOR_PORT);
-  } catch (_) {
-    return false;
-  }
-}
-function findLegacyEnvCandidates() {
-  const candidates = [];
-  const add = (file) => {
-    if (file && !candidates.includes(file)) candidates.push(file);
-  };
-
-  add(legacyEnvPath);
-  add(path.join(process.resourcesPath || '', '.env'));
-
-  const home = app.getPath('home');
-  const androidStudioProjects = path.join(home, 'AndroidStudioProjects');
-  add(path.join(androidStudioProjects, 'local-meet-translator-desktop-package', '.env'));
-  add(path.join(androidStudioProjects, 'local-meet-translator-desktop-command-echo-fix', 'local-meet-translator-desktop-package', '.env'));
-
-  try {
-    if (fs.existsSync(androidStudioProjects)) {
-      for (const name of fs.readdirSync(androidStudioProjects)) {
-        if (!name.toLowerCase().startsWith('local-meet-translator')) continue;
-        const dir = path.join(androidStudioProjects, name);
-        add(path.join(dir, '.env'));
-        add(path.join(dir, 'local-meet-translator-desktop-package', '.env'));
-      }
-    }
-  } catch (_) {}
-  return candidates;
-}
-function migrateLegacyEnvIfNeeded() {
-  ensureUserConfigDir();
-  if (looksLikeUsefulEnv(envPath)) return { migrated: false, source: null };
-  for (const candidate of findLegacyEnvCandidates()) {
-    if (path.resolve(candidate) === path.resolve(envPath)) continue;
-    if (!looksLikeUsefulEnv(candidate)) continue;
-    fs.copyFileSync(candidate, envPath);
-    try { fs.chmodSync(envPath, 0o600); } catch (_) {}
-    return { migrated: true, source: candidate };
-  }
-  return { migrated: false, source: null };
-}
-
-function getSystemLanguageCode() {
-  const supported = new Set(['ru', 'pl', 'de', 'es', 'it']);
-  let raw = 'en';
-  try { raw = app.getLocale && app.getLocale() || raw; } catch (_) {}
-  raw = String(raw || process.env.LANG || process.env.LANGUAGE || 'en').toLowerCase();
-  const code = raw.split(/[_.-]/)[0];
-  return supported.has(code) ? code : 'en';
-}
-
-function loadSettings() {
-  migrateLegacyEnvIfNeeded();
-  let s = {};
-  if (fs.existsSync(envPath)) s = parseDotEnv(fs.readFileSync(envPath, 'utf8'));
-  let generatedSecurityValues = false;
-  s.OPENAI_API_KEY ||= '';
-  s.LOCAL_MEET_TRANSLATOR_PORT ||= '8799';
-  if (!s.LOCAL_MEET_TRANSLATOR_TOKEN) {
-    s.LOCAL_MEET_TRANSLATOR_TOKEN = crypto.randomBytes(24).toString('hex');
-    generatedSecurityValues = true;
-  }
-  if (!s.DESKTOP_EXTENSION_TOKEN) {
-    s.DESKTOP_EXTENSION_TOKEN = crypto.randomBytes(24).toString('hex');
-    generatedSecurityValues = true;
-  }
-  if (!s.DESKTOP_EXTENSION_PAIRING_CODE) {
-    s.DESKTOP_EXTENSION_PAIRING_CODE = generatePairingCode();
-    generatedSecurityValues = true;
-  }
-  s.OPENAI_TRANSCRIBE_MODEL ||= 'whisper-1';
-  s.OPENAI_TEXT_MODEL ||= 'gpt-4o-mini';
-  s.ENABLE_TTS ||= 'true';
-  s.OPENAI_TTS_MODEL ||= 'gpt-4o-mini-tts';
-  s.OPENAI_TTS_VOICE ||= 'onyx';
-  s.OPENAI_TTS_FORMAT ||= 'mp3';
-  s.OPENAI_TTS_SPEED ||= '1.0';
-  s.ENABLE_VOICE_CONVERSION ||= 'false';
-  s.VOICE_CONVERSION_HOST ||= '127.0.0.1';
-  s.VOICE_CONVERSION_PORT ||= '18799';
-  s.VOICE_CONVERSION_URL ||= `http://127.0.0.1:${s.VOICE_CONVERSION_PORT}`;
-  s.VOICE_CONVERSION_TOKEN ||= '';
-  s.VOICE_CONVERSION_FALLBACK_TO_ORIGINAL ||= 'true';
-  s.VOICE_CONVERSION_TIMEOUT_MS ||= '180000';
-  s.RVC_INFER_CMD ||= '';
-  s.RVC_INFER_TIMEOUT_SEC ||= '180';
-  s.EXT_SOURCE_LANG ||= 'auto';
-  s.EXT_TARGET_LANG ||= getSystemLanguageCode();
-  if (!s.EXT_CHUNK_SECONDS || s.EXT_CHUNK_SECONDS === '5') s.EXT_CHUNK_SECONDS = '3';
-  s.EXT_AUDIO_ISOLATION_MODE ||= 'true';
-  s.EXT_TTS_ENABLED ||= 'false';
-  s.EXT_TTS_VOICE ||= 'onyx';
-  s.EXT_TTS_SPEED ||= '1.0';
-  s.EXT_MIC_TX_ENABLED ||= 'false';
-  s.EXT_MIC_TX_SOURCE_LANG ||= getSystemLanguageCode();
-  s.EXT_MIC_TX_TARGET_LANG ||= 'en';
-  s.EXT_MIC_TX_CHUNK_SECONDS ||= '5';
-  s.EXT_MIC_DEVICE_ID ||= '';
-  s.EXT_MIC_DEVICE_NAME ||= '';
-  s.EXT_TTS_SINK_DEVICE_ID ||= '';
-  s.EXT_TTS_SINK_DEVICE_NAME ||= '';
-  // Safe default for meeting voice: try VB-Cable by name instead of playing translated voice into speakers.
-  if (s.EXT_MIC_TX_ENABLED === 'true' && !s.EXT_TTS_SINK_DEVICE_ID && !s.EXT_TTS_SINK_DEVICE_NAME) s.EXT_TTS_SINK_DEVICE_NAME = 'CABLE Input';
-  if (boolFromEnv(s.EXT_AUDIO_ISOLATION_MODE, true)) {
-    s.EXT_TTS_ENABLED = 'false';
-    if (s.EXT_MIC_TX_ENABLED === 'true' && !s.EXT_TTS_SINK_DEVICE_NAME) s.EXT_TTS_SINK_DEVICE_NAME = 'CABLE Input';
-  }
-  s.EXT_OUT_VOICE_STYLE ||= 'openai';
-  s.EXT_RVC_MODEL_TAG ||= '';
-  s.EXT_SHOW_OUTGOING_SUBTITLES ||= 'false';
-  Object.defineProperties(s, {
-    __ENV_PATH: { value: envPath, enumerable: false, configurable: false, writable: false },
-    __CONFIG_DIR: { value: userConfigDir, enumerable: false, configurable: false, writable: false }
-  });
-  if (generatedSecurityValues) {
-    try {
-      ensureUserConfigDir();
-      fs.writeFileSync(envPath, renderDotEnv(s), { mode: 0o600 });
-    } catch (_) {}
-  }
-  return s;
-}
-function saveSettings(next) {
-  ensureUserConfigDir();
-  const merged = { ...loadSettings(), ...next };
-  if (!merged.LOCAL_MEET_TRANSLATOR_TOKEN) merged.LOCAL_MEET_TRANSLATOR_TOKEN = crypto.randomBytes(24).toString('hex');
-  if (!merged.DESKTOP_EXTENSION_TOKEN) merged.DESKTOP_EXTENSION_TOKEN = crypto.randomBytes(24).toString('hex');
-  if (!merged.DESKTOP_EXTENSION_PAIRING_CODE) merged.DESKTOP_EXTENSION_PAIRING_CODE = generatePairingCode();
-  fs.writeFileSync(envPath, renderDotEnv(merged), { mode: 0o600 });
-  return merged;
 }
 function requestJson(url, token) {
   return new Promise(resolve => {
@@ -323,22 +132,6 @@ function writeJsonResponse(res, status, obj) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(obj));
 }
-function boolFromEnv(value, fallback = false) {
-  const v = String(value ?? '').trim().toLowerCase();
-  if (['1', 'true', 'yes', 'on'].includes(v)) return true;
-  if (['0', 'false', 'no', 'off'].includes(v)) return false;
-  return fallback;
-}
-function intFromEnv(value, fallback, min, max) {
-  const n = parseInt(String(value ?? ''), 10);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, n));
-}
-function floatFromEnv(value, fallback, min, max) {
-  const n = parseFloat(String(value ?? ''));
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, n));
-}
 function getExtensionConfig() {
   const s = loadSettings();
   return {
@@ -403,86 +196,31 @@ function requireExtensionToken(req, res, expectedToken) {
   }
   return true;
 }
-function chooseExtensionClient() {
-  const clients = getRecentExtensionClients();
-  clients.sort((a, b) =>
-    Number(b.id === activeExtensionClientId) - Number(a.id === activeExtensionClientId)
-    || (b.armedAt || 0) - (a.armedAt || 0)
-    || Number(!!b.visible) - Number(!!a.visible)
-    || (b.lastVisibleAt || 0) - (a.lastVisibleAt || 0)
-    || b.lastSeen - a.lastSeen
-  );
-  return clients[0] || null;
-}
+function chooseExtensionClient() { return extensionClientRegistry.choose(); }
 function issueExtensionCommand(action, selectedClient = null, overrides = {}) {
-  const preferred = selectedClient || (action === 'stop' && activeExtensionClientId
-    ? extensionClients.get(activeExtensionClientId)
-    : chooseExtensionClient());
-  extensionCommandSeq += 1;
-  lastExtensionAck = null;
-  extensionCommand = {
-    seq: extensionCommandSeq,
-    sessionId: desktopSessionId,
-    action,
-    issuedAt: Date.now(),
-    targetClientId: preferred ? preferred.id : '',
-    targetUrl: preferred ? preferred.url : '',
-    ...getExtensionConfig(),
-    ...(overrides || {})
-  };
-  const modeText = extensionCommand.micTxEnabled ? ' voice=ON' : ' voice=OFF';
-  sendLog(`Extension command queued: ${action} #${extensionCommand.seq}${preferred ? ` for ${preferred.url}` : ''}${modeText}`);
+  const activeClient = extensionClientRegistry.getActive();
+  const preferred = selectedClient || (action === 'stop' && activeClient ? activeClient : chooseExtensionClient());
+  const command = extensionCommandCoordinator.issue(action, preferred, getExtensionConfig(), overrides || {});
+  const modeText = command.micTxEnabled ? ' voice=ON' : ' voice=OFF';
+  sendLog(`Extension command queued: ${action} #${command.seq}${preferred ? ` for ${preferred.url}` : ''}${modeText}`);
   setTimeout(() => {
-    if (extensionCommand.seq !== extensionCommandSeq || extensionCommand.action !== action) return;
-    if (lastExtensionAck && lastExtensionAck.seq === extensionCommand.seq) return;
+    const snapshot = extensionCommandCoordinator.snapshot();
+    if (snapshot.command.seq !== command.seq || snapshot.command.action !== action) return;
+    if (snapshot.lastAck && snapshot.lastAck.seq === command.seq) return;
     const clients = getRecentExtensionClients();
     if (!clients.length) {
-      sendLog(`Extension command #${extensionCommand.seq} was not picked up. Reload the Meet/Zoom/Teams tab after reloading the extension; the browser extension background page is not polling http://127.0.0.1:18798 yet.`);
+      sendLog(`Extension command #${command.seq} was not picked up. Reload the Meet/Zoom/Teams tab after reloading the extension; the browser extension background page is not polling http://127.0.0.1:18798 yet.`);
     } else {
-      sendLog(`Extension command #${extensionCommand.seq} has no ACK yet. Connected meeting tab(s): ${clients.map(c => c.url).join(' | ')}`);
+      sendLog(`Extension command #${command.seq} has no ACK yet. Connected meeting tab(s): ${clients.map(c => c.url).join(' | ')}`);
     }
   }, 3500);
-  return extensionCommand;
+  return command;
 }
 function waitForExtensionAck(seq, timeoutMs = 22000) {
-  return new Promise(resolve => {
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      if (lastExtensionAck && lastExtensionAck.seq === seq) {
-        clearInterval(timer);
-        resolve(lastExtensionAck);
-      } else if (Date.now() - startedAt >= timeoutMs) {
-        clearInterval(timer);
-        resolve(null);
-      }
-    }, 100);
-  });
+  return extensionCommandCoordinator.waitForAck(seq, timeoutMs);
 }
-function rememberExtensionClient({ clientId, url, visible, armed = false }) {
-  const id = String(clientId || '').trim();
-  const clean = String(url || '').trim();
-  if (!id || !clean) return null;
-  const now = Date.now();
-  const prev = extensionClients.get(id);
-  const client = {
-    id,
-    url: clean.slice(0, 500),
-    visible: !!visible,
-    lastSeen: now,
-    firstSeen: prev ? prev.firstSeen : now,
-    lastVisibleAt: visible ? now : (prev ? prev.lastVisibleAt : 0),
-    armedAt: armed ? now : (prev ? prev.armedAt : 0)
-  };
-  extensionClients.set(id, client);
-  return client;
-}
-function getRecentExtensionClients(maxAgeMs = 120000) {
-  const now = Date.now();
-  for (const [key, client] of extensionClients) {
-    if (now - client.lastSeen > 5 * 60 * 1000) extensionClients.delete(key);
-  }
-  return Array.from(extensionClients.values()).filter(c => now - c.lastSeen <= maxAgeMs);
-}
+function rememberExtensionClient(client) { return extensionClientRegistry.remember(client); }
+function getRecentExtensionClients(maxAgeMs = 120000) { return extensionClientRegistry.recent(maxAgeMs); }
 function startConfigServer() {
   if (configServer) return;
   configServer = http.createServer((req, res) => {
@@ -517,7 +255,8 @@ function startConfigServer() {
 
     if (url.pathname === '/health') {
       if (!requireExtensionToken(req, res, extensionToken)) return;
-      writeJsonResponse(res, 200, { ok:true, service:'local-meet-translator-desktop', sessionId: desktopSessionId, commandSeq: extensionCommand.seq, command: extensionCommand.action });
+      const command = extensionCommandCoordinator.snapshot().command;
+      writeJsonResponse(res, 200, { ok:true, service:'local-meet-translator-desktop', sessionId: desktopSessionId, commandSeq: command.seq, command: command.action });
       return;
     }
 
@@ -573,7 +312,7 @@ function startConfigServer() {
           armed: true
         });
         if (client) {
-          activeExtensionClientId = client.id;
+          extensionClientRegistry.markActive(client.id);
           const previousLog = extensionClientLogState.get(client.id) || { url:'', at:0 };
           const now = Date.now();
           if (previousLog.url !== client.url || now - previousLog.at >= 30000) {
@@ -597,21 +336,22 @@ function startConfigServer() {
       const lastSeqRaw = Number(url.searchParams.get('lastSeq') || '0');
       const clientSessionId = String(url.searchParams.get('sessionId') || '');
       const lastSeq = clientSessionId === desktopSessionId ? lastSeqRaw : 0;
-      const ageMs = Date.now() - (extensionCommand.issuedAt || 0);
-      const targetClientId = String(extensionCommand.targetClientId || '');
-      const targetUrl = String(extensionCommand.targetUrl || '');
+      const currentCommand = extensionCommandCoordinator.snapshot().command;
+      const ageMs = Date.now() - (currentCommand.issuedAt || 0);
+      const targetClientId = String(currentCommand.targetClientId || '');
+      const targetUrl = String(currentCommand.targetUrl || '');
       const clientUrl = String(url.searchParams.get('url') || '');
       const sameUrl = !!targetUrl && !!clientUrl && targetUrl === clientUrl;
       // Be tolerant here. Some browsers/content scripts can re-create client IDs after
       // reloads, while the visible meeting tab is still the correct target. If a command
       // is queued and the polling tab is the selected URL (or no target is set), deliver it.
       const intendedClient = !targetClientId || (!!clientId && clientId === targetClientId) || sameUrl;
-      const active = intendedClient && extensionCommand.seq > lastSeq && extensionCommand.action !== 'idle' && ageMs < 10 * 60 * 1000;
+      const active = intendedClient && currentCommand.seq > lastSeq && currentCommand.action !== 'idle' && ageMs < 10 * 60 * 1000;
       if (active) {
-        const deliveryKey = `${desktopSessionId}:${extensionCommand.seq}:${clientId || clientUrl}`;
+        const deliveryKey = `${desktopSessionId}:${currentCommand.seq}:${clientId || clientUrl}`;
         if (!deliveredCommandLogKeys.has(deliveryKey)) {
           deliveredCommandLogKeys.add(deliveryKey);
-          sendLog(`Extension command delivered: ${extensionCommand.action} #${extensionCommand.seq} voice=${extensionCommand.micTxEnabled ? 'ON' : 'OFF'} to ${clientUrl || clientId || 'meeting tab'}`);
+          sendLog(`Extension command delivered: ${currentCommand.action} #${currentCommand.seq} voice=${currentCommand.micTxEnabled ? 'ON' : 'OFF'} to ${clientUrl || clientId || 'meeting tab'}`);
           if (deliveredCommandLogKeys.size > 200) deliveredCommandLogKeys.clear();
         }
       }
@@ -619,10 +359,10 @@ function startConfigServer() {
         ok: true,
         sessionId: desktopSessionId,
         hasCommand: active,
-        command: active ? extensionCommand : { seq: extensionCommand.seq, sessionId: desktopSessionId, action: 'idle' },
+        command: active ? currentCommand : { seq: currentCommand.seq, sessionId: desktopSessionId, action: 'idle' },
         serverUrl: `http://127.0.0.1:${settings.LOCAL_MEET_TRANSLATOR_PORT}`,
         authToken: settings.LOCAL_MEET_TRANSLATOR_TOKEN,
-        clientId: extensionCommand.targetClientId || clientId || ''
+        clientId: currentCommand.targetClientId || clientId || ''
       });
       return;
     }
@@ -640,21 +380,23 @@ function startConfigServer() {
         const text = data.message || data.error || '';
         const clientId = String(data.clientId || '');
         const sessionId = String(data.sessionId || url.searchParams.get('sessionId') || '');
-        const expectedSeq = extensionCommand.seq;
-        const expectedClient = String(extensionCommand.targetClientId || '');
-        const ackValid = seq === expectedSeq
-          && action === extensionCommand.action
-          && sessionId === desktopSessionId;
-        // Do not require an exact client-id match. The meeting content script may be
-        // reloaded or re-identified after the user reconnects the tab. The command seq
-        // and desktop session already scope this ACK to the current local desktop app.
-        if (!ackValid) {
-          writeJsonResponse(res, 400, { ok: false, error: 'ACK does not match the active command' });
+        const ackResult = extensionCommandCoordinator.acknowledge({
+          seq,
+          action,
+          ok,
+          message: text,
+          details: data.details || {},
+          clientId,
+          sessionId
+        });
+        // The command sequence and desktop session scope the ACK to the current app.
+        // Client IDs may legitimately change after a meeting-tab reload.
+        if (!ackResult.ok) {
+          writeJsonResponse(res, 400, { ok: false, error: ackResult.error });
           return;
         }
-        lastExtensionAck = { seq, action, ok, text, details: data.details || {}, clientId, sessionId, at: Date.now() };
-        if (ok && action === 'start' && clientId) activeExtensionClientId = clientId;
-        if (action === 'stop' && (!clientId || clientId === activeExtensionClientId)) activeExtensionClientId = '';
+        if (ok && action === 'start' && clientId) extensionClientRegistry.markActive(clientId);
+        if (action === 'stop') extensionClientRegistry.clearActive(clientId);
         sendLog(`Extension ${ok ? 'ACK' : 'ERROR'} for ${action} #${seq}${text ? ': ' + text : ''}`);
         writeJsonResponse(res, 200, { ok:true });
       });
@@ -674,27 +416,32 @@ function startConfigServer() {
   });
   configServer.listen(18798, '127.0.0.1', () => sendLog('Extension config/command server: http://127.0.0.1:18798'));
 }
-function createWindow() {
-  mainWindow = new BrowserWindow({ width: 1060, height: 880, webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false } });
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
-  mainWindow.on('close', (event) => {
-    if (appClosing) return;
-    appClosing = true;
-    event.preventDefault();
-    issueExtensionCommand('stop');
-    killProcessTree(bridgeProc, 'bridge');
-    killProcessTree(voiceProc, 'voice');
-    setTimeout(() => {
-      try { if (configServer) configServer.close(); } catch (_) {}
-      try { mainWindow.destroy(); } catch (_) {}
-      app.quit();
-    }, 800);
+function initializeWindowManager() {
+  windowManager = createWindowManager({
+    BrowserWindow,
+    preloadPath: path.join(__dirname, 'preload.js'),
+    htmlPath: path.join(__dirname, 'index.html'),
+    onCloseRequested: (event) => {
+      if (appClosing) return;
+      appClosing = true;
+      event.preventDefault();
+      issueExtensionCommand('stop');
+      translationSession.stop();
+      killProcessTree(bridgeProc, 'bridge');
+      killProcessTree(voiceProc, 'voice');
+      setTimeout(() => {
+        try { if (configServer) configServer.close(); } catch (_) {}
+        try { windowManager.destroyMainWindow(); } catch (_) {}
+        app.quit();
+      }, 800);
+    }
   });
+  return windowManager.createMainWindow();
 }
 app.whenReady().then(() => {
   const migration = migrateLegacyEnvIfNeeded();
   startConfigServer();
-  createWindow();
+  initializeWindowManager();
   setTimeout(() => {
     sendLog(`Config path: ${envPath}`);
     if (migration.migrated) sendLog(`Migrated legacy .env from: ${migration.source}`);
@@ -703,12 +450,15 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('before-quit', () => {
   appClosing = true;
-  try { if (mainWindow && !mainWindow.isDestroyed()) issueExtensionCommand('stop'); } catch (_) {}
+  try { if (windowManager && windowManager.getMainWindow()) issueExtensionCommand('stop'); } catch (_) {}
+  translationSession.stop();
   killProcessTree(bridgeProc, 'bridge');
   killProcessTree(voiceProc, 'voice');
   try { if (configServer) configServer.close(); } catch (_) {}
 });
 
+ipcMain.handle('app:info', () => ({ name: app.getName(), version: app.getVersion(), platform: process.platform, packaged: isPackaged }));
+ipcMain.handle('session:status', () => translationSession.snapshot());
 ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_e, settings) => ({ ok:true, settings: saveSettings(settings), message: `Saved ${envPath}` }));
 ipcMain.handle('env:open', () => { if (!fs.existsSync(envPath)) saveSettings({}); shell.openPath(envPath); return { ok:true }; });
@@ -754,24 +504,27 @@ ipcMain.handle('extension:startTranslation', async (_event, options = {}) => {
   const opts = options || {};
   const requestedMode = opts.mode === 'voice' || opts.micTxEnabled === true ? 'voice' : 'subtitles';
   sendLog(`UI requested ${requestedMode} translation.`);
+  try { translationSession.prepare(requestedMode === 'voice' ? 'live_voice_translation' : 'live_subtitles'); } catch (error) { return { ok:false, state:'invalid-state', message:error.message }; }
   const s = loadSettings();
   let b = await requestJson(`http://127.0.0.1:${s.LOCAL_MEET_TRANSLATOR_PORT}/health`, s.LOCAL_MEET_TRANSLATOR_TOKEN);
   if (!b.ok) {
     sendLog(`Bridge is not ready (${b.status || 0}: ${b.body || 'offline'}). Attempting automatic start...`);
     const started = startBridgeInternal();
     sendLog(started.message);
-    if (!started.ok) return { ok:false, state:'bridge-error', message:started.message };
+    if (!started.ok) { translationSession.markError(started.message); return { ok:false, state:'bridge-error', message:started.message }; }
     b = await waitForBridgeReady(s);
   }
   if (!b.ok) {
     const hint = b.status === 401
       ? 'Another old bridge is probably running with a different token. Close old Local Meet Translator/Java processes and try again.'
       : 'Check the bridge log and OPENAI_API_KEY.';
+    translationSession.markError(`Bridge is not ready: ${b.body || 'offline'}`);
     return { ok:false, state:'bridge-error', message:`Bridge is not ready: ${b.body || 'offline'}. ${hint}` };
   }
   const clients = getRecentExtensionClients();
   if (!clients.length) {
     sendLog('No paired Meet/Zoom/Teams background client seen yet. Pair the extension, then open the meeting tab and press Connect this meeting tab once.');
+    translationSession.markError('No meeting tab is connected.');
     return { ok:false, state:'tab-missing', message:'No meeting tab is connected. Open the extension on the active Meet/Zoom/Teams tab and click Connect this meeting tab.' };
   }
   const voiceMode = opts.mode === 'voice' || opts.micTxEnabled === true;
@@ -803,6 +556,7 @@ ipcMain.handle('extension:startTranslation', async (_event, options = {}) => {
     if (voiceMode) {
       const msg = 'The meeting tab did not confirm microphone/TTS readiness. Voice translation was not marked as running. Reopen the extension popup and check its log for a microphone or CABLE Input error.';
       sendLog(`[error] ${msg}`);
+      translationSession.markError(msg);
       return {
         ok:false,
         state:'voice-timeout',
@@ -813,15 +567,28 @@ ipcMain.handle('extension:startTranslation', async (_event, options = {}) => {
     }
     const msg = 'Subtitle command was delivered to the meeting tab, but ACK did not return. Treating it as started because the tab is connected and polling commands.';
     sendLog(`[warn] ${msg}`);
+    translationSession.transition(SESSION_STATES.LISTENING);
     return { ok:true, state:'running-unconfirmed', message:msg, details:{ ackMissing:true, incomingReady:true }, meetingUrl:target.url };
   }
-  if (!ack.ok) return { ok:false, state:'extension-error', message:ack.text || 'The browser extension could not start translation.', details:ack.details || {} };
+  if (!ack.ok) { translationSession.markError(ack.text || 'The browser extension could not start translation.'); return { ok:false, state:'extension-error', message:ack.text || 'The browser extension could not start translation.', details:ack.details || {} }; }
+  translationSession.transition(SESSION_STATES.LISTENING);
   return { ok:true, state:'running', message:ack.text || 'Translation is running.', details:ack.details || {}, meetingUrl:target.url };
 });
 ipcMain.handle('extension:stopTranslation', async () => {
-  if (!activeExtensionClientId && !chooseExtensionClient()) return { ok:true, state:'stopped', message:'Translation is already stopped.' };
+  if (!extensionClientRegistry.getActive() && !chooseExtensionClient()) {
+    translationSession.stop();
+    return { ok:true, state:'stopped', message:'Translation is already stopped.' };
+  }
+  if (![SESSION_STATES.IDLE, SESSION_STATES.COMPLETED, SESSION_STATES.STOPPING].includes(translationSession.state)) {
+    translationSession.transition(SESSION_STATES.STOPPING);
+  }
   const cmd = issueExtensionCommand('stop');
   const ack = await waitForExtensionAck(cmd.seq, 5000);
-  if (!ack) return { ok:false, state:'timeout', message:'The meeting tab did not confirm stop.' };
+  if (!ack) {
+    translationSession.markError('The meeting tab did not confirm stop.');
+    return { ok:false, state:'timeout', message:'The meeting tab did not confirm stop.' };
+  }
+  if (ack.ok) translationSession.stop();
+  else translationSession.markError(ack.text || 'Could not stop translation.');
   return { ok:ack.ok, state:ack.ok ? 'stopped' : 'extension-error', message:ack.text || (ack.ok ? 'Translation stopped.' : 'Could not stop translation.') };
 });

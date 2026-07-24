@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('lmt', {
+  appInfo: () => ipcRenderer.invoke('app:info'),
+  sessionStatus: () => ipcRenderer.invoke('session:status'),
   load: () => ipcRenderer.invoke('settings:load'),
   save: (settings) => ipcRenderer.invoke('settings:save', settings),
   startBridge: () => ipcRenderer.invoke('bridge:start'),

@@ -1,0 +1,64 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const {
+  parseDotEnv,
+  renderDotEnv,
+  createConfigStore,
+  boolFromEnv,
+  intFromEnv,
+  floatFromEnv
+} = require('../src/main/config-store');
+
+test('dotenv parser and renderer preserve escaped values', () => {
+  const rendered = renderDotEnv({ OPENAI_API_KEY: 'key with spaces', CUSTOM: 'line1\nline2' });
+  const parsed = parseDotEnv(rendered);
+  assert.equal(parsed.OPENAI_API_KEY, 'key with spaces');
+  assert.equal(parsed.CUSTOM, 'line1\nline2');
+});
+
+test('environment value helpers clamp and use fallback safely', () => {
+  assert.equal(boolFromEnv('YES', false), true);
+  assert.equal(boolFromEnv('unknown', false), false);
+  assert.equal(intFromEnv('20', 3, 2, 15), 15);
+  assert.equal(floatFromEnv('0.1', 1, 0.25, 4), 0.25);
+});
+
+test('config store generates security values and writes atomically', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'lmt-config-test-'));
+  try {
+    const home = path.join(temp, 'home');
+    const userConfigDir = path.join(temp, 'appdata', 'Local Meet Translator');
+    const envPath = path.join(userConfigDir, '.env');
+    const repoRoot = path.join(temp, 'repo');
+    fs.mkdirSync(home, { recursive: true });
+    fs.mkdirSync(repoRoot, { recursive: true });
+    const app = {
+      getPath(name) {
+        if (name === 'home') return home;
+        throw new Error(`Unexpected path: ${name}`);
+      },
+      getLocale() { return 'ru-RU'; }
+    };
+    const store = createConfigStore({
+      app,
+      repoRoot,
+      userConfigDir,
+      envPath,
+      legacyEnvPath: path.join(repoRoot, '.env')
+    });
+    const initial = store.loadSettings();
+    assert.equal(initial.EXT_TARGET_LANG, 'ru');
+    assert.match(initial.LOCAL_MEET_TRANSLATOR_TOKEN, /^[a-f0-9]{48}$/);
+    assert.match(initial.DESKTOP_EXTENSION_PAIRING_CODE, /^[A-Z2-9]{4}(?:-[A-Z2-9]{4}){2}$/);
+    assert.ok(fs.existsSync(envPath));
+
+    const saved = store.saveSettings({ OPENAI_API_KEY: 'test-key' });
+    assert.equal(saved.OPENAI_API_KEY, 'test-key');
+    assert.equal(fs.readdirSync(userConfigDir).filter((name) => name.endsWith('.tmp')).length, 0);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});

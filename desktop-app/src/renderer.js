@@ -146,6 +146,18 @@ try {
 window.addEventListener('error', (event) => {
   log(`[RENDERER ERROR] ${event.message || 'Unknown error'}`);
 });
+async function loadAppInfo() {
+  try {
+    const info = await window.lmt.appInfo();
+    const version = String(info?.version || '').trim();
+    const versionElement = $('appVersion');
+    if (versionElement) versionElement.textContent = version ? `v${version}` : '';
+    if (version) document.title = `Local Meet Translator ${version}`;
+  } catch (error) {
+    console.warn('Could not load application version.', error);
+  }
+}
+
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event && event.reason;
   log(`[RENDERER PROMISE ERROR] ${String(reason && (reason.message || reason) || reason || 'Unknown rejection')}`);
@@ -307,6 +319,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Bind controls before asynchronous startup work. Previously, a failed IPC or
   // health request could abort initialization before Start/Stop handlers existed.
   try {
+    await loadAppInfo();
     const settings = await window.lmt.load();
     apply(settings || {});
     log('[INIT] Settings loaded; controls are ready.');
