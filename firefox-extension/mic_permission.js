@@ -34,11 +34,11 @@ function isCableOutputLabel(label) {
 
 async function rememberTtsOutputDevice(device) {
   if (!device || !device.deviceId) return;
-  const obj = await chrome.storage.local.get('settings');
+  const obj = await browser.storage.local.get('settings');
   const settings = { ...(obj.settings || {}) };
   settings.ttsSinkDeviceId = device.deviceId;
   if (device.label) settings.ttsSinkDeviceName = device.label;
-  await chrome.storage.local.set({ settings, audioOutputPermissionGranted: true });
+  await browser.storage.local.set({ settings, audioOutputPermissionGranted: true });
   log('Saved translated voice output: ' + (device.label || device.deviceId));
 }
 
@@ -78,7 +78,7 @@ async function requestMic() {
     for (const t of stream.getTracks()) t.stop();
 
     // Remember that we successfully obtained mic permission at least once.
-    await chrome.storage.local.set({ micPermissionGranted: true });
+    await browser.storage.local.set({ micPermissionGranted: true });
 
     log('Granted. You can close this tab and reopen the extension popup.');
     stateEl.innerHTML = '<span class="ok">Granted</span>';
@@ -86,8 +86,8 @@ async function requestMic() {
 
     // Optional: try to close the tab after a short delay.
     try {
-      const tab = await chrome.tabs.getCurrent();
-      if (tab && tab.id) setTimeout(() => chrome.tabs.remove(tab.id).catch(() => {}), 800);
+    const tab = await browser.tabs.getCurrent();
+    if (tab && tab.id) setTimeout(() => browser.tabs.remove(tab.id).catch(() => {}), 800);
     } catch (_) {}
   } catch (e) {
     // Common case: user dismissed the prompt or browser refuses to show it.
@@ -96,7 +96,7 @@ async function requestMic() {
 
     // If the prompt is not shown, advise the user where to look.
     log('If you did not see a prompt: check the camera/mic icon in the browser address bar and allow microphone.');
-    log('Also verify Windows microphone privacy settings and Edge microphone settings.');
+    log('Also verify Windows microphone privacy settings and Firefox microphone permissions.');
   }
 }
 

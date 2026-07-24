@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\desktop\build-windows-installer.ps1"
+call "%~dp0BUILD_DESKTOP_WINDOWS.cmd"
 if errorlevel 1 (
   echo.
   echo Build failed. Check the messages above.

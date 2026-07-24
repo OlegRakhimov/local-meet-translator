@@ -17,11 +17,19 @@
       <div class="line"><span data-i18n="state">Last extension state</span><b id="runtimeStatus" data-i18n="idle">idle</b></div>
     </div>
 
-    <div class="actions">
-      <button id="connectTab" type="button" data-i18n="connectTab">Connect this meeting tab</button>
+    <div class="card">
+      <label class="line"><span data-i18n="pairingCode">Pairing code</span><input id="pairingCode" type="text" autocomplete="one-time-code" /></label>
+      <div class="actions">
+        <button id="pairDesktop" type="button" data-i18n="pairDesktop">Pair with desktop</button>
+      </div>
     </div>
 
-    <p class="hint" data-i18n="hint">Open this popup on the Meet / Zoom / Teams tab first, then use Start bridge and Start translation in the desktop app.</p>
+    <div class="actions">
+      <button id="connectTab" type="button" data-i18n="connectTab">Connect this meeting tab</button>
+      <button id="audioAccess" class="secondary" type="button" data-i18n="audioAccess">Grant microphone / VB-Cable access</button>
+    </div>
+
+    <p class="hint" data-i18n="hint">This popup only connects the current meeting tab. Start voice translation or subtitles from the desktop app.</p>
 
     <pre id="log" class="log"></pre>
   </div>

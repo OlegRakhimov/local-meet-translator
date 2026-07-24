@@ -12,16 +12,25 @@
     <p class="muted" data-i18n="installed">Open this popup once from the meeting tab to grant capture access. Translation is then controlled from the desktop app.</p>
 
     <div class="card">
-      <div class="line"><span data-i18n="desktop">Desktop command server</span><b id="desktopStatus" data-i18n="checking">checking...</b></div>
+      <div class="line"><span data-i18n="pairingStatus">Desktop pairing</span><b id="pairStatus" data-i18n="checking">checking...</b></div>
       <div class="line"><span data-i18n="page">Current page</span><b id="pageStatus" data-i18n="checking">checking...</b></div>
       <div class="line"><span data-i18n="state">Last extension state</span><b id="runtimeStatus" data-i18n="idle">idle</b></div>
     </div>
 
-    <div class="actions">
-      <button id="connectTab" type="button" data-i18n="connectTab">Connect this meeting tab</button>
+    <div class="card">
+      <label><span data-i18n="pairingCode">Pairing code</span><input id="pairingCode" type="text" autocomplete="off" spellcheck="false" placeholder="ABCD-EFGH-IJKL" /></label>
+      <div class="actions">
+        <button id="pairDesktop" type="button" data-i18n="pairDesktop">Pair with desktop</button>
+      </div>
+      <p class="hint" data-i18n="pairingHint">Enter the code shown in the desktop app. The desktop token will be stored locally in the extension.</p>
     </div>
 
-    <p class="hint" data-i18n="hint">Open this popup on the Meet / Zoom / Teams tab first, then use Start bridge and Start translation in the desktop app.</p>
+    <div class="actions">
+      <button id="connectTab" type="button" data-i18n="connectTab">Connect this meeting tab</button>
+      <button id="audioAccess" class="secondary" type="button" data-i18n="audioAccess">Grant microphone / VB-Cable access</button>
+    </div>
+
+    <p class="hint" data-i18n="hint">This popup only connects the current meeting tab. Start voice translation or subtitles from the desktop app.</p>
 
     <pre id="log" class="log"></pre>
   </div>

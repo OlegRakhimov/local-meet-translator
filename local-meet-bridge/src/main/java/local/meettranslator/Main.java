@@ -439,7 +439,7 @@ String transcribe(byte[] audio, String audioMime, String sourceLang) throws IOEx
                 throw new IOException("OpenAI transcribe response has no 'text': " + json);
             }
             // NOTE: Whisper may return an empty string for silence. Treat that as a valid result.
-            return textNode.asText("");
+            return textNode.asText();
         }
 
         String translateText(String sourceLang, String targetLang, String text) throws IOException {
@@ -565,9 +565,11 @@ String transcribe(byte[] audio, String audioMime, String sourceLang) throws IOEx
                     JsonNode content = item.get("content");
                     if (content != null && content.isArray()) {
                         for (JsonNode c : content) {
-                            String type = c.path("type").asText("");
+                            JsonNode typeNode = c.path("type");
+                            String type = typeNode.isMissingNode() || typeNode.isNull() ? "" : typeNode.asText();
                             if ("output_text".equals(type)) {
-                                String t = c.path("text").asText("");
+                                JsonNode textNode = c.path("text");
+                                String t = textNode.isMissingNode() || textNode.isNull() ? "" : textNode.asText();
                                 if (!t.isBlank()) {
                                     if (sb.length() > 0) sb.append("\n");
                                     sb.append(t);
@@ -722,7 +724,8 @@ static final class VoiceConversionClient {
         }
 
         JsonNode json = MAPPER.readTree(resp.body());
-        String outB64 = json.path("audioBase64").asText("");
+        JsonNode outB64Node = json.path("audioBase64");
+        String outB64 = outB64Node.isMissingNode() || outB64Node.isNull() ? "" : outB64Node.asText();
         if (outB64.isBlank()) {
             throw new IOException("voice-conversion response missing audioBase64");
         }
@@ -815,7 +818,7 @@ static final class VoiceConversionClient {
         if (node == null) return def;
         JsonNode v = node.get(field);
         if (v == null || v.isNull()) return def;
-        String s = v.asText(def);
+        String s = v.asText();
         return s == null ? def : s;
     }
 

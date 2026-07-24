@@ -9,7 +9,7 @@ Local Meet Translator is a local translator for web meetings. The desktop app is
 - Can translate your own speech for the other participant: your microphone → transcription → translation → TTS → virtual audio cable → meeting microphone.
 - Supports Chrome, Edge, and Firefox through separate extension folders.
 - Keeps the OpenAI API key locally in the desktop app, not in the browser extension.
-- Supports normal OpenAI TTS and optional RVC / voice conversion if you have a separate voice-conversion server and trained model.
+- Supports normal OpenAI TTS and a bundled voice-conversion service; actual RVC additionally requires a trained model and a configured external inference command.
 
 ## 2. Project structure
 
@@ -22,6 +22,7 @@ local-meet-translator/
   firefox-extension/         Firefox extension
   voice-conversion/          optional RVC / voice conversion server
   docs/                      additional materials / landing page
+  BUILD_DESKTOP_WINDOWS.cmd
   INSTALL_DESKTOP_WINDOWS.cmd
   RUN_DESKTOP_DEV.cmd
   README_RU.md
@@ -33,13 +34,27 @@ local-meet-translator/
 For normal Windows usage:
 
 - Windows 10 / 11.
-- Node.js LTS — required to build the desktop installer.
-- Java 17+ — required for the bridge.
-- Google Chrome, Microsoft Edge, or Firefox.
+- Google Chrome, Microsoft Edge, or Firefox 142+.
 - OpenAI API key.
 - VB-Audio Virtual Cable or a similar virtual audio cable — required only if the other participant must hear your translated voice.
+- Java and Python do not need to be installed: the installer contains a minimal Java runtime and a standalone voice-conversion service.
 
-For bridge development, Maven is also needed if you rebuild `local-meet-bridge` manually.
+To build from source:
+
+- Node.js 20+.
+- JDK 21 with `jdeps` and `jlink`.
+- Python x64 3.11, 3.12, or 3.13.
+- Maven does not need to be installed: Maven Wrapper pins and downloads Maven 3.9.16.
+
+Run the complete build with one command from the project root:
+
+```text
+BUILD_DESKTOP_WINDOWS.cmd
+```
+
+It builds the bridge through Maven Wrapper, creates a minimal Java runtime with `jdeps`/`jlink`, packages the Python service as an `.exe` with PyInstaller, installs the exact npm dependency tree with `npm ci`, and only then starts electron-builder. `INSTALL_DESKTOP_WINDOWS.cmd` invokes the same build and then opens the output directory.
+
+Electron and electron-builder are intentionally pinned in `desktop-app/package.json`; do not bump them casually. The `desktop-app/npm-overrides/temp` shim is a temporary workaround for the old `electron-winstaller` chain so the build can avoid the deprecated `rimraf@2.6.3` path without breaking packaging.
 
 ## 4. Installing the Windows desktop app
 
@@ -47,7 +62,7 @@ For bridge development, Maven is also needed if you rebuild `local-meet-bridge` 
 2. Double-click:
 
 ```text
-INSTALL_DESKTOP_WINDOWS.cmd
+BUILD_DESKTOP_WINDOWS.cmd
 ```
 
 The script builds the desktop app and creates an installer here:
@@ -59,7 +74,7 @@ desktop-app\dist\
 Run the installer named like:
 
 ```text
-Local Meet Translator-1.0.0-Setup-x64.exe
+Local Meet Translator-1.0.2-Setup-x64.exe
 ```
 
 After installation, a **Local Meet Translator** shortcut appears on the desktop and in the Start menu.
@@ -78,7 +93,7 @@ C:\Users\<user>\AppData\Roaming\Local Meet Translator\.env
 
 ## 5. Installing browser extensions
 
-The extension popup does not control translation. It only shows status. Start / Stop live in the desktop app.
+The extension popup pairs the browser extension with the desktop app and connects the current meeting tab. Start / Stop still live in the desktop app.
 
 ### Chrome
 
@@ -112,6 +127,10 @@ edge-extension
 firefox-extension/manifest.json
 ```
 
+Firefox uses a dedicated architecture: a page bridge intercepts incoming WebRTC audio tracks in Meet / Zoom / Teams, while a persistent background page sends audio chunks to the bridge and handles microphone capture and TTS. The Firefox extension does not use Chromium `offscreen`/`tabCapture`. It captures meeting WebRTC audio only, not arbitrary system audio.
+
+Firefox 142 or newer is required. During installation, Firefox shows built-in consent for transmitting the token and conference audio to the local desktop service.
+
 Important: after replacing extension files, always press **Reload** on the browser extensions page and reload the Meet / Zoom / Teams tab.
 
 ## 6. First run
@@ -121,13 +140,11 @@ Important: after replacing extension files, always press **Reload** on the brows
 3. Click **Save .env**.
 4. Click **Start bridge**.
 5. Open a Meet / Zoom / Teams tab.
-6. Click in the desktop app:
+6. Copy the **pairing code** shown in the desktop app, open the extension popup on that meeting tab, paste the code, and click **Pair with desktop**.
+7. Click **Connect this meeting tab** in the popup.
+8. In the desktop app, choose **Start voice translation for the other participant** or **Start subtitles only**.
 
-```text
-Start translation in browser
-```
-
-Do not use the extension popup to start translation.
+The popup does not start translation. It only pairs the extension with the desktop app and identifies the exact meeting tab that the desktop app should control.
 
 ## 7. Language settings
 
@@ -204,7 +221,6 @@ Your physical microphone
 In the outgoing voice block:
 
 ```text
-ON: my microphone → translation → voice to meeting = ON
 My speech source language = your language, for example ru
 Meeting target language = other participant language, for example en
 My microphone name contains = Realtek / Mikrofon / USB / Headset
@@ -214,6 +230,10 @@ Advanced TTS output device ID = usually empty
 ```
 
 Do not put `CABLE Output` into **My microphone name contains**. That field must identify your real microphone.
+
+Before starting, confirm **I selected CABLE Output as the microphone in Zoom / Meet / Teams**, then click the single green **Start voice translation for the other participant** button. No additional Start button is required.
+
+Voice translation is actually active only when the status panel is green and confirms that the bridge, meeting tab, physical microphone, and CABLE Input output are ready.
 
 ### Google Meet settings
 
@@ -257,7 +277,9 @@ Enable voice conversion / RVC hook = OFF
 Outgoing voice style = OpenAI voice
 ```
 
-Enable RVC only if you have a trained model and a running voice-conversion server.
+Enable RVC only if you have a trained model and configured `RVC_INFER_CMD`. The voice-conversion server itself is bundled with the desktop application.
+
+Treat the desktop Electron versions as locked release inputs, not ordinary dependencies.
 
 ## 11. Updating the project
 

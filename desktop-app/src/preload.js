@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('lmt', {
   health: () => ipcRenderer.invoke('health:check'),
   checkCable: () => ipcRenderer.invoke('audio:checkCable'),
   openExtension: () => ipcRenderer.invoke('extension:open'),
-  startTranslation: () => ipcRenderer.invoke('extension:startTranslation'),
+  startTranslation: (options) => ipcRenderer.invoke('extension:startTranslation', options || {}),
   stopTranslation: () => ipcRenderer.invoke('extension:stopTranslation'),
   openEnv: () => ipcRenderer.invoke('env:open'),
   onLog: (cb) => ipcRenderer.on('app:log', (_event, line) => cb(line))

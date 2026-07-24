@@ -53,26 +53,29 @@ Write-Host ""
 
 Push-Location $BridgeDir
 
-# Build with Maven if available (optional). The bridge can also run from an existing jar in target/.
-$mvn = Get-Command mvn -ErrorAction SilentlyContinue
-if ($mvn) {
-  Write-Host "Building (Maven)..."
-  & mvn -q -DskipTests package
-} else {
-  Write-Host "Maven (mvn) not found in PATH. Will try to run a prebuilt jar from target/."
+# Build with the project-pinned Maven version. A system Maven installation is not required.
+$MavenWrapper = Join-Path $BridgeDir "mvnw.cmd"
+if (-not (Test-Path $MavenWrapper)) {
+  throw "Maven Wrapper not found: $MavenWrapper"
+}
+Write-Host "Building with Maven Wrapper..."
+& $MavenWrapper --batch-mode --no-transfer-progress package
+if ($LASTEXITCODE -ne 0) {
+  throw "Maven Wrapper build failed with exit code $LASTEXITCODE"
 }
 
 $TargetDir = Join-Path $BridgeDir "target"
 $Jar = $null
 
 if (Test-Path $TargetDir) {
-  $Jar = Get-ChildItem -Path $TargetDir -Filter "local-meet-bridge-*.jar" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -notlike "original-*" } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+  $CanonicalJar = Join-Path $TargetDir "local-meet-bridge.jar"
+  if (Test-Path $CanonicalJar) {
+    $Jar = Get-Item $CanonicalJar
+  }
 
   if (-not $Jar) {
     $Jar = Get-ChildItem -Path $TargetDir -Filter "*.jar" -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -notlike "original-*" } |
       Sort-Object LastWriteTime -Descending |
       Select-Object -First 1
   }
@@ -80,7 +83,7 @@ if (Test-Path $TargetDir) {
 
 if (-not $Jar) {
   throw "Could not find a bridge jar in: $TargetDir
-Install Maven and run: mvn -DskipTests package"
+Run BUILD_DESKTOP_WINDOWS.cmd from the project root."
 }
 
 Write-Host "Running bridge (java -jar)..."

@@ -1,8 +1,36 @@
 const $ = (id) => document.getElementById(id);
-function log(line) { const el = $('log'); el.textContent += line + '\n'; el.scrollTop = el.scrollHeight; }
+function log(line) {
+  const el = $('log');
+  const text = String(line ?? '');
+  if (!el) {
+    try { console.log('[LMT]', text); } catch (_) {}
+    return;
+  }
+  el.textContent += text + '\n';
+  el.scrollTop = el.scrollHeight;
+}
 function dot(id, ok, running=false) { const el=$(id); el.className='dot ' + (running ? 'run' : ok ? 'ok' : 'err'); }
 function val(id) { return $(id).value.trim(); }
 function checked(id) { return $(id).checked; }
+function t(key) {
+  return (window.LMT_I18N && window.LMT_I18N.t(key)) || key;
+}
+function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function runUiAction(name, button, action) {
+  const btn = typeof button === 'string' ? $(button) : button;
+  if (btn) btn.disabled = true;
+  log(`[UI] ${name}`);
+  try {
+    return await action();
+  } catch (e) {
+    const message = String(e && (e.message || e) || e);
+    log(`[UI ERROR] ${name}: ${message}`);
+    throw e;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 function systemLanguageCode() {
   const supported = new Set(['ru','pl','de','es','it']);
   const code = String(navigator.language || 'en').toLowerCase().split('-')[0];
@@ -13,6 +41,24 @@ function applyI18n() {
   if (!i18n) return;
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = i18n.t(el.dataset.i18n); });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = i18n.t(el.dataset.i18nPlaceholder); });
+}
+function setVoiceStep(id, state, text) {
+  const el = $(id);
+  if (!el) return;
+  el.className = `readinessItem ${state}`;
+  el.textContent = text;
+}
+function setOutgoingState(state, title, detail) {
+  const panel = $('outgoingState');
+  if (panel) panel.className = `voiceState ${state}`;
+  if ($('outgoingStateTitle')) $('outgoingStateTitle').textContent = title;
+  if ($('outgoingStateDetail')) $('outgoingStateDetail').textContent = detail;
+}
+function resetOutgoingSteps() {
+  setVoiceStep('voiceStepBridge', 'pending', t('stepBridge'));
+  setVoiceStep('voiceStepTab', 'pending', t('stepTab'));
+  setVoiceStep('voiceStepMic', 'pending', t('stepMic'));
+  setVoiceStep('voiceStepOutput', 'pending', t('stepOutput'));
 }
 
 const VOICES = ['onyx', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'sage', 'shimmer', 'verse'];
@@ -30,11 +76,16 @@ function apply(s) {
   $('enableTts').checked = String(s.ENABLE_TTS || 'true') === 'true';
   $('enableVoiceConversion').checked = String(s.ENABLE_VOICE_CONVERSION || 'false') === 'true';
   $('token').value = s.LOCAL_MEET_TRANSLATOR_TOKEN || '';
+  if ($('pairingCode')) $('pairingCode').value = s.DESKTOP_EXTENSION_PAIRING_CODE || '';
+  if ($('desktopExtensionToken')) $('desktopExtensionToken').value = s.DESKTOP_EXTENSION_TOKEN || '';
   if ($('envPath')) $('envPath').textContent = s.__ENV_PATH || '';
   $('extSourceLang').value = s.EXT_SOURCE_LANG || 'auto';
   $('extTargetLang').value = s.EXT_TARGET_LANG || systemLanguageCode();
   $('extChunkSeconds').value = s.EXT_CHUNK_SECONDS || '3';
-  $('extTtsEnabled').checked = String(s.EXT_TTS_ENABLED || 'false') === 'true';
+  const isolationMode = String(s.EXT_AUDIO_ISOLATION_MODE || 'true') === 'true';
+  if ($('extAudioIsolationMode')) $('extAudioIsolationMode').checked = isolationMode;
+  $('extTtsEnabled').checked = isolationMode ? false : String(s.EXT_TTS_ENABLED || 'false') === 'true';
+  $('extTtsEnabled').disabled = isolationMode;
   $('extTtsVoice').value = s.EXT_TTS_VOICE || 'onyx';
   $('extTtsSpeed').value = s.EXT_TTS_SPEED || '1.0';
   $('extMicTxEnabled').checked = String(s.EXT_MIC_TX_ENABLED || 'false') === 'true';
@@ -64,7 +115,8 @@ function readSettings() {
     EXT_SOURCE_LANG: val('extSourceLang') || 'auto',
     EXT_TARGET_LANG: val('extTargetLang') || systemLanguageCode(),
     EXT_CHUNK_SECONDS: val('extChunkSeconds') || '3',
-    EXT_TTS_ENABLED: checked('extTtsEnabled') ? 'true' : 'false',
+    EXT_AUDIO_ISOLATION_MODE: checked('extAudioIsolationMode') ? 'true' : 'false',
+    EXT_TTS_ENABLED: checked('extAudioIsolationMode') ? 'false' : (checked('extTtsEnabled') ? 'true' : 'false'),
     EXT_TTS_VOICE: val('extTtsVoice') || 'onyx',
     EXT_TTS_SPEED: val('extTtsSpeed') || '1.0',
     EXT_MIC_TX_ENABLED: checked('extMicTxEnabled') ? 'true' : 'false',
@@ -85,26 +137,139 @@ async function refreshHealth() {
   dot('bridgeDot', h.bridge.ok); $('bridgeText').textContent = h.bridge.text;
   dot('voiceDot', h.voice.ok); $('voiceText').textContent = h.voice.text;
 }
-window.lmt.onLog(log);
+try {
+  window.lmt.onLog(log);
+} catch (e) {
+  log(`[INIT ERROR] Cannot attach desktop logs: ${String(e && (e.message || e) || e)}`);
+}
+
+window.addEventListener('error', (event) => {
+  log(`[RENDERER ERROR] ${event.message || 'Unknown error'}`);
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event && event.reason;
+  log(`[RENDERER PROMISE ERROR] ${String(reason && (reason.message || reason) || reason || 'Unknown rejection')}`);
+});
+
 window.addEventListener('DOMContentLoaded', async () => {
   applyI18n();
   initVoices();
-  apply(await window.lmt.load());
-  await refreshHealth();
+  resetOutgoingSteps();
   $('save').onclick = async () => { const r = await window.lmt.save(readSettings()); apply(r.settings); log(r.message); };
   $('openEnv').onclick = () => window.lmt.openEnv();
   if ($('enableOutgoingVoice')) $('enableOutgoingVoice').onclick = async () => {
-    $('extMicTxEnabled').checked = true;
-    $('enableTts').checked = true;
-    if ($('extTtsEnabled')) $('extTtsEnabled').checked = false;
-    if ($('extTtsSinkDeviceName') && !$('extTtsSinkDeviceName').value.trim()) $('extTtsSinkDeviceName').value = 'CABLE Input';
-    await window.lmt.save(readSettings());
-    log('Outgoing voice to meeting ENABLED. Now choose VB-Cable/CABLE Output as microphone in Meet, then press Start translation.');
+    const button = $('enableOutgoingVoice');
+    log('[UI] Start voice translation clicked.');
+    if (!$('meetingCableConfirmed') || !$('meetingCableConfirmed').checked) {
+      setOutgoingState('error', t('voiceNeedsConfirmation'), t('voiceNeedsConfirmationDetail'));
+      setVoiceStep('voiceStepOutput', 'error', t('stepMeetingOutputMissing'));
+      return;
+    }
+    button.disabled = true;
+    let voiceStarted = false;
+    resetOutgoingSteps();
+    setOutgoingState('checking', t('voiceStarting'), t('voiceChecking'));
+    try {
+      $('extMicTxEnabled').checked = true;
+      if ($('extAudioIsolationMode')) $('extAudioIsolationMode').checked = true;
+      $('enableTts').checked = true;
+      if ($('extTtsEnabled')) $('extTtsEnabled').checked = false;
+      if ($('extTtsEnabled')) $('extTtsEnabled').disabled = true;
+      if ($('extTtsSinkDeviceName') && !$('extTtsSinkDeviceName').value.trim()) $('extTtsSinkDeviceName').value = 'CABLE Input';
+      await window.lmt.save(readSettings());
+
+      setVoiceStep('voiceStepOutput', 'checking', t('stepOutputChecking'));
+      const cable = await window.lmt.checkCable();
+      dot('cableDot', cable.ok);
+      $('cableText').textContent = cable.text;
+      if (!cable.ok) {
+        setVoiceStep('voiceStepOutput', 'error', t('stepOutputFailed'));
+        setOutgoingState('error', t('voiceNotStarted'), cable.text);
+        return;
+      }
+      setVoiceStep('voiceStepOutput', 'ok', t('stepOutputReady'));
+
+      setVoiceStep('voiceStepBridge', 'checking', t('stepBridgeChecking'));
+      let health = await window.lmt.health();
+      if (!health.bridge.ok) {
+        const started = await window.lmt.startBridge();
+        log(started.message);
+        await delay(1600);
+        health = await window.lmt.health();
+      }
+      dot('bridgeDot', health.bridge.ok);
+      $('bridgeText').textContent = health.bridge.text;
+      if (!health.bridge.ok) {
+        setVoiceStep('voiceStepBridge', 'error', t('stepBridgeFailed'));
+        setOutgoingState('error', t('voiceNotStarted'), health.bridge.text);
+        return;
+      }
+      setVoiceStep('voiceStepBridge', 'ok', t('stepBridgeReady'));
+
+      setVoiceStep('voiceStepTab', 'checking', t('stepTabChecking'));
+      setVoiceStep('voiceStepMic', 'checking', t('stepMicChecking'));
+      const result = await window.lmt.startTranslation({
+        mode: 'voice',
+        micTxEnabled: true,
+        audioIsolationMode: true,
+        ttsEnabled: false,
+        micDeviceName: $('extMicDeviceName') ? val('extMicDeviceName') : '',
+        micDeviceId: $('extMicDeviceId') ? val('extMicDeviceId') : '',
+        ttsSinkDeviceName: $('extTtsSinkDeviceName') ? (val('extTtsSinkDeviceName') || 'CABLE Input') : 'CABLE Input',
+        ttsSinkDeviceId: $('extTtsSinkDeviceId') ? val('extTtsSinkDeviceId') : '',
+        micTxSourceLang: val('extMicTxSourceLang') || systemLanguageCode(),
+        micTxTargetLang: val('extMicTxTargetLang') || 'en',
+        micTxChunkSeconds: val('extMicTxChunkSeconds') || '5',
+        outVoiceStyle: val('extOutVoiceStyle') || 'openai',
+        rvcModelTag: val('extRvcModelTag'),
+        showOutgoingSubtitles: checked('extShowOutgoingSubtitles')
+      });
+      log(result.message);
+      if (!result.ok) {
+        const details = result.details || {};
+        setVoiceStep('voiceStepTab', result.state === 'tab-missing' || result.state === 'timeout' ? 'error' : 'ok',
+          result.state === 'tab-missing' || result.state === 'timeout' ? t('stepTabFailed') : t('stepTabReady'));
+        setVoiceStep('voiceStepMic', 'error', t('stepMicFailed'));
+        if (details.sinkReady === false) setVoiceStep('voiceStepOutput', 'error', t('stepOutputFailed'));
+        const detail = result.state === 'tab-missing' || result.state === 'timeout'
+          ? t('voiceConnectTabDetail')
+          : `${t('voiceAudioAccessDetail')} ${result.message}`;
+        setOutgoingState('error', t('voiceNotStarted'), detail);
+        return;
+      }
+
+      const details = result.details || {};
+      setVoiceStep('voiceStepTab', 'ok', t('stepTabReady'));
+      setVoiceStep('voiceStepMic', details.micTxReady ? 'ok' : 'error',
+        details.micTxReady ? `${t('stepMicReady')}: ${details.microphoneLabel || t('ready')}` : t('stepMicFailed'));
+      setVoiceStep('voiceStepOutput', details.sinkReady ? 'ok' : 'error',
+        details.sinkReady ? `${t('stepOutputReady')}: ${details.outputLabel || 'CABLE Input'}` : t('stepOutputFailed'));
+      if (!details.micTxReady || !details.sinkReady) {
+        setOutgoingState('error', t('voiceNotStarted'), t('voiceReadinessFailed'));
+        return;
+      }
+      setOutgoingState('running', t('voiceRunning'), t('voiceRunningDetail'));
+      voiceStarted = true;
+    } catch (e) {
+      setOutgoingState('error', t('voiceNotStarted'), String(e && (e.message || e)));
+    } finally {
+      if (!voiceStarted) {
+        $('extMicTxEnabled').checked = false;
+        await window.lmt.save(readSettings());
+      }
+      button.disabled = false;
+    }
   };
   if ($('disableOutgoingVoice')) $('disableOutgoingVoice').onclick = async () => {
-    $('extMicTxEnabled').checked = false;
-    await window.lmt.save(readSettings());
-    log('Outgoing voice to meeting DISABLED.');
+    await runUiAction('Switch to subtitles-only mode clicked.', 'disableOutgoingVoice', async () => {
+      $('extMicTxEnabled').checked = false;
+      await window.lmt.save(readSettings());
+      const result = await window.lmt.startTranslation({ mode: 'subtitles', micTxEnabled: false });
+      log(result.message);
+      resetOutgoingSteps();
+      setOutgoingState('idle', t('voiceOff'), t('voiceStoppedDetail'));
+      return result;
+    });
   };
   $('startBridge').onclick = async () => { await window.lmt.save(readSettings()); log((await window.lmt.startBridge()).message); setTimeout(refreshHealth, 1200); };
   $('stopBridge').onclick = async () => { log((await window.lmt.stopBridge()).message); setTimeout(refreshHealth, 500); };
@@ -113,6 +278,44 @@ window.addEventListener('DOMContentLoaded', async () => {
   $('health').onclick = refreshHealth;
   $('checkCable').onclick = async () => { const r = await window.lmt.checkCable(); dot('cableDot', r.ok); $('cableText').textContent = r.text; log(r.text); };
   $('openExtension').onclick = async () => log((await window.lmt.openExtension()).message);
-  $("startTranslation").onclick = async () => { await window.lmt.save(readSettings()); log((await window.lmt.startTranslation()).message); };
-  $("stopTranslation").onclick = async () => log((await window.lmt.stopTranslation()).message);
+  $("startTranslation").onclick = async () => {
+    await runUiAction('Start subtitles only clicked.', 'startTranslation', async () => {
+      $('extMicTxEnabled').checked = false;
+      const saved = await window.lmt.save(readSettings());
+      if (saved && saved.message) log(saved.message);
+      const result = await window.lmt.startTranslation({ mode: 'subtitles', micTxEnabled: false });
+      log(result && result.message ? result.message : JSON.stringify(result || {}));
+      return result;
+    });
+  };
+  $("stopTranslation").onclick = async () => {
+    await runUiAction('Stop all translation clicked.', 'stopTranslation', async () => {
+      const result = await window.lmt.stopTranslation();
+      log(result && result.message ? result.message : JSON.stringify(result || {}));
+      resetOutgoingSteps();
+      setOutgoingState('idle', t('voiceOff'), t('voiceStoppedDetail'));
+      return result;
+    });
+  };
+  if ($('extAudioIsolationMode')) $('extAudioIsolationMode').onchange = () => {
+    const isolationMode = checked('extAudioIsolationMode');
+    $('extTtsEnabled').disabled = isolationMode;
+    if (isolationMode) $('extTtsEnabled').checked = false;
+    if (isolationMode && $('extTtsSinkDeviceName') && !$('extTtsSinkDeviceName').value.trim()) $('extTtsSinkDeviceName').value = 'CABLE Input';
+  };
+
+  // Bind controls before asynchronous startup work. Previously, a failed IPC or
+  // health request could abort initialization before Start/Stop handlers existed.
+  try {
+    const settings = await window.lmt.load();
+    apply(settings || {});
+    log('[INIT] Settings loaded; controls are ready.');
+  } catch (e) {
+    log(`[INIT ERROR] Settings load failed: ${String(e && (e.message || e) || e)}`);
+  }
+  try {
+    await refreshHealth();
+  } catch (e) {
+    log(`[INIT WARN] Health check failed: ${String(e && (e.message || e) || e)}`);
+  }
 });

@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Local Meet Translator</title>
+  <title>Local Meet Translator 1.0.4</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <main class="wrap">
     <header>
-      <h1>Local Meet Translator</h1>
+      <h1>Local Meet Translator <small style="font-size:.45em;opacity:.7">v1.0.4</small></h1>
       <p data-i18n="appSubtitle">Desktop controller: bridge, voice conversion, local token, health checks and extension setup.</p>
     </header>
 
@@ -26,7 +26,11 @@
       </div>
       <label class="check"><input id="enableTts" type="checkbox" checked /> <span data-i18n="enableTts">Enable TTS for outgoing translated voice</span></label>
       <label class="check"><input id="enableVoiceConversion" type="checkbox" /> <span data-i18n="enableVc">Enable voice conversion / RVC hook</span></label>
-      <label><span data-i18n="token">Generated extension token</span> <input id="token" readonly /></label>
+      <label><span data-i18n="token">Bridge auth token</span> <input id="token" readonly /></label>
+      <div class="grid">
+        <label><span data-i18n="pairingCode">Extension pairing code</span> <input id="pairingCode" readonly /></label>
+        <label><span data-i18n="desktopExtensionToken">Desktop extension token</span> <input id="desktopExtensionToken" readonly /></label>
+      </div>
       <h3 data-i18n="translationControl">Translation control</h3>
       <div class="grid">
         <label><span data-i18n="incomingSource">Incoming source language</span> <input id="extSourceLang" value="auto" placeholder="auto / en / pl / ..." /></label>
@@ -45,11 +49,33 @@
           </select>
         </label>
       </div>
+      <label class="check"><input id="extAudioIsolationMode" type="checkbox" checked /> <span data-i18n="audioIsolationMode">Audio isolation mode: ON</span></label>
       <label class="check"><input id="extTtsEnabled" type="checkbox" /> <span data-i18n="speakIncoming">Speak incoming translations in browser</span></label>
 
       <div class="subcard important">
         <h3><span data-i18n="outgoingTitle">Outgoing voice to meeting</span></h3>
-        <label class="check"><input id="extMicTxEnabled" type="checkbox" /> <span data-i18n="outgoingOn">ON: my microphone → translation → voice into meeting</span></label>
+        <input id="extMicTxEnabled" type="checkbox" hidden />
+        <div id="outgoingState" class="voiceState idle" role="status" aria-live="polite">
+          <div>
+            <strong id="outgoingStateTitle" data-i18n="voiceOff">Voice translation is off</strong>
+            <p id="outgoingStateDetail" data-i18n="voiceOffDetail">Press the green button below when the meeting tab and CABLE Output are ready.</p>
+          </div>
+          <div class="readiness">
+            <span id="voiceStepBridge" class="readinessItem pending" data-i18n="stepBridge">Bridge: not checked</span>
+            <span id="voiceStepTab" class="readinessItem pending" data-i18n="stepTab">Meeting tab: not checked</span>
+            <span id="voiceStepMic" class="readinessItem pending" data-i18n="stepMic">Microphone: not checked</span>
+            <span id="voiceStepOutput" class="readinessItem pending" data-i18n="stepOutput">VB-Cable output: not checked</span>
+          </div>
+        </div>
+        <p class="flow" data-i18n="outgoingOn">My microphone → translation → CABLE Input → CABLE Output in the meeting → other participant</p>
+        <label class="check confirmation"><input id="meetingCableConfirmed" type="checkbox" /> <span data-i18n="confirmMeetingCable">I selected CABLE Output as the microphone in Zoom / Meet / Teams</span></label>
+        <p class="hint" data-i18n="outgoingHint">The desktop app cannot inspect the microphone selected inside the meeting. This confirmation is required before launch.</p>
+        <div class="buttons primaryActions">
+          <button id="enableOutgoingVoice" data-i18n="enableVoiceMeeting">Start voice translation for the other participant</button>
+          <button id="disableOutgoingVoice" class="danger" data-i18n="disableVoiceMeeting">Stop voice translation</button>
+        </div>
+        <details class="voiceSettings">
+          <summary data-i18n="voiceSettings">Language and device settings</summary>
         <div class="grid">
           <label><span data-i18n="myLang">I speak</span> <input id="extMicTxSourceLang" value="en" placeholder="en" /></label>
           <label><span data-i18n="meetingLang">Meeting hears</span> <input id="extMicTxTargetLang" value="en" placeholder="en" /></label>
@@ -58,6 +84,7 @@
           <label><span data-i18n="micChunk">Mic chunk seconds</span> <input id="extMicTxChunkSeconds" type="number" min="2" max="15" step="1" value="5" /></label>
           <label><span data-i18n="rvcTag">RVC model tag</span> <input id="extRvcModelTag" placeholder="myvoice" /></label>
         </div>
+        <p class="hint" data-i18n="rvcRequirementHint">RVC requires trained model and external inference command.</p>
         <div class="grid">
           <label><span data-i18n="micName">My microphone name contains</span> <input id="extMicDeviceName" data-i18n-placeholder="emptyDefaultMic" placeholder="Empty = system browser microphone; e.g. Realtek / USB / Headset" /></label>
           <label><span data-i18n="ttsOutputName">Translated voice output name contains</span> <input id="extTtsSinkDeviceName" placeholder="CABLE Input" /></label>
@@ -65,14 +92,10 @@
           <label class="advanced"><span data-i18n="advTtsId">Advanced: TTS output device ID</span> <input id="extTtsSinkDeviceId" data-i18n-placeholder="leaveEmpty" placeholder="Usually leave empty" /></label>
         </div>
         <label class="check"><input id="extShowOutgoingSubtitles" type="checkbox" /> <span data-i18n="showOutgoingDebug">Show outgoing debug subtitles</span></label>
-        <p class="hint"><b>Для собеседника:</b> в desktop включи этот блок, <span data-i18n="ttsOutputName">Translated voice output name contains</span> = CABLE Input, а в Meet микрофоном выбери CABLE Output. Без virtual cable собеседник не услышит TTS.</p>
-        <div class="buttons">
-          <button id="enableOutgoingVoice" data-i18n="enableVoiceMeeting">Enable voice to meeting</button>
-          <button id="disableOutgoingVoice" class="secondary" data-i18n="disableVoiceMeeting">Disable voice to meeting</button>
-        </div>
+        </details>
       </div>
 
-      <p class="hint" data-i18n="startStopHint">Open the extension popup once on the meeting tab to connect capture access. Start/Stop then lives in this desktop app.</p>
+      <p class="hint" data-i18n="startStopHint">For voice translation, use the green button in the block above. The extension popup only connects the active meeting tab.</p>
       <div class="buttons">
         <button id="save" data-i18n="save">Save .env</button>
         <button id="openEnv" class="secondary" data-i18n="openEnv">Open .env</button>
@@ -101,9 +124,10 @@
     <section class="card">
       <h2 data-i18n="extension">3. Extension</h2>
       <p data-i18n="extensionText">Open the actual Meet/Zoom/Teams tab, click the Local Meet Translator extension icon once, connect that tab, then control translation here.</p>
+      <h3 data-i18n="subtitlesOnly">Subtitles for me</h3>
       <div class="buttons">
-        <button id="startTranslation" data-i18n="startTranslation">Start translation in browser</button>
-        <button id="stopTranslation" class="danger" data-i18n="stopTranslation">Stop translation</button>
+        <button id="startTranslation" data-i18n="startTranslation">Start subtitles only</button>
+        <button id="stopTranslation" class="danger" data-i18n="stopTranslation">Stop all translation</button>
         <button id="openExtension" class="secondary" data-i18n="openExtension">Open browser extension folder</button>
       </div>
       <p class="hint" data-i18n="extensionHint">If the log says the extension was not invoked, open the extension popup on the Meet/Zoom/Teams tab and press Connect this meeting tab.</p>

@@ -22,12 +22,12 @@ function px(n) { return `${Math.round(n)}px`; }
 
 async function loadPos() {
   try {
-    const obj = await chrome.storage.local.get(STORAGE_KEY);
+    const obj = await browser.storage.local.get(STORAGE_KEY);
     return obj[STORAGE_KEY] || null;
   } catch (_) { return null; }
 }
 async function savePos(pos) {
-  try { await chrome.storage.local.set({ [STORAGE_KEY]: pos }); } catch (_) {}
+  try { await browser.storage.local.set({ [STORAGE_KEY]: pos }); } catch (_) {}
 }
 
 function ensureOverlay() {
@@ -194,7 +194,7 @@ function setOutgoingSubtitle(translation, transcript) {
 
 async function loadShowOutgoingSetting() {
   try {
-    const { settings } = await chrome.storage.local.get("settings");
+    const { settings } = await browser.storage.local.get("settings");
     showOutgoing = !!(settings && settings.showOutgoingSubtitles);
     updateOutgoingVisibility();
   } catch (_) {
@@ -202,8 +202,10 @@ async function loadShowOutgoingSetting() {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (!msg || msg.type !== "SUBTITLE") return;
+browser.runtime.onMessage.addListener((msg) => {
+  if (!msg) return;
+
+  if (msg.type !== "SUBTITLE") return;
 
   const ch = msg.channel || "incoming";
   if (ch === "outgoing") {
@@ -217,7 +219,7 @@ ensureOverlay();
 loadShowOutgoingSetting();
 
 try {
-  chrome.storage.onChanged.addListener((changes, area) => {
+  browser.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (!changes || !changes.settings) return;
     const next = changes.settings.newValue;
@@ -225,86 +227,3 @@ try {
     updateOutgoingVisibility();
   });
 } catch (_) {}
-
-// Desktop app command channel. The desktop app cannot call browser extension
-// APIs directly, so this Meet/Zoom/Teams content script polls the local desktop
-// command endpoint and asks the background service worker to start/stop capture
-// for the current tab.
-const DESKTOP_COMMAND_URL = "http://127.0.0.1:18798/extension-command";
-const DESKTOP_ACK_URL = "http://127.0.0.1:18798/extension-command/ack";
-let lmtLastDesktopSeq = Number(sessionStorage.getItem("lmt_last_desktop_seq") || "0");
-let lmtDesktopSessionId = sessionStorage.getItem("lmt_desktop_session_id") || "";
-let lmtDesktopPollBusy = false;
-
-async function ackDesktopCommand(command, result) {
-  try {
-    await fetch(DESKTOP_ACK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        seq: command.seq,
-        action: command.action,
-        ok: !!(result && result.ok),
-        message: result && (result.message || (result.already ? "already running/stopped" : "")),
-        error: result && result.error
-      })
-    });
-  } catch (_) {}
-}
-
-async function pollDesktopCommand() {
-  if (lmtDesktopPollBusy) return;
-  lmtDesktopPollBusy = true;
-  try {
-    const res = await fetch(`${DESKTOP_COMMAND_URL}?lastSeq=${encodeURIComponent(lmtLastDesktopSeq)}&sessionId=${encodeURIComponent(lmtDesktopSessionId)}&url=${encodeURIComponent(location.href)}`, { cache: "no-store" });
-    if (!res.ok) return;
-    const data = await res.json();
-    if (!data || !data.ok) return;
-    if (data.sessionId && data.sessionId !== lmtDesktopSessionId) {
-      lmtDesktopSessionId = data.sessionId;
-      lmtLastDesktopSeq = 0;
-      sessionStorage.setItem("lmt_desktop_session_id", lmtDesktopSessionId);
-      sessionStorage.setItem("lmt_last_desktop_seq", "0");
-    }
-    if (!data.hasCommand || !data.command) return;
-    const command = data.command;
-    if (!command.seq || command.seq <= lmtLastDesktopSeq) return;
-    const result = await chrome.runtime.sendMessage({
-      type: "DESKTOP_COMMAND",
-      action: command.action,
-      serverUrl: command.serverUrl || data.serverUrl,
-      authToken: command.authToken || data.authToken,
-      sourceLang: command.sourceLang,
-      targetLang: command.targetLang,
-      chunkSeconds: command.chunkSeconds,
-      ttsEnabled: command.ttsEnabled,
-      ttsVoice: command.ttsVoice,
-      ttsSpeed: command.ttsSpeed,
-      micTxEnabled: command.micTxEnabled,
-      micTxSourceLang: command.micTxSourceLang,
-      micTxTargetLang: command.micTxTargetLang,
-      micDeviceId: command.micDeviceId,
-      micDeviceName: command.micDeviceName,
-      ttsSinkDeviceId: command.ttsSinkDeviceId,
-      ttsSinkDeviceName: command.ttsSinkDeviceName,
-      micTxChunkSeconds: command.micTxChunkSeconds,
-      outVoiceStyle: command.outVoiceStyle,
-      rvcModelTag: command.rvcModelTag,
-      showOutgoingSubtitles: command.showOutgoingSubtitles
-    });
-    lmtLastDesktopSeq = command.seq;
-    sessionStorage.setItem("lmt_last_desktop_seq", String(lmtLastDesktopSeq));
-    await ackDesktopCommand(command, result || { ok:true });
-  } catch (_) {
-    // Desktop app may be closed; keep polling quietly.
-  } finally {
-    lmtDesktopPollBusy = false;
-  }
-}
-
-setInterval(pollDesktopCommand, 250);
-setTimeout(pollDesktopCommand, 50);
-window.addEventListener("focus", pollDesktopCommand);
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) pollDesktopCommand();
-});

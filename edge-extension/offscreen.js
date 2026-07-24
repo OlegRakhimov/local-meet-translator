@@ -1,4 +1,4 @@
-// Patch v10.3: Restore tab audio playback and harden chunk handling.
+// Patch v10.7: Restore microphone capture while keeping own-TTS feedback protection.
 // Replace edge-extension/offscreen.js with this file.
 
 let tabStream = null;
@@ -14,6 +14,7 @@ let tabSourceLang = "auto";
 let tabTargetLang = "en";
 let tabChunkSeconds = 5;
 
+let audioIsolationMode = true;
 let ttsEnabled = false;
 let ttsVoice = "onyx";
 let ttsSpeed = 1.0;
@@ -37,14 +38,16 @@ let showOutgoingSubtitles = false;
 // Reduce hallucinations on silence and prevent self-feedback.
 const VAD_ENABLED = true;
 const VAD_THRESHOLD = 0.015; // RMS in [0..1] (heuristic) for incoming tab audio
-const MIC_VAD_THRESHOLD = 0.006; // softer threshold for user microphone endpointing
-const MUTE_MIC_DURING_TTS = true;
 const MIN_AUDIO_BLOB_BYTES = 900;
 
 let tabAudioMonitor = null;
 let tabMeter = null;
 let micMeter = null;
 let ttsPlaying = false;
+let outgoingTtsActive = false;
+let outgoingTtsNorm = "";
+let outgoingTtsAt = 0;
+let outgoingTtsReleaseTimer = null;
 let keepAliveAudioEl = null;
 
 let tabId = null;
@@ -55,10 +58,26 @@ let running = false;
 
 // Outgoing voice endpointing: collect speech until a short silence, then translate/TTS once.
 // This avoids sending half-sentences every fixed 5 seconds.
-const MIC_TIMESLICE_MS = 500;
-const MIC_SILENCE_FLUSH_MS = 1100;
-const MIC_MIN_SEGMENT_MS = 1200;
-const MIC_MAX_SEGMENT_MS = 12000;
+const MIC_SILENCE_FLUSH_MS = 650;
+const MIC_MIN_SEGMENT_MS = 500;
+const MIC_MAX_SEGMENT_MS = 6500;
+const MIC_MONITOR_INTERVAL_MS = 100;
+const MIC_MIN_SPEECH_TICKS = 2;
+const MIC_MIN_SPEECH_RATIO = 0.12;
+
+// Own-TTS safety. Block only while our translated voice is playing and for a
+// short tail afterwards. Do not block the microphone merely because the remote
+// participant is speaking: that over-aggressive half-duplex gate could keep the
+// microphone disabled for the entire call.
+const MIC_TTS_COOLDOWN_MS = 900;
+
+// Adaptive VAD. Browser auto-gain can lift room noise above a fixed threshold,
+// so estimate the current noise floor and require a clear margin above it.
+const MIC_CALIBRATION_MS = 650;
+const MIC_START_MIN_RMS = 0.010;
+const MIC_CONTINUE_MIN_RMS = 0.006;
+const MIC_NOISE_START_MULTIPLIER = 2.0;
+const MIC_NOISE_CONTINUE_MULTIPLIER = 1.35;
 let micSegmentParts = [];
 let micSegmentMime = "";
 let micSegmentStartedAt = 0;
@@ -67,13 +86,32 @@ let micFlushChain = Promise.resolve();
 let micRecorderStartedAt = 0;
 let micSpeechMonitorTimer = null;
 let micCurrentMimeType = "";
+let micSegmentPeakRms = 0;
+let micSegmentSpeechTicks = 0;
+let micSegmentTotalTicks = 0;
+let micNoiseFloor = 0.003;
+let micCalibrationUntil = 0;
+let micSuppressedUntil = 0;
+let lastMicGateLogAt = 0;
+
+// Keep a short history rather than comparing only with the immediately previous
+// phrase. This blocks A -> B -> A feedback cycles and delayed duplicate chunks.
+const OUTGOING_HISTORY_MS = 30000;
+let recentMicHistory = [];
+let recentSpokenHistory = [];
 
 // Dedupe
 const DEDUPE_WINDOW_MS = 12000;
 const DEDUPE_JACCARD = 0.85;
+const ECHO_MATCH_JACCARD = 0.72;
+const OUTGOING_TTS_SUPPRESS_MS = 2500;
+const INCOMING_TO_OUTGOING_ECHO_MS = 7000;
 
 let lastTabNorm = "";
 let lastTabAt = 0;
+let lastIncomingTranscriptNorm = "";
+let lastIncomingTranslationNorm = "";
+let lastIncomingAt = 0;
 
 let lastMicNorm = "";
 let lastMicAt = 0;
@@ -83,6 +121,16 @@ let lastSpokenAt = 0;
 
 function status(kind, text, log) {
   chrome.runtime.sendMessage({ type: "STATUS", kind, text, log }).catch(() => {});
+}
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer = null;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label || `Timed out after ${timeoutMs} ms`)), timeoutMs);
+    })
+  ]).finally(() => { if (timer) clearTimeout(timer); });
 }
 
 function blobToBase64(blob) {
@@ -126,6 +174,71 @@ function isNearDuplicate(norm, lastNorm, now, lastAt) {
   return jaccardTokens(norm, lastNorm) >= DEDUPE_JACCARD;
 }
 
+function isLikelyRepeatForTts(norm, lastNorm, now, lastAt) {
+  if (!norm || !lastNorm) return false;
+  if (now - lastAt > DEDUPE_WINDOW_MS) return false;
+  if (norm === lastNorm) return true;
+  return isNearPureEcho(norm, lastNorm, 0.72);
+}
+
+function normTokens(norm) {
+  return String(norm || "").split(/\s+/).filter(Boolean);
+}
+
+function isNearPureEcho(candidateNorm, echoNorm, threshold = ECHO_MATCH_JACCARD) {
+  if (!candidateNorm || !echoNorm) return false;
+  if (candidateNorm === echoNorm) return true;
+
+  const candidateTokens = normTokens(candidateNorm);
+  const echoTokens = normTokens(echoNorm);
+  if (!candidateTokens.length || !echoTokens.length) return false;
+
+  const candidateSet = new Set(candidateTokens);
+  const echoSet = new Set(echoTokens);
+  let common = 0;
+  for (const token of candidateSet) if (echoSet.has(token)) common++;
+
+  const candidateCoverage = common / candidateSet.size;
+  const echoCoverage = common / echoSet.size;
+  const extraCandidateTokens = Math.max(0, candidateSet.size - common);
+  const sizeClose = candidateSet.size <= echoSet.size + Math.max(2, Math.ceil(echoSet.size * 0.25));
+
+  if (candidateNorm.length >= 8 && echoNorm.length >= 8) {
+    if (echoNorm.includes(candidateNorm)) return true;
+    if (candidateNorm.includes(echoNorm) && extraCandidateTokens <= 2) return true;
+  }
+
+  // Suppress only if the candidate is mostly the echo. If the user speaks over
+  // the remote voice/TTS and adds meaningful new words, keep translating it.
+  return echoCoverage >= 0.85 && candidateCoverage >= 0.75 && sizeClose
+    || (jaccardTokens(candidateNorm, echoNorm) >= threshold && sizeClose);
+}
+
+function isRecentPureEcho(norm, otherNorm, now, otherAt, windowMs, threshold = ECHO_MATCH_JACCARD) {
+  if (!norm || !otherNorm || !otherAt) return false;
+  if (now - otherAt > windowMs) return false;
+  return isNearPureEcho(norm, otherNorm, threshold);
+}
+
+function shouldSuppressIncoming(transcript, translation, now) {
+  if (!audioIsolationMode || !outgoingTtsNorm) return false;
+  if (!outgoingTtsActive && now - outgoingTtsAt > OUTGOING_TTS_SUPPRESS_MS) return false;
+  const tNorm = normalizeForDedupe(transcript);
+  const trNorm = normalizeForDedupe(translation);
+  return isNearPureEcho(tNorm, outgoingTtsNorm) || isNearPureEcho(trNorm, outgoingTtsNorm);
+}
+
+function shouldSuppressOutgoing(transcript, now) {
+  if (!audioIsolationMode) return false;
+  const norm = normalizeForDedupe(transcript);
+  const recentOwnTts = outgoingTtsNorm
+    && (outgoingTtsActive || now - outgoingTtsAt <= OUTGOING_TTS_SUPPRESS_MS)
+    && isNearPureEcho(norm, outgoingTtsNorm);
+  return recentOwnTts
+    || isRecentPureEcho(norm, lastIncomingTranscriptNorm, now, lastIncomingAt, INCOMING_TO_OUTGOING_ECHO_MS)
+    || isRecentPureEcho(norm, lastIncomingTranslationNorm, now, lastIncomingAt, INCOMING_TO_OUTGOING_ECHO_MS);
+}
+
 function base64ToBytes(base64) {
   const bin = atob(base64);
   const bytes = new Uint8Array(bin.length);
@@ -147,6 +260,7 @@ function createLevelMeter(stream) {
     src.connect(analyser);
 
     const buf = new Uint8Array(analyser.fftSize);
+    let rms = 0;
     let peak = 0;
 
     const timer = setInterval(() => {
@@ -157,7 +271,7 @@ function createLevelMeter(stream) {
           const v = (buf[i] - 128) / 128;
           sum += v * v;
         }
-        const rms = Math.sqrt(sum / buf.length);
+        rms = Math.sqrt(sum / buf.length);
         // peak-hold with decay so we capture speech occurring within the last ~1s.
         peak = Math.max(rms, peak * 0.85);
       } catch (_) {
@@ -166,6 +280,7 @@ function createLevelMeter(stream) {
     }, 200);
 
     return {
+      getRms: () => rms,
       getPeak: () => peak,
       stop: () => {
         try { clearInterval(timer); } catch (_) {}
@@ -251,6 +366,30 @@ function isVirtualCableLabel(label) {
   return s.includes("cable") || s.includes("vb-audio") || s.includes("virtual cable") || s.includes("stereo mix") || s.includes("stereomix") || s.includes("микшер") || s.includes("микс stereo") || s.includes("miks stereo");
 }
 
+function isUnsafeMicSelection(value) {
+  const s = String(value || "").trim().toLowerCase();
+  if (!s) return false;
+  return s === "default"
+    || s.includes("default")
+    || s.includes("cable")
+    || s.includes("vb-audio")
+    || s.includes("stereo mix")
+    || s.includes("stereomix")
+    || s.includes("what u hear")
+    || s.includes("loopback")
+    || s.includes("monitor");
+}
+
+function isUnsafeMicLabel(label) {
+  return isVirtualCableLabel(label) || isUnsafeMicSelection(label);
+}
+
+function isCableInputLabel(label) {
+  const s = String(label || "").toLowerCase();
+  if (!s) return false;
+  return s.includes("cable input") || (s.includes("vb-audio") && s.includes("cable")) || s.includes("virtual cable");
+}
+
 function isLikelyPhysicalMicLabel(label) {
   const s = String(label || "").toLowerCase();
   return s.includes("microphone") || s.includes("microfoon") || s.includes("mikrofon") || s.includes("микрофон") || s.includes("realtek") || s.includes("usb") || s.includes("headset") || s.includes("гарнитур") || s.includes("array");
@@ -264,11 +403,18 @@ async function findDeviceIdByName(kind, namePart) {
   return found ? found.deviceId : "";
 }
 
+async function findDeviceById(kind, deviceId) {
+  const id = String(deviceId || "");
+  if (!id) return null;
+  const devices = await listAudioDevices();
+  return devices.find(d => d.kind === kind && d.deviceId === id) || null;
+}
+
 async function findSafePhysicalMicDeviceId() {
   const devices = (await listAudioDevices()).filter(d => d.kind === "audioinput");
   if (!devices.length) return "";
 
-  const nonCable = devices.filter(d => !isVirtualCableLabel(d.label));
+  const nonCable = devices.filter(d => !isUnsafeMicLabel(d.label));
   const preferred = nonCable.find(d => isLikelyPhysicalMicLabel(d.label));
   if (preferred) {
     status("run", "Microphone", "Auto-selected physical microphone: " + (preferred.label || "audioinput"));
@@ -286,10 +432,29 @@ async function findSafePhysicalMicDeviceId() {
 
 async function setSinkIfSupported(el, deviceId, deviceName) {
   let resolved = deviceId || "";
+  if (audioIsolationMode) {
+    const requestedOutput = String(deviceName || "").toLowerCase();
+    if (String(resolved || "").toLowerCase() === "default" || requestedOutput.includes("default") || requestedOutput.includes("speaker") || requestedOutput.includes("headphone")) {
+      status("err", "TTS sink", "Audio isolation blocks this TTS output. Use CABLE Input only, never default speakers.");
+      return false;
+    }
+    if (deviceName && !isCableInputLabel(deviceName)) {
+      status("err", "TTS sink", "Audio isolation requires translated voice output to be CABLE Input.");
+      return false;
+    }
+  }
   if (!resolved && deviceName) resolved = await findDeviceIdByName("audiooutput", deviceName);
   if (!resolved) {
     status("err", "TTS sink", "Translated voice output not found. Set 'Translated voice output name contains' to CABLE Input and choose CABLE Output as microphone in Meet. Refusing to play translated voice into your speakers.");
     return false;
+  }
+  if (audioIsolationMode) {
+    const selectedOutput = await findDeviceById("audiooutput", resolved);
+    const label = selectedOutput && selectedOutput.label ? selectedOutput.label : deviceName;
+    if (!isCableInputLabel(label)) {
+      status("err", "TTS sink", "Audio isolation blocked non-CABLE output: " + (label || resolved) + ". Select CABLE Input.");
+      return false;
+    }
   }
   if (typeof el.setSinkId !== "function") {
     status("err", "TTS sink", "setSinkId not supported by this browser. Use Chrome/Edge for sending translated voice into VB-Cable, or route audio at Windows level.");
@@ -308,7 +473,67 @@ async function setSinkIfSupported(el, deviceId, deviceName) {
   }
 }
 
-async function playTtsAudio(base64, mime, sinkDeviceId, sinkDeviceName) {
+function pruneHistory(history, now, windowMs = OUTGOING_HISTORY_MS) {
+  while (history.length && now - history[0].at > windowMs) history.shift();
+}
+
+function isHistoryDuplicate(norm, history, now) {
+  if (!norm) return false;
+  pruneHistory(history, now);
+  return history.some(item => isNearPureEcho(norm, item.norm, 0.82));
+}
+
+function rememberHistory(norm, history, now) {
+  if (!norm) return;
+  pruneHistory(history, now);
+  history.push({ norm, at: now });
+  if (history.length > 12) history.splice(0, history.length - 12);
+}
+
+function stopAndDiscardCurrentMicSegment(reason) {
+  const recorder = micRecorder;
+  if (!recorder || recorder.state !== "recording") return;
+  recorder.__discardForIsolation = true;
+  try { recorder.stop(); } catch (_) {}
+  const now = Date.now();
+  if (now - lastMicGateLogAt > 1500) {
+    lastMicGateLogAt = now;
+    status("run", "Audio isolation", "Discarded microphone segment: " + reason);
+  }
+}
+
+function blockMicForOwnTts() {
+  micSuppressedUntil = Math.max(micSuppressedUntil, Date.now() + MIC_TTS_COOLDOWN_MS);
+  stopAndDiscardCurrentMicSegment("translated TTS is playing");
+}
+
+function isMicTemporarilyBlocked(now = Date.now()) {
+  return ttsPlaying || outgoingTtsActive || now < micSuppressedUntil;
+}
+
+function markOutgoingTtsStarted(text) {
+  outgoingTtsNorm = normalizeForDedupe(text);
+  outgoingTtsAt = Date.now();
+  outgoingTtsActive = true;
+  ttsPlaying = true;
+  blockMicForOwnTts();
+  if (outgoingTtsReleaseTimer) {
+    try { clearTimeout(outgoingTtsReleaseTimer); } catch (_) {}
+  }
+}
+
+function markOutgoingTtsEnded() {
+  if (outgoingTtsReleaseTimer) {
+    try { clearTimeout(outgoingTtsReleaseTimer); } catch (_) {}
+  }
+  outgoingTtsReleaseTimer = setTimeout(() => {
+    outgoingTtsActive = false;
+    ttsPlaying = false;
+    micSuppressedUntil = Math.max(micSuppressedUntil, Date.now() + MIC_TTS_COOLDOWN_MS);
+  }, 800);
+}
+
+async function playTtsAudio(base64, mime, sinkDeviceId, sinkDeviceName, spokenText) {
   if (!base64) return;
 
   try {
@@ -322,22 +547,32 @@ async function playTtsAudio(base64, mime, sinkDeviceId, sinkDeviceName) {
   audioEl = new Audio(url);
   const sinkOk = await setSinkIfSupported(audioEl, sinkDeviceId, sinkDeviceName);
   if (!sinkOk) { try { URL.revokeObjectURL(url); } catch (_) {} return; }
-  audioEl.onended = () => { try { URL.revokeObjectURL(url); } catch (_) {} };
 
-  // Guard against feedback loops: if mic is capturing a virtual cable output, it can hear its own TTS.
-  ttsPlaying = true;
-  audioEl.onended = () => {
-    ttsPlaying = false;
-    try { URL.revokeObjectURL(url); } catch (_) {}
-  };
-  audioEl.onerror = () => {
-    ttsPlaying = false;
-    try { URL.revokeObjectURL(url); } catch (_) {}
-  };
+  // Guard against feedback loops: if mic or tab audio hears our own TTS, suppress it.
+  markOutgoingTtsStarted(spokenText || "");
+  // Keep the outgoing pipeline serialized until playback actually finishes.
+  // HTMLMediaElement.play() resolves when playback starts, not when it ends;
+  // returning early allowed several delayed phrases to overlap and replace each
+  // other, which sounded like endless random/repeated speech.
+  await withTimeout(new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      markOutgoingTtsEnded();
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      resolve();
+    };
 
-  await audioEl.play().catch((e) => {
-    status("err", "TTS play blocked", String(e));
-    ttsPlaying = false;
+    audioEl.onended = finish;
+    audioEl.onerror = finish;
+    audioEl.play().catch((e) => {
+      status("err", "TTS play blocked", String(e));
+      finish();
+    });
+  }), 120000, "TTS playback timed out.").catch((e) => {
+    status("err", "TTS playback failed", String(e));
+    markOutgoingTtsEnded();
     try { URL.revokeObjectURL(url); } catch (_) {}
   });
 }
@@ -493,9 +728,17 @@ async function startTabRecorder() {
     if (!transcript && !translation) return;
 
     const now = Date.now();
+    if (shouldSuppressIncoming(transcript, translation, now)) {
+      status("run", "Audio isolation", "Suppressed incoming subtitle that matched our outgoing TTS.");
+      return;
+    }
+
     const norm = normalizeForDedupe(transcript);
     if (isNearDuplicate(norm, lastTabNorm, now, lastTabAt)) return;
     lastTabNorm = norm; lastTabAt = now;
+    lastIncomingTranscriptNorm = norm;
+    lastIncomingTranslationNorm = normalizeForDedupe(translation);
+    lastIncomingAt = now;
 
     chrome.runtime.sendMessage({ type: "SUBTITLE", tabId, channel: "incoming", translation, transcript, ts: now }).catch(() => {});
   };
@@ -511,12 +754,35 @@ async function startTabRecorder() {
 }
 
 async function startMicCapture() {
-  const audio = {};
+  const audio = audioIsolationMode ? {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1
+  } : {};
+  const isolationMicError = "Audio isolation requires a real physical microphone for outgoing recognition. Do not use Default, CABLE Output, Stereo Mix, What U Hear, loopback, or monitor devices.";
+
+  if (audioIsolationMode && (isUnsafeMicSelection(micDeviceId) || isUnsafeMicSelection(micDeviceName))) {
+    throw new Error(isolationMicError + " Current setting: " + (micDeviceName || micDeviceId));
+  }
+
   if (micDeviceId) {
+    if (audioIsolationMode) {
+      const selectedMic = await findDeviceById("audioinput", micDeviceId);
+      if (selectedMic && selectedMic.label && isUnsafeMicLabel(selectedMic.label)) {
+        throw new Error(isolationMicError + " Selected device: " + selectedMic.label);
+      }
+    }
     audio.deviceId = { exact: micDeviceId };
   } else if (micDeviceName) {
     const resolvedMic = await findDeviceIdByName("audioinput", micDeviceName);
     if (resolvedMic) {
+      if (audioIsolationMode) {
+        const selectedMic = await findDeviceById("audioinput", resolvedMic);
+        if (selectedMic && selectedMic.label && isUnsafeMicLabel(selectedMic.label)) {
+          throw new Error(isolationMicError + " Selected device: " + selectedMic.label);
+        }
+      }
       audio.deviceId = { exact: resolvedMic };
     } else {
       status("err", "Microphone", "Microphone matching name not found: " + micDeviceName + ". Auto-selecting a real non-cable microphone instead of using browser default.");
@@ -531,16 +797,25 @@ async function startMicCapture() {
     if (safeMic) audio.deviceId = { exact: safeMic };
   }
 
-  micStream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
+  if (audioIsolationMode && !audio.deviceId) {
+    throw new Error(isolationMicError + " No safe physical microphone was found.");
+  }
+
+  micStream = await withTimeout(
+    navigator.mediaDevices.getUserMedia({ audio, video: false }),
+    12000,
+    "Microphone access timed out. Open the extension audio-access page, allow the microphone, then retry."
+  );
   const track = micStream.getAudioTracks()[0];
   const label = track && track.label ? track.label : "";
-  if (isVirtualCableLabel(label)) {
+  if (audioIsolationMode ? isUnsafeMicLabel(label) : isVirtualCableLabel(label)) {
     try { for (const t of micStream.getTracks()) t.stop(); } catch (_) {}
-    throw new Error("Outgoing translation captured a virtual cable input instead of your real microphone: " + label + ". Set 'Название моего микрофона содержит' to Realtek / USB / Mikrofon, and keep CABLE Output only as the microphone inside Meet.");
+    throw new Error(isolationMicError + " Captured device: " + label + ". Set 'Название моего микрофона содержит' to Realtek / USB / Mikrofon, and keep CABLE Output only as the microphone inside Meet.");
   }
   status("run", "Microphone", "Capturing outgoing speech from: " + (label || "selected microphone"));
   micMeter = createLevelMeter(micStream);
   await startMicRecorder();
+  return label || "selected microphone";
 }
 
 function formatErr(e) {
@@ -560,8 +835,16 @@ async function processMicSpeechBlob(blob, reason) {
 
   const now = Date.now();
   const norm = normalizeForDedupe(transcript);
-  if (isNearDuplicate(norm, lastMicNorm, now, lastMicAt)) return;
+  if (shouldSuppressOutgoing(transcript, now)) {
+    status("run", "Audio isolation", "Suppressed outgoing voice: mic matched recent incoming speaker audio.");
+    return;
+  }
+  if (isNearDuplicate(norm, lastMicNorm, now, lastMicAt) || isHistoryDuplicate(norm, recentMicHistory, now)) {
+    status("run", "Outgoing voice", "Skipped duplicate microphone transcript.");
+    return;
+  }
   lastMicNorm = norm; lastMicAt = now;
+  rememberHistory(norm, recentMicHistory, now);
 
   if (showOutgoingSubtitles) {
     chrome.runtime.sendMessage({ type: "SUBTITLE", tabId, channel: "outgoing", translation, transcript: "YOU: " + transcript, ts: now }).catch(() => {});
@@ -569,12 +852,16 @@ async function processMicSpeechBlob(blob, reason) {
 
   if (!translation) return;
   const tNorm = normalizeForDedupe(translation);
-  if (isNearDuplicate(tNorm, lastSpokenNorm, now, lastSpokenAt)) return;
+  if (isLikelyRepeatForTts(tNorm, lastSpokenNorm, now, lastSpokenAt) || isHistoryDuplicate(tNorm, recentSpokenHistory, now)) {
+    status("run", "Outgoing voice", "Skipped repeated completed phrase.");
+    return;
+  }
   lastSpokenNorm = tNorm; lastSpokenAt = now;
+  rememberHistory(tNorm, recentSpokenHistory, now);
 
   status("run", "Outgoing voice", `Speaking completed phrase (${reason}): transcriptLen=${transcript.length}, translationLen=${translation.length}`);
   const tts = await requestTts(translation);
-  if (tts) await playTtsAudio(tts.audioBase64, tts.audioMime, ttsSinkDeviceId, ttsSinkDeviceName);
+  if (tts) await playTtsAudio(tts.audioBase64, tts.audioMime, ttsSinkDeviceId, ttsSinkDeviceName, translation);
 }
 
 function resetMicSegment() {
@@ -582,6 +869,9 @@ function resetMicSegment() {
   micSegmentMime = "";
   micSegmentStartedAt = 0;
   micLastSpeechAt = 0;
+  micSegmentPeakRms = 0;
+  micSegmentSpeechTicks = 0;
+  micSegmentTotalTicks = 0;
 }
 
 function flushMicSegment(reason) {
@@ -608,6 +898,9 @@ async function startMicRecorder() {
   micCurrentMimeType = mimeType;
   status("run", "Running", "Mic recorder mime=" + (mimeType || "default") + "; endpointing=whole-phrase");
   resetMicSegment();
+  micNoiseFloor = 0.003;
+  micCalibrationUntil = Date.now() + MIC_CALIBRATION_MS;
+  micSuppressedUntil = 0;
   if (micSpeechMonitorTimer) clearInterval(micSpeechMonitorTimer);
 
   const startSpeechRecording = () => {
@@ -618,6 +911,8 @@ async function startMicRecorder() {
     micSegmentStartedAt = now;
     micLastSpeechAt = now;
     micRecorderStartedAt = now;
+    micSegmentPeakRms = 0;
+    micSegmentSpeechTicks = 0;
 
     try {
       micRecorder = new MediaRecorder(micStream, micCurrentMimeType ? { mimeType: micCurrentMimeType } : undefined);
@@ -626,9 +921,17 @@ async function startMicRecorder() {
       return;
     }
 
+    const recorderForSegment = micRecorder;
     micRecorder.ondataavailable = (ev) => {
+      if (recorderForSegment.__discardForIsolation || isMicTemporarilyBlocked()) return;
       if (!ev.data || ev.data.size === 0) return;
       if (ev.data.size < MIN_AUDIO_BLOB_BYTES) return;
+      const speechRatio = micSegmentTotalTicks > 0 ? micSegmentSpeechTicks / micSegmentTotalTicks : 0;
+      const continueThreshold = Math.max(MIC_CONTINUE_MIN_RMS, micNoiseFloor * MIC_NOISE_CONTINUE_MULTIPLIER);
+      if (micSegmentSpeechTicks < MIC_MIN_SPEECH_TICKS || speechRatio < MIC_MIN_SPEECH_RATIO || micSegmentPeakRms < continueThreshold) {
+        status("run", "Outgoing voice", `Skipped mic segment with too little speech (ticks=${micSegmentSpeechTicks}/${micSegmentTotalTicks}, peak=${micSegmentPeakRms.toFixed(3)}).`);
+        return;
+      }
       const mime = ev.data.type || micCurrentMimeType || "audio/webm";
       const blob = ev.data.type ? ev.data : new Blob([ev.data], { type: mime });
       micFlushChain = micFlushChain
@@ -659,12 +962,35 @@ async function startMicRecorder() {
     try {
       if (!running || !micTxEnabled || !micStream) return;
       const now = Date.now();
-      const peak = micMeter ? micMeter.getPeak() : 1;
-      const speech = !VAD_ENABLED || !micMeter || peak >= MIC_VAD_THRESHOLD;
+      const rms = micMeter && typeof micMeter.getRms === "function" ? micMeter.getRms() : (micMeter ? micMeter.getPeak() : 0);
 
-      if (MUTE_MIC_DURING_TTS && ttsPlaying) {
-        stopSpeechRecording("tts-playing");
+      // Never transcribe our generated TTS. Remote meeting audio by itself does
+      // not close the microphone: echoCancellation plus transcript echo matching
+      // handle speaker leakage without making voice mode permanently silent.
+      if (ttsPlaying || outgoingTtsActive || now < micSuppressedUntil) {
+        stopAndDiscardCurrentMicSegment("translated TTS/cooldown");
         return;
+      }
+
+      const isRecording = !!(micRecorder && micRecorder.state === "recording");
+
+      // Calibrate/track room noise only while idle. Disable auto-gain pumping from
+      // turning silence into fake speech segments.
+      if (!isRecording && now < micCalibrationUntil) {
+        micNoiseFloor = Math.max(0.001, micNoiseFloor * 0.85 + (rms || 0) * 0.15);
+        return;
+      }
+      if (!isRecording && rms < Math.max(MIC_START_MIN_RMS, micNoiseFloor * MIC_NOISE_START_MULTIPLIER)) {
+        micNoiseFloor = Math.max(0.001, micNoiseFloor * 0.98 + (rms || 0) * 0.02);
+      }
+
+      const startThreshold = Math.max(MIC_START_MIN_RMS, micNoiseFloor * MIC_NOISE_START_MULTIPLIER);
+      const continueThreshold = Math.max(MIC_CONTINUE_MIN_RMS, micNoiseFloor * MIC_NOISE_CONTINUE_MULTIPLIER);
+      const speech = !VAD_ENABLED || !micMeter || rms >= (isRecording ? continueThreshold : startThreshold);
+
+      if (!speech && !isRecording && now - lastMicGateLogAt > 4000) {
+        lastMicGateLogAt = now;
+        status("run", "Outgoing voice", `Waiting for speech: micRms=${(rms || 0).toFixed(3)}, threshold=${startThreshold.toFixed(3)}.`);
       }
 
       if (speech) {
@@ -673,18 +999,98 @@ async function startMicRecorder() {
       }
 
       if (micRecorder && micRecorder.state === "recording") {
+        micSegmentTotalTicks += 1;
+        micSegmentPeakRms = Math.max(micSegmentPeakRms, rms || 0);
+        if (!VAD_ENABLED || !micMeter || rms >= continueThreshold) micSegmentSpeechTicks += 1;
         const durationMs = now - (micSegmentStartedAt || now);
         const silenceMs = now - (micLastSpeechAt || now);
+        const maxSegmentMs = Math.max(2500, Math.min(MIC_MAX_SEGMENT_MS, (micTxChunkSeconds || 5) * 1000));
         if (durationMs >= MIC_MIN_SEGMENT_MS && silenceMs >= MIC_SILENCE_FLUSH_MS) {
           stopSpeechRecording("silence");
-        } else if (durationMs >= MIC_MAX_SEGMENT_MS) {
+        } else if (durationMs >= maxSegmentMs) {
           stopSpeechRecording("max-duration");
         }
       }
     } catch (e) {
       status("err", "Mic monitor failed", String(e));
     }
-  }, 200);
+  }, MIC_MONITOR_INTERVAL_MS);
+}
+
+async function stopMicCaptureOnly() {
+  try { if (micStopTimer) clearInterval(micStopTimer); } catch (_) {}
+  try { if (micSpeechMonitorTimer) clearInterval(micSpeechMonitorTimer); } catch (_) {}
+  micStopTimer = null;
+  micSpeechMonitorTimer = null;
+  resetMicSegment();
+
+  try { if (micRecorder && micRecorder.state !== "inactive") micRecorder.stop(); } catch (_) {}
+  micRecorder = null;
+  try { if (micStream) for (const t of micStream.getTracks()) t.stop(); } catch (_) {}
+  micStream = null;
+  try { if (micMeter) micMeter.stop(); } catch (_) {}
+  micMeter = null;
+}
+
+async function updateRunningMode(msg) {
+  audioIsolationMode = msg.audioIsolationMode !== false;
+  ttsEnabled = audioIsolationMode ? false : !!msg.ttsEnabled;
+  ttsVoice = msg.ttsVoice || ttsVoice || "onyx";
+  ttsSpeed = typeof msg.ttsSpeed === "number" ? msg.ttsSpeed : (ttsSpeed || 1.0);
+
+  micTxSourceLang = msg.micTxSourceLang || micTxSourceLang || "en";
+  micTxTargetLang = msg.micTxTargetLang || micTxTargetLang || "en";
+  micDeviceId = msg.micDeviceId || "";
+  micDeviceName = msg.micDeviceName || "";
+  ttsSinkDeviceId = msg.ttsSinkDeviceId || "";
+  ttsSinkDeviceName = msg.ttsSinkDeviceName || (audioIsolationMode && !!msg.micTxEnabled ? "CABLE Input" : "");
+  micTxChunkSeconds = msg.micTxChunkSeconds || 5;
+  outVoiceStyle = msg.outVoiceStyle || "openai";
+  rvcModelTag = msg.rvcModelTag || "";
+  showOutgoingSubtitles = !!msg.showOutgoingSubtitles;
+
+  const enableMic = !!msg.micTxEnabled;
+  if (!enableMic) {
+    micTxEnabled = false;
+    await stopMicCaptureOnly();
+    const details = { incomingReady: !!tabStream, micTxEnabled: false, micTxReady: false, sinkReady: false };
+    status("run", "Running", "Switched to subtitles-only mode without restarting tab capture.");
+    return { ok: true, message: "Incoming translation is ready; outgoing voice is off.", details };
+  }
+
+  // Restart only the microphone path. Keep tab capture/subtitles alive.
+  micTxEnabled = false;
+  await stopMicCaptureOnly();
+  status("run", "Starting...", "Enabling microphone for outgoing translation without restarting subtitles...");
+  try {
+    micTxEnabled = true;
+    const microphoneLabel = await startMicCapture();
+    const sinkProbe = new Audio();
+    const sinkReady = await withTimeout(
+      setSinkIfSupported(sinkProbe, ttsSinkDeviceId, ttsSinkDeviceName),
+      8000,
+      "Selecting CABLE Input timed out."
+    );
+    if (!sinkReady) throw new Error("Translated voice output CABLE Input is unavailable.");
+    const outputLabel = ttsSinkDeviceName || "CABLE Input";
+    const details = {
+      incomingReady: !!tabStream,
+      micTxEnabled: true,
+      micTxReady: true,
+      microphoneLabel,
+      sinkReady: true,
+      outputLabel
+    };
+    const message = `Voice translation is ready. Microphone: ${microphoneLabel}; output: ${outputLabel}.`;
+    status("run", "Voice ready", message);
+    return { ok: true, message, details };
+  } catch (e) {
+    micTxEnabled = false;
+    await stopMicCaptureOnly();
+    const error = "Outgoing voice is not ready: " + formatErr(e);
+    status("err", "Outgoing voice unavailable", error);
+    return { ok: false, error, details: { incomingReady: !!tabStream, micTxReady: false, sinkReady: false } };
+  }
 }
 
 async function stopAll() {
@@ -692,7 +1098,14 @@ async function stopAll() {
   try { if (tabStopTimer) clearTimeout(tabStopTimer); } catch (_) {}
   try { if (micStopTimer) clearInterval(micStopTimer); } catch (_) {}
   try { if (micSpeechMonitorTimer) clearInterval(micSpeechMonitorTimer); } catch (_) {}
+  try { if (outgoingTtsReleaseTimer) clearTimeout(outgoingTtsReleaseTimer); } catch (_) {}
   tabStopTimer = null; micStopTimer = null; micSpeechMonitorTimer = null;
+  outgoingTtsReleaseTimer = null;
+  outgoingTtsActive = false;
+  ttsPlaying = false;
+  micSuppressedUntil = 0;
+  recentMicHistory = [];
+  recentSpokenHistory = [];
   resetMicSegment();
 
   try { if (tabRecorder && tabRecorder.state !== "inactive") tabRecorder.stop(); } catch (_) {}
@@ -717,9 +1130,20 @@ async function stopAll() {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
     try {
+      if (msg?.type === "OFFSCREEN_UPDATE_MODE") {
+        if (!running) {
+          sendResponse({ ok: false, error: "Translation capture is not running yet." });
+          return;
+        }
+        const result = await updateRunningMode(msg);
+        sendResponse(result);
+        return;
+      }
+
       if (msg?.type === "OFFSCREEN_START") {
         await stopAll();
 
+        audioIsolationMode = msg.audioIsolationMode !== false;
         tabId = msg.tabId;
         serverUrl = msg.serverUrl;
         authToken = msg.authToken;
@@ -728,7 +1152,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         tabTargetLang = msg.targetLang || "en";
         tabChunkSeconds = msg.chunkSeconds || 3;
 
-        ttsEnabled = !!msg.ttsEnabled;
+        ttsEnabled = audioIsolationMode ? false : !!msg.ttsEnabled;
         ttsVoice = msg.ttsVoice || "onyx";
         ttsSpeed = typeof msg.ttsSpeed === "number" ? msg.ttsSpeed : 1.0;
 
@@ -738,7 +1162,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         micDeviceId = msg.micDeviceId || "";
         micDeviceName = msg.micDeviceName || "";
         ttsSinkDeviceId = msg.ttsSinkDeviceId || "";
-        ttsSinkDeviceName = msg.ttsSinkDeviceName || "";
+        ttsSinkDeviceName = msg.ttsSinkDeviceName || (audioIsolationMode && !!msg.micTxEnabled ? "CABLE Input" : "");
         micTxChunkSeconds = msg.micTxChunkSeconds || 5;
 
         outVoiceStyle = msg.outVoiceStyle || "openai";
@@ -749,6 +1173,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         lastTabNorm = ""; lastTabAt = 0;
         lastMicNorm = ""; lastMicAt = 0;
         lastSpokenNorm = ""; lastSpokenAt = 0;
+        lastIncomingTranscriptNorm = "";
+        lastIncomingTranslationNorm = "";
+        lastIncomingAt = 0;
+        outgoingTtsNorm = "";
+        outgoingTtsAt = 0;
+        outgoingTtsActive = false;
+        micSuppressedUntil = 0;
+              recentMicHistory = [];
+        recentSpokenHistory = [];
 
         if (!serverUrl || !authToken) {
           status("err", "Missing config", "serverUrl/authToken is missing.");
@@ -757,9 +1190,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
 
         running = true;
+        let incomingReady = false;
+        let microphoneLabel = "";
+        let outputLabel = "";
         if (msg.streamId) {
           status("run", "Starting...", "Capturing tab audio...");
           await startTabCapture(msg.streamId);
+          incomingReady = true;
         } else {
           status("err", "Incoming subtitles unavailable", "No tab audio streamId. Browser did not allow tab capture for this page/start action. Outgoing voice will still run if enabled.");
         }
@@ -767,15 +1204,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (micTxEnabled) {
           status("run", "Starting...", "Capturing microphone for outgoing translation...");
           try {
-            await startMicCapture();
+            microphoneLabel = await startMicCapture();
+            const sinkProbe = new Audio();
+            const sinkReady = await setSinkIfSupported(sinkProbe, ttsSinkDeviceId, ttsSinkDeviceName);
+            if (!sinkReady) throw new Error("Translated voice output CABLE Input is unavailable.");
+            outputLabel = ttsSinkDeviceName || "CABLE Input";
           } catch (e) {
-            // Offscreen documents may not be able to surface permission prompts; rely on popup preflight.
-            status("err", "Mic unavailable", "Microphone capture failed: " + formatErr(e) + ". Click 'Grant mic access' in the popup and ensure audioCapture permission is allowed.");
-            micTxEnabled = false;
+            const error = "Outgoing voice is not ready: " + formatErr(e) + ". Open the extension audio-access page, grant microphone/output access, and try again.";
+            status("err", "Outgoing voice unavailable", error);
+            const details = { incomingReady, micTxReady: false, sinkReady: false };
+            await stopAll();
+            sendResponse({ ok: false, error, details });
+            return;
           }
         }
 
-        sendResponse({ ok: true });
+        const details = {
+          incomingReady,
+          micTxEnabled,
+          micTxReady: micTxEnabled ? !!microphoneLabel : false,
+          microphoneLabel,
+          sinkReady: micTxEnabled ? !!outputLabel : false,
+          outputLabel
+        };
+        const message = micTxEnabled
+          ? `Voice translation is ready. Microphone: ${microphoneLabel}; output: ${outputLabel}.`
+          : "Incoming translation is ready.";
+        status("run", micTxEnabled ? "Voice ready" : "Running", message);
+        sendResponse({ ok: true, message, details });
         return;
       }
 

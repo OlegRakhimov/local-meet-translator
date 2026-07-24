@@ -33,9 +33,8 @@ async function getActiveTab() {
 
 async function checkDesktop() {
   try {
-    const resp = await fetch("http://127.0.0.1:18798/health", { cache: "no-store" });
-    const data = await resp.json().catch(() => ({}));
-    if (resp.ok && data.ok) {
+    const data = await chrome.runtime.sendMessage({ type: "DESKTOP_HEALTH" });
+    if (data && data.ok) {
       setText("desktopStatus", t("online"), "ok");
       log(t("desktopOnline"));
     } else {
@@ -46,6 +45,56 @@ async function checkDesktop() {
     setText("desktopStatus", t("offline"), "err");
     log(t("desktopOffline"));
   }
+}
+
+async function pairDesktop() {
+  const input = $("pairingCode");
+  let code = input ? String(input.value || "").trim() : "";
+  const btn = $("pairDesktop");
+  try {
+    if (btn) btn.disabled = true;
+    if (!code) {
+      await preloadPairingCode();
+      code = input ? String(input.value || "").trim() : "";
+    }
+    const res = await chrome.runtime.sendMessage({ type: "PAIR_WITH_DESKTOP", pairingCode: code });
+    if (res && res.ok) {
+      setText("desktopStatus", t("paired"), "ok");
+      log(t("pairedLog"));
+      await checkDesktop();
+    } else {
+      setText("desktopStatus", t("notReady"), "err");
+      log((res && (res.error || res.message)) || t("pairFailed"));
+    }
+  } catch (e) {
+    setText("desktopStatus", t("notReady"), "err");
+    log(String(e));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function preloadPairingCode() {
+  const input = $("pairingCode");
+  if (!input) return;
+  try {
+    const data = await chrome.runtime.sendMessage({ type: "DESKTOP_PAIRING_CODE" });
+    if (data && data.ok && data.pairingCode) {
+      input.value = String(data.pairingCode || "");
+      input.select?.();
+      log("Pairing code loaded from desktop app.");
+      return;
+    }
+  } catch (_) {}
+  if (input.value.trim()) return;
+  try {
+    const cached = await chrome.storage.local.get("desktopExtensionPairingCode");
+    if (cached && cached.desktopExtensionPairingCode) {
+      input.value = String(cached.desktopExtensionPairingCode || "");
+      input.select?.();
+      log("Pairing code loaded from extension cache.");
+    }
+  } catch (_) {}
 }
 
 async function checkCurrentPage() {
@@ -94,13 +143,43 @@ async function connectCurrentMeetingTab() {
   }
 }
 
+
+async function autoPairAndCheckDesktop() {
+  await preloadPairingCode();
+  await checkDesktop();
+  const status = $("desktopStatus");
+  if (status && status.className === "ok") return;
+  const input = $("pairingCode");
+  if (input && input.value.trim()) {
+    await pairDesktop();
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   applyI18n();
   setText("runtimeStatus", t("idle"), "warn");
-  await checkDesktop();
+  await autoPairAndCheckDesktop();
+  let attempts = 0;
+  const retry = setInterval(async () => {
+    attempts += 1;
+    const input = $("pairingCode");
+    if (input && input.value.trim()) {
+      clearInterval(retry);
+      return;
+    }
+    if (attempts >= 20) {
+      clearInterval(retry);
+      return;
+    }
+    await preloadPairingCode();
+  }, 250);
   const tab = await checkCurrentPage();
   const btn = $("connectTab");
   if (btn) btn.onclick = connectCurrentMeetingTab;
+  const pairBtn = $("pairDesktop");
+  if (pairBtn) pairBtn.onclick = pairDesktop;
+  const audioAccess = $("audioAccess");
+  if (audioAccess) audioAccess.onclick = () => chrome.runtime.openOptionsPage();
   if (tab) await connectCurrentMeetingTab();
 
   try {
