@@ -12,6 +12,9 @@ const { createSubtitleOverlayController, sanitizeSubtitleEvent } = require('./ma
 const { createSubtitleDedupeGuard } = require('./main/subtitle-dedupe');
 const { createCandidateProfileStore } = require('./main/candidate-profile-store');
 const { createAnswerLibraryStore } = require('./main/answer-library-store');
+const { createQuestionDetector, cleanQuestionText } = require('./main/question-detector');
+const { matchAnswerLibrary } = require('./main/answer-matcher');
+const { createAssistantOverlayController, normalizeAssistantSettings } = require('./main/assistant-overlay');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('local.meet.translator.desktop');
@@ -27,6 +30,7 @@ const legacyEnvPath = path.join(repoRoot, '.env');
 const subtitleWindowStatePath = path.join(userConfigDir, 'subtitle-window-state.json');
 const candidateProfilePath = path.join(userConfigDir, 'candidate-profile.json');
 const answerLibraryPath = path.join(userConfigDir, 'answer-library.json');
+const assistantWindowStatePath = path.join(userConfigDir, 'assistant-window-state.json');
 const extensionPath = isPackaged ? path.join(repoRoot, 'browser-extensions') : repoRoot;
 const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPath });
 const { loadSettings, saveSettings, migrateLegacyEnvIfNeeded, getSystemLanguageCode } = configStore;
@@ -34,8 +38,12 @@ const translationSession = new SessionStateMachine({ mode: 'translator' });
 const subtitleDedupe = createSubtitleDedupeGuard();
 const candidateProfileStore = createCandidateProfileStore({ profilePath: candidateProfilePath });
 const answerLibraryStore = createAnswerLibraryStore({ libraryPath: answerLibraryPath });
+const questionDetector = createQuestionDetector();
 let windowManager;
 let subtitleOverlay;
+let assistantOverlay;
+let assistantAnalysisGeneration = 0;
+let lastDetectedQuestion = null;
 let bridgeProc = null;
 let voiceProc = null;
 let configServer = null;
@@ -70,6 +78,161 @@ function requestJson(url, token) {
     req.on('error', e => resolve({ ok:false, status:0, body:e.message }));
     req.end();
   });
+}
+
+function requestJsonPost(url, token, payload, timeoutMs = 75_000) {
+  return new Promise(resolve => {
+    const u = new URL(url);
+    const body = Buffer.from(JSON.stringify(payload || {}), 'utf8');
+    const requestId = `desktop-${Date.now()}-${crypto.randomBytes(5).toString('hex')}`;
+    const req = http.request({
+      hostname: u.hostname,
+      port: u.port,
+      path: `${u.pathname}${u.search || ''}`,
+      method: 'POST',
+      timeout: timeoutMs,
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(body.length),
+        'X-Request-Id': requestId,
+        ...(token ? { 'X-Auth-Token': token } : {})
+      }
+    }, res => {
+      let responseBody = '';
+      res.on('data', chunk => { responseBody += chunk; });
+      res.on('end', () => {
+        let json = null;
+        try { json = responseBody ? JSON.parse(responseBody) : {}; } catch (_) {}
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          body: responseBody,
+          json,
+          requestId: res.headers['x-request-id'] || requestId
+        });
+      });
+    });
+    req.on('timeout', () => { req.destroy(); resolve({ ok:false, status:0, body:'timeout', json:null, requestId }); });
+    req.on('error', error => resolve({ ok:false, status:0, body:error.message, json:null, requestId }));
+    req.end(body);
+  });
+}
+
+function confirmedCandidateFacts(profile = {}) {
+  return (Array.isArray(profile.confirmedFacts) ? profile.confirmedFacts : [])
+    .filter(item => item && item.confirmed !== false && String(item.text || '').trim())
+    .map(item => String(item.text).trim())
+    .slice(0, 120);
+}
+
+function buildInterviewGrounding(profile = {}) {
+  return {
+    fullName: String(profile.fullName || '').trim(),
+    targetRole: String(profile.targetRole || '').trim(),
+    location: String(profile.location || '').trim(),
+    professionalSummary: String(profile.professionalSummary || '').trim(),
+    skills: Array.isArray(profile.skills) ? profile.skills.slice(0, 120) : [],
+    languages: Array.isArray(profile.languages) ? profile.languages.slice(0, 40) : [],
+    experience: String(profile.experience || '').trim(),
+    projects: String(profile.projects || '').trim(),
+    education: String(profile.education || '').trim()
+  };
+}
+
+function emitAssistantState() {
+  if (!windowManager || !assistantOverlay) return;
+  windowManager.send('interview:assistant-state', assistantOverlay.snapshot());
+}
+
+function recordDetectedQuestion(question) {
+  lastDetectedQuestion = question ? { ...question } : null;
+  if (assistantOverlay && question) assistantOverlay.setQuestion(question);
+  if (windowManager && question) windowManager.send('interview:question-detected', { ...question });
+  emitAssistantState();
+}
+
+async function ensureBridgeForAssistant() {
+  const settings = loadSettings();
+  let health = await requestJson(`http://127.0.0.1:${settings.LOCAL_MEET_TRANSLATOR_PORT}/health`, settings.LOCAL_MEET_TRANSLATOR_TOKEN);
+  if (!health.ok) {
+    const started = startBridgeInternal();
+    if (!started.ok) return { ok:false, settings, message:started.message };
+    health = await waitForBridgeReady(settings);
+  }
+  return health.ok
+    ? { ok:true, settings }
+    : { ok:false, settings, message:`Bridge is not ready: ${health.body || 'offline'}` };
+}
+
+async function analyzeInterviewQuestion(questionInput, options = {}) {
+  const questionText = cleanQuestionText(typeof questionInput === 'string' ? questionInput : questionInput?.text);
+  if (!questionText) return { ok:false, message:'Interview question is empty.' };
+  if (!lastDetectedQuestion || lastDetectedQuestion.text !== questionText) {
+    const manualQuestion = {
+      id: `manual-question-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
+      text: questionText,
+      normalized: questionText.toLowerCase(),
+      detectedAt: Date.now(),
+      eventId: '', clientId: '', tabId: '', url: ''
+    };
+    recordDetectedQuestion(manualQuestion);
+  }
+  const generation = ++assistantAnalysisGeneration;
+  const profileResult = candidateProfileStore.load();
+  const libraryResult = answerLibraryStore.load();
+  const profile = profileResult.profile || {};
+  const library = libraryResult.library || { entries: [] };
+  const localMatch = matchAnswerLibrary(questionText, library.entries || [], { threshold: 0.52 });
+  if (localMatch.matched && localMatch.suggestion) {
+    const suggestion = { ...localMatch.suggestion, question: questionText };
+    if (assistantOverlay && generation === assistantAnalysisGeneration) assistantOverlay.setSuggestion(suggestion);
+    emitAssistantState();
+    return { ok:true, source:'library', suggestion, matchScore:localMatch.score };
+  }
+
+  const bridge = await ensureBridgeForAssistant();
+  if (!bridge.ok) {
+    if (assistantOverlay && generation === assistantAnalysisGeneration) assistantOverlay.setError(bridge.message);
+    emitAssistantState();
+    return { ok:false, message:bridge.message };
+  }
+  if (assistantOverlay && generation === assistantAnalysisGeneration) assistantOverlay.setAnalyzing(true);
+  emitAssistantState();
+  const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
+  const reviewedAnswers = localMatch.candidates.map(item => ({
+    id: String(item.entry.id || ''),
+    question: String(item.entry.question || ''),
+    intent: String(item.entry.intent || ''),
+    answer: String(item.entry.answer || ''),
+    firstSentence: String(item.entry.firstSentence || ''),
+    keywords: Array.isArray(item.entry.keywords) ? item.entry.keywords.slice(0, 30) : [],
+    groundingFacts: Array.isArray(item.entry.groundingFacts) ? item.entry.groundingFacts.slice(0, 50) : [],
+    locked: item.entry.locked === true,
+    similarity: item.score
+  }));
+  const response = await requestJsonPost(
+    `http://127.0.0.1:${bridge.settings.LOCAL_MEET_TRANSLATOR_PORT}/interview/suggest-answer`,
+    bridge.settings.LOCAL_MEET_TRANSLATOR_TOKEN,
+    {
+      question: questionText,
+      languageLevel: assistantSettings.languageLevel,
+      answerStyle: assistantSettings.answerStyle,
+      candidateProfile: buildInterviewGrounding(profile),
+      confirmedFacts: confirmedCandidateFacts(profile),
+      reviewedAnswers
+    }
+  );
+  if (generation !== assistantAnalysisGeneration) return { ok:false, stale:true, message:'A newer question replaced this request.' };
+  if (!response.ok || !response.json) {
+    const message = response.json?.message || response.json?.error || response.body || 'Interview suggestion failed.';
+    if (assistantOverlay) assistantOverlay.setError(message);
+    emitAssistantState();
+    return { ok:false, message, status:response.status, requestId:response.requestId };
+  }
+  const suggestion = { ...(response.json.suggestion || response.json), source:'ai', question:questionText };
+  if (assistantOverlay) assistantOverlay.setSuggestion(suggestion);
+  emitAssistantState();
+  return { ok:true, source:'ai', suggestion, requestId:response.requestId };
 }
 function findBridgeJar() {
   const target = path.join(repoRoot, 'local-meet-bridge', 'target');
@@ -377,6 +540,20 @@ function startConfigServer() {
             ? { ...event, replaceEventId: decision.replaceEventId }
             : event;
           subtitleOverlay.pushSubtitle(deliveredEvent);
+          const questionDecision = questionDetector.consume(deliveredEvent, deliveredEvent.ts || Date.now());
+          if (questionDecision.accepted && questionDecision.question) {
+            recordDetectedQuestion(questionDecision.question);
+            const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
+            if (assistantSettings.enabled && assistantSettings.autoAnalyze) {
+              setImmediate(() => {
+                analyzeInterviewQuestion(questionDecision.question, { source:'automatic' })
+                  .catch(error => {
+                    if (assistantOverlay) assistantOverlay.setError(error.message || String(error));
+                    emitAssistantState();
+                  });
+              });
+            }
+          }
           writeJsonResponse(res, 200, {
             ok: true,
             accepted: true,
@@ -543,6 +720,7 @@ function initializeWindowManager() {
         setTimeout(() => {
           try { if (configServer) configServer.close(); } catch (_) {}
           try { if (subtitleOverlay) subtitleOverlay.destroy(); } catch (_) {}
+          try { if (assistantOverlay) assistantOverlay.destroy(); } catch (_) {}
           try { windowManager.destroyMainWindow(); } catch (_) {}
           app.quit();
         }, 800);
@@ -567,6 +745,19 @@ function initializeWindowManager() {
     platform: process.platform
   });
   subtitleOverlay.initialize();
+  assistantOverlay = createAssistantOverlayController({
+    BrowserWindow,
+    screen,
+    globalShortcut,
+    preloadPath: path.join(__dirname, 'assistant-preload.js'),
+    htmlPath: path.join(__dirname, 'assistant-overlay.html'),
+    statePath: assistantWindowStatePath,
+    loadSettings,
+    saveSettings,
+    sendLog,
+    platform: process.platform
+  });
+  assistantOverlay.initialize();
   return windowManager.createMainWindow();
 }
 app.whenReady().then(() => {
@@ -587,6 +778,7 @@ app.on('before-quit', () => {
   killProcessTree(voiceProc, 'voice');
   try { if (configServer) configServer.close(); } catch (_) {}
   try { if (subtitleOverlay) subtitleOverlay.destroy(); } catch (_) {}
+  try { if (assistantOverlay) assistantOverlay.destroy(); } catch (_) {}
 });
 
 ipcMain.handle('app:info', () => ({ name: app.getName(), version: app.getVersion(), platform: process.platform, packaged: isPackaged }));
@@ -612,6 +804,23 @@ ipcMain.handle('subtitle-overlay:control', async (_event, action, payload = {}) 
     default: return { ok:false, message:`Unknown subtitle window action: ${String(action || '')}` };
   }
 });
+ipcMain.on('assistant-overlay:hide', () => { if (assistantOverlay) assistantOverlay.hide(); emitAssistantState(); });
+ipcMain.handle('interview-assistant:status', () => assistantOverlay ? assistantOverlay.snapshot() : { visible:false, status:'unavailable' });
+ipcMain.handle('interview-assistant:control', (_event, action, payload = {}) => {
+  if (!assistantOverlay) return { ok:false, message:'Interview assistant window is not initialized.' };
+  switch (String(action || '')) {
+    case 'show': return assistantOverlay.show();
+    case 'hide': return assistantOverlay.hide();
+    case 'toggle': return assistantOverlay.toggle();
+    case 'clear': questionDetector.clear(); lastDetectedQuestion = null; assistantAnalysisGeneration += 1; return assistantOverlay.clear();
+    case 'clickThrough': return assistantOverlay.setClickThrough(!!payload.enabled);
+    case 'rehome': return assistantOverlay.rehome();
+    default: return { ok:false, message:`Unknown interview assistant action: ${String(action || '')}` };
+  }
+});
+ipcMain.handle('interview-assistant:analyze', async (_event, question) => analyzeInterviewQuestion(question || lastDetectedQuestion || ''));
+ipcMain.handle('interview-assistant:last-question', () => lastDetectedQuestion ? { ok:true, question:{ ...lastDetectedQuestion } } : { ok:true, question:null });
+
 ipcMain.handle('candidate-profile:load', () => candidateProfileStore.load());
 ipcMain.handle('candidate-profile:save', (_event, profile) => candidateProfileStore.save(profile || {}));
 ipcMain.handle('candidate-profile:reset', () => candidateProfileStore.reset());
@@ -700,7 +909,7 @@ ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_e, settings) => {
   const saved = saveSettings(settings);
   if (subtitleOverlay) subtitleOverlay.updateSettings(saved);
-  return { ok:true, settings: saved, subtitle: subtitleOverlay ? subtitleOverlay.snapshot() : null, message: `Saved ${envPath}` };
+  return { ok:true, settings: saved, subtitle: subtitleOverlay ? subtitleOverlay.snapshot() : null, assistant: assistantOverlay ? assistantOverlay.updateSettings(saved) : null, message: `Saved ${envPath}` };
 });
 ipcMain.handle('env:open', () => { if (!fs.existsSync(envPath)) saveSettings({}); shell.openPath(envPath); return { ok:true }; });
 ipcMain.handle('extension:open', () => { shell.openPath(extensionPath); return { ok:true, message: extensionPath }; });

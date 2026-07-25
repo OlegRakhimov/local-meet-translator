@@ -441,3 +441,22 @@ Reviewed answers are stored locally at:
 Each entry contains the interview question, intent/category, English level (`A2`, `B1`, `B2`), answer style (`simple`, `technical`, `STAR`, `general`), prepared answer, first sentence, keywords, grounding facts and a `locked` flag.
 
 Stage 4 is manual-only: the app does not generate answers or send them to OpenAI. The library can be imported from or exported to JSON.
+
+## Stage 5: Live Interview Assistant
+
+The desktop app can now detect interview questions from incoming subtitles and display a suggestion in a separate protected Electron window.
+
+Key rules:
+
+- outgoing user speech is not treated as an interviewer question;
+- repeated and near-identical questions are suppressed;
+- the local Answer Library is matched before any AI request;
+- a suitable local answer does not call the OpenAI API;
+- AI suggestions are grounded only in the saved profile, confirmed facts, and closest reviewed answers;
+- suggestions are never spoken automatically;
+- automatic AI analysis is disabled by default to avoid unexpected API spend;
+- the assistant window uses `setContentProtection(true)` on supported platforms.
+
+The Live Interview Assistant screen lets the user select A2/B1/B2, choose an answer style, enable automatic analysis, manually analyze the latest question, and control the separate assistant window.
+
+Default assistant-window hotkey: `Ctrl+Shift+A`.

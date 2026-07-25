@@ -304,3 +304,13 @@ body.focusedMode .wrap { max-width: 1180px; }
   .profileStatus { align-items:flex-start; flex-wrap:wrap; }
   .profileStatus small { max-width:100%; margin-left:18px; text-align:left; white-space:normal; }
 }
+
+.liveAssistantCard { border-color: rgba(91,140,255,.45); background: linear-gradient(145deg, rgba(18,32,55,.98), rgba(12,20,35,.98)); }
+.assistantWorkspaceGrid { display:grid; grid-template-columns:minmax(360px,.9fr) minmax(420px,1.1fr); gap:18px; align-items:start; }
+.assistantControlCard,.assistantQuestionCard { margin:0; }
+.assistantResultPreview { margin-top:18px; padding-top:16px; border-top:1px solid rgba(148,163,184,.2); }
+.assistantResultMeta { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.questionHistory { display:grid; gap:8px; }
+.questionHistoryItem { width:100%; text-align:left; background:#111d31; color:#dbe7f7; border:1px solid rgba(148,163,184,.18); padding:12px 14px; border-radius:12px; line-height:1.4; }
+.questionHistoryItem:hover { border-color:#5b8cff; background:#14243e; }
+@media (max-width: 1050px) { .assistantWorkspaceGrid { grid-template-columns:1fr; } }

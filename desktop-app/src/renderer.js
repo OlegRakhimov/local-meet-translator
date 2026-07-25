@@ -73,6 +73,8 @@ let answerLibraryState = { schemaVersion: 1, entries: [], updatedAt: '' };
 let selectedAnswerId = '';
 let answerEditorDirty = false;
 let suppressAnswerDirty = false;
+let assistantState = { status: 'idle', question: null, suggestion: null, settings: {}, protection: {} };
+let assistantQuestionHistory = [];
 
 function stableJson(value) {
   return JSON.stringify(value || {});
@@ -180,6 +182,16 @@ function apply(s) {
   if ($('subtitleBackgroundOpacity')) $('subtitleBackgroundOpacity').value = s.SUBTITLE_WINDOW_BACKGROUND_OPACITY || '0.82';
   if ($('subtitleMaxLines')) $('subtitleMaxLines').value = s.SUBTITLE_WINDOW_MAX_LINES || '3';
   if ($('subtitleHotkey')) $('subtitleHotkey').value = s.SUBTITLE_WINDOW_HOTKEY || 'CommandOrControl+Shift+S';
+  if ($('assistantEnabled')) $('assistantEnabled').checked = String(s.INTERVIEW_ASSISTANT_ENABLED || 'true') === 'true';
+  if ($('assistantAutoAnalyze')) $('assistantAutoAnalyze').checked = String(s.INTERVIEW_ASSISTANT_AUTO_ANALYZE || 'false') === 'true';
+  if ($('assistantContentProtection')) $('assistantContentProtection').checked = String(s.INTERVIEW_ASSISTANT_CONTENT_PROTECTION || 'true') === 'true';
+  if ($('assistantAlwaysOnTop')) $('assistantAlwaysOnTop').checked = String(s.INTERVIEW_ASSISTANT_ALWAYS_ON_TOP || 'true') === 'true';
+  if ($('assistantClickThrough')) $('assistantClickThrough').checked = String(s.INTERVIEW_ASSISTANT_CLICK_THROUGH || 'false') === 'true';
+  if ($('assistantLanguageLevel')) $('assistantLanguageLevel').value = s.INTERVIEW_ASSISTANT_LANGUAGE_LEVEL || 'B1';
+  if ($('assistantAnswerStyle')) $('assistantAnswerStyle').value = s.INTERVIEW_ASSISTANT_ANSWER_STYLE || 'simple';
+  if ($('assistantFontSize')) $('assistantFontSize').value = s.INTERVIEW_ASSISTANT_FONT_SIZE || '20';
+  if ($('assistantBackgroundOpacity')) $('assistantBackgroundOpacity').value = s.INTERVIEW_ASSISTANT_BACKGROUND_OPACITY || '0.94';
+  if ($('assistantHotkey')) $('assistantHotkey').value = s.INTERVIEW_ASSISTANT_HOTKEY || 'CommandOrControl+Shift+A';
 }
 function readSettings() {
   return {
@@ -220,7 +232,17 @@ function readSettings() {
     SUBTITLE_WINDOW_FONT_SIZE: val('subtitleFontSize') || '28',
     SUBTITLE_WINDOW_BACKGROUND_OPACITY: val('subtitleBackgroundOpacity') || '0.82',
     SUBTITLE_WINDOW_MAX_LINES: val('subtitleMaxLines') || '3',
-    SUBTITLE_WINDOW_HOTKEY: val('subtitleHotkey') || 'CommandOrControl+Shift+S'
+    SUBTITLE_WINDOW_HOTKEY: val('subtitleHotkey') || 'CommandOrControl+Shift+S',
+    INTERVIEW_ASSISTANT_ENABLED: $('assistantEnabled') && checked('assistantEnabled') ? 'true' : 'false',
+    INTERVIEW_ASSISTANT_AUTO_ANALYZE: $('assistantAutoAnalyze') && checked('assistantAutoAnalyze') ? 'true' : 'false',
+    INTERVIEW_ASSISTANT_CONTENT_PROTECTION: $('assistantContentProtection') && checked('assistantContentProtection') ? 'true' : 'false',
+    INTERVIEW_ASSISTANT_ALWAYS_ON_TOP: $('assistantAlwaysOnTop') && checked('assistantAlwaysOnTop') ? 'true' : 'false',
+    INTERVIEW_ASSISTANT_CLICK_THROUGH: $('assistantClickThrough') && checked('assistantClickThrough') ? 'true' : 'false',
+    INTERVIEW_ASSISTANT_LANGUAGE_LEVEL: $('assistantLanguageLevel') ? val('assistantLanguageLevel') || 'B1' : 'B1',
+    INTERVIEW_ASSISTANT_ANSWER_STYLE: $('assistantAnswerStyle') ? val('assistantAnswerStyle') || 'simple' : 'simple',
+    INTERVIEW_ASSISTANT_FONT_SIZE: $('assistantFontSize') ? val('assistantFontSize') || '20' : '20',
+    INTERVIEW_ASSISTANT_BACKGROUND_OPACITY: $('assistantBackgroundOpacity') ? val('assistantBackgroundOpacity') || '0.94' : '0.94',
+    INTERVIEW_ASSISTANT_HOTKEY: $('assistantHotkey') ? val('assistantHotkey') || 'CommandOrControl+Shift+A' : 'CommandOrControl+Shift+A'
   };
 }
 function splitProfileLines(value) {
@@ -498,6 +520,120 @@ async function deleteCurrentAnswer() {
   return persistAnswerLibrary('answerDeleted');
 }
 
+
+function assistantProtectionSummary(protection = {}) {
+  if (!protection.supported) return t('assistantProtectionUnsupported');
+  if (protection.applied) return t('assistantProtectionApplied');
+  if (protection.requested) return t('assistantProtectionFailed');
+  return t('assistantProtectionDisabled');
+}
+
+function renderAssistantQuestionHistory() {
+  const root = $('assistantQuestionHistory');
+  const empty = $('assistantQuestionHistoryEmpty');
+  if (!root) return;
+  root.innerHTML = '';
+  const items = assistantQuestionHistory.slice().reverse();
+  if (empty) empty.hidden = items.length > 0;
+  for (const item of items) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'questionHistoryItem';
+    button.textContent = item.text;
+    button.onclick = () => {
+      if ($('assistantQuestionInput')) $('assistantQuestionInput').value = item.text;
+      showView('live-assistant');
+    };
+    root.appendChild(button);
+  }
+}
+
+function rememberDetectedQuestion(question) {
+  if (!question || !question.text) return;
+  const normalized = String(question.normalized || question.text).toLowerCase();
+  assistantQuestionHistory = assistantQuestionHistory.filter(item => String(item.normalized || item.text).toLowerCase() !== normalized);
+  assistantQuestionHistory.push({ ...question });
+  if (assistantQuestionHistory.length > 30) assistantQuestionHistory.splice(0, assistantQuestionHistory.length - 30);
+  if ($('assistantQuestionInput')) $('assistantQuestionInput').value = question.text;
+  renderAssistantQuestionHistory();
+}
+
+function renderAssistantSuggestion(suggestion) {
+  const value = suggestion || {};
+  if ($('assistantResultSource')) $('assistantResultSource').textContent = value.source === 'library' ? t('assistantSourceLibrary') : value.answer ? t('assistantSourceAi') : '—';
+  if ($('assistantResultConfidence')) $('assistantResultConfidence').textContent = value.confidence ? `${t('assistantConfidence')}: ${String(value.confidence).toUpperCase()}` : '—';
+  if ($('assistantResultFirstSentence')) $('assistantResultFirstSentence').value = value.firstSentence || '';
+  if ($('assistantResultAnswer')) $('assistantResultAnswer').value = value.answer || '';
+  if ($('assistantResultKeyPoints')) $('assistantResultKeyPoints').value = Array.isArray(value.keyPoints) ? value.keyPoints.join('\n') : '';
+  if ($('assistantResultBasis')) $('assistantResultBasis').value = Array.isArray(value.basis) ? value.basis.join('\n') : '';
+  if ($('assistantResultFallback')) $('assistantResultFallback').value = value.safeFallback || '';
+}
+
+function renderAssistantState(state = {}) {
+  assistantState = { ...assistantState, ...(state || {}) };
+  const status = assistantState.status || 'idle';
+  const visible = !!assistantState.visible;
+  const protection = assistantState.protection || {};
+  if ($('liveAssistantDot')) dot('liveAssistantDot', status !== 'error', visible || status === 'analyzing');
+  const statusLabels = {
+    idle: t('liveAssistantWaiting'),
+    question: t('liveAssistantQuestionDetected'),
+    analyzing: t('liveAssistantAnalyzing'),
+    ready: t('liveAssistantReady'),
+    error: t('liveAssistantError')
+  };
+  if ($('liveAssistantStatusText')) $('liveAssistantStatusText').textContent = statusLabels[status] || status;
+  if ($('liveAssistantProtectionText')) $('liveAssistantProtectionText').textContent = assistantProtectionSummary(protection);
+  if ($('liveAssistantQuestionSummary')) $('liveAssistantQuestionSummary').textContent = assistantState.question?.text || t('noQuestionDetected');
+  if ($('liveAssistantSourceSummary')) {
+    $('liveAssistantSourceSummary').textContent = assistantState.suggestion
+      ? (assistantState.suggestion.source === 'library' ? t('assistantSourceLibrary') : t('assistantSourceAi'))
+      : (assistantState.settings?.autoAnalyze ? t('automaticAnalysisOn') : t('manualAnalysisDefault'));
+  }
+  if ($('assistantAnalysisMessage')) {
+    $('assistantAnalysisMessage').textContent = status === 'analyzing'
+      ? t('liveAssistantAnalyzing')
+      : status === 'error'
+        ? (assistantState.error || t('liveAssistantError'))
+        : status === 'ready'
+          ? t('liveAssistantReady')
+          : status === 'question'
+            ? t('liveAssistantQuestionDetected')
+            : t('assistantWaitingForQuestion');
+  }
+  if (assistantState.settings) {
+    if ($('assistantClickThrough')) $('assistantClickThrough').checked = !!assistantState.settings.clickThrough;
+  }
+  if (assistantState.question) rememberDetectedQuestion(assistantState.question);
+  renderAssistantSuggestion(assistantState.suggestion);
+}
+
+async function refreshAssistantStatus() {
+  const status = await window.lmt.interviewAssistantStatus();
+  renderAssistantState(status);
+  return status;
+}
+
+async function saveAssistantSettings() {
+  const saved = await window.lmt.save(readSettings());
+  apply(saved.settings || {});
+  renderAssistantState(saved.assistant || await window.lmt.interviewAssistantStatus());
+  log(`[ASSISTANT] ${t('assistantSettingsSaved')}`);
+  return saved;
+}
+
+async function analyzeAssistantQuestion() {
+  const question = $('assistantQuestionInput') ? val('assistantQuestionInput') : '';
+  if (!question) throw new Error(t('assistantQuestionRequired'));
+  if ($('assistantAnalysisMessage')) $('assistantAnalysisMessage').textContent = t('liveAssistantAnalyzing');
+  const result = await window.lmt.interviewAssistantAnalyze(question);
+  if (!result || !result.ok) throw new Error(result?.message || t('liveAssistantError'));
+  if (result.suggestion) renderAssistantSuggestion(result.suggestion);
+  await refreshAssistantStatus();
+  log(`[ASSISTANT] ${result.source === 'library' ? t('assistantMatchedLibrary') : t('assistantGeneratedGrounded')}`);
+  return result;
+}
+
 async function refreshHealth() {
   const h = await window.lmt.health();
   dot('bridgeDot', h.bridge.ok); $('bridgeText').textContent = h.bridge.text;
@@ -530,6 +666,15 @@ try {
   window.lmt.onLog(log);
 } catch (e) {
   log(`[INIT ERROR] Cannot attach desktop logs: ${String(e && (e.message || e) || e)}`);
+}
+try {
+  window.lmt.onInterviewQuestion(question => {
+    rememberDetectedQuestion(question);
+    renderAssistantState({ ...assistantState, question, status: 'question', suggestion: null, error: '' });
+  });
+  window.lmt.onInterviewAssistantState(renderAssistantState);
+} catch (e) {
+  log(`[INIT ERROR] Cannot attach interview assistant events: ${String(e && (e.message || e) || e)}`);
 }
 
 window.addEventListener('error', (event) => {
@@ -591,6 +736,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     const r = await window.lmt.save(readSettings());
     apply(r.settings || {});
     renderSubtitleStatus(r.subtitle || await window.lmt.subtitleStatus());
+    renderAssistantState(r.assistant || await window.lmt.interviewAssistantStatus());
     log(r.message);
   };
   $('openEnv').onclick = () => window.lmt.openEnv();
@@ -763,6 +909,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   if ($('backFromCandidateProfile')) $('backFromCandidateProfile').onclick = () => showView('home');
   if ($('openAnswerLibrary')) $('openAnswerLibrary').onclick = () => showView('answer-library');
   if ($('backFromAnswerLibrary')) $('backFromAnswerLibrary').onclick = () => showView('home');
+  if ($('openLiveAssistant')) $('openLiveAssistant').onclick = () => showView('live-assistant');
+  if ($('backFromLiveAssistant')) $('backFromLiveAssistant').onclick = () => showView('home');
   const saveProfileAction = async (buttonId) => {
     await runUiAction('Save candidate profile clicked.', buttonId, async () => {
       const result = await window.lmt.candidateProfileSave(candidateProfileFromUi());
@@ -853,6 +1001,35 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
   };
 
+  if ($('saveAssistantSettings')) $('saveAssistantSettings').onclick = async () => {
+    await runUiAction('Save Live Assistant settings clicked.', 'saveAssistantSettings', saveAssistantSettings);
+  };
+  if ($('showAssistantWindowTop')) $('showAssistantWindowTop').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('show'));
+  if ($('showAssistantWindow')) $('showAssistantWindow').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('show'));
+  if ($('hideAssistantWindow')) $('hideAssistantWindow').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('hide'));
+  if ($('clearAssistantSession')) $('clearAssistantSession').onclick = async () => {
+    renderAssistantState(await window.lmt.interviewAssistantControl('clear'));
+    assistantQuestionHistory = [];
+    renderAssistantQuestionHistory();
+    if ($('assistantQuestionInput')) $('assistantQuestionInput').value = '';
+  };
+  if ($('analyzeAssistantQuestion')) $('analyzeAssistantQuestion').onclick = async () => {
+    await runUiAction('Analyze interview question clicked.', 'analyzeAssistantQuestion', analyzeAssistantQuestion);
+  };
+  if ($('useLastDetectedQuestion')) $('useLastDetectedQuestion').onclick = async () => {
+    const result = await window.lmt.interviewAssistantLastQuestion();
+    if (result?.question?.text) {
+      rememberDetectedQuestion(result.question);
+      if ($('assistantQuestionInput')) $('assistantQuestionInput').value = result.question.text;
+    } else if ($('assistantAnalysisMessage')) {
+      $('assistantAnalysisMessage').textContent = t('noQuestionDetected');
+    }
+  };
+  if ($('assistantClickThrough')) $('assistantClickThrough').onchange = async () => {
+    const saved = await saveAssistantSettings();
+    renderAssistantState(saved.assistant || await window.lmt.interviewAssistantStatus());
+  };
+
   if ($('extAudioIsolationMode')) $('extAudioIsolationMode').onchange = () => {
     const isolationMode = checked('extAudioIsolationMode');
     $('extTtsEnabled').disabled = isolationMode;
@@ -867,9 +1044,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     const settings = await window.lmt.load();
     apply(settings || {});
     await refreshSubtitleStatus();
+    await refreshAssistantStatus();
     await loadCandidateProfile();
     await loadAnswerLibrary();
-    log('[INIT] Settings, candidate profile and Answer Library loaded; controls are ready.');
+    renderAssistantQuestionHistory();
+    log('[INIT] Settings, candidate profile, Answer Library and Live Assistant loaded; controls are ready.');
   } catch (e) {
     log(`[INIT ERROR] Settings load failed: ${String(e && (e.message || e) || e)}`);
   }

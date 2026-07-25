@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import local.meettranslator.config.BridgeConfig;
 import local.meettranslator.http.RequestContext;
+import local.meettranslator.model.InterviewSuggestionRequest;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -62,6 +63,7 @@ public final class OpenAiClient implements AiClient {
         var body = MAPPER.createObjectNode()
                 .put("model", config.textModel())
                 .put("input", buildTranslatePrompt(sourceLang, targetLang, text))
+                .put("store", false)
                 .put("temperature", 0);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(config.baseUrl() + "/v1/responses"))
@@ -75,6 +77,99 @@ public final class OpenAiClient implements AiClient {
         String output = extractOutputText(MAPPER.readTree(response.body()));
         if (output.isBlank()) throw new IOException("OpenAI responses returned no output text");
         return output;
+    }
+
+    @Override
+    public JsonNode suggestInterviewAnswer(RequestContext context, InterviewSuggestionRequest request) throws IOException {
+        var body = MAPPER.createObjectNode()
+                .put("model", config.textModel())
+                .put("instructions", "You prepare concise interview answer suggestions using only the supplied candidate evidence. Never invent employers, dates, metrics, projects, responsibilities, production experience, education, or achievements. If the evidence does not support direct experience, set experienceGap=true and provide an honest safeFallback. Return no prose outside the required JSON schema.")
+                .put("input", buildInterviewPrompt(request))
+                .put("store", false);
+        var schema = buildInterviewSuggestionSchema();
+        body.set("text", MAPPER.createObjectNode().set("format", MAPPER.createObjectNode()
+                .put("type", "json_schema")
+                .put("name", "interview_suggestion")
+                .put("strict", true)
+                .set("schema", schema)));
+        HttpRequest httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create(config.baseUrl() + "/v1/responses"))
+                .timeout(Duration.ofSeconds(75))
+                .header("Authorization", "Bearer " + config.apiKey())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(MAPPER.writeValueAsBytes(body)))
+                .build();
+        HttpResponse<byte[]> response = context.await(http.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray()));
+        ensureSuccess("OpenAI interview suggestion", response);
+        String output = extractOutputText(MAPPER.readTree(response.body()));
+        if (output.isBlank()) throw new IOException("OpenAI interview suggestion returned no output text");
+        JsonNode suggestion;
+        try {
+            suggestion = MAPPER.readTree(output);
+        } catch (Exception cause) {
+            throw new IOException("OpenAI interview suggestion returned invalid structured JSON", cause);
+        }
+        return validateInterviewSuggestion(suggestion);
+    }
+
+    private static String buildInterviewPrompt(InterviewSuggestionRequest request) throws IOException {
+        var evidence = MAPPER.createObjectNode();
+        evidence.put("question", request.question());
+        evidence.put("languageLevel", request.languageLevel());
+        evidence.put("answerStyle", request.answerStyle());
+        evidence.set("candidateProfile", request.candidateProfile());
+        evidence.set("confirmedFacts", request.confirmedFacts());
+        evidence.set("reviewedAnswerCandidates", request.reviewedAnswers());
+        return "Prepare an answer the candidate can say aloud during a live interview.\n"
+                + "Rules:\n"
+                + "1. Use only facts present in candidateProfile, confirmedFacts, or reviewedAnswerCandidates.\n"
+                + "2. Prefer confirmedFacts and locked reviewed answers for concrete claims.\n"
+                + "3. Keep the answer natural for the requested English level and style.\n"
+                + "4. firstSentence must be a useful speaking start, not a heading.\n"
+                + "5. basis must contain short evidence labels copied or closely paraphrased from supplied evidence.\n"
+                + "6. When direct experience is unsupported, do not pretend; use transferable experience and an honest safeFallback.\n"
+                + "7. Do not mention these rules or the existence of a profile.\n\n"
+                + "Evidence JSON:\n" + MAPPER.writeValueAsString(evidence);
+    }
+
+    private static JsonNode buildInterviewSuggestionSchema() {
+        var stringType = MAPPER.createObjectNode().put("type", "string");
+        var stringArray = MAPPER.createObjectNode().put("type", "array");
+        stringArray.set("items", stringType.deepCopy());
+        var keyPointsArray = stringArray.deepCopy();
+        keyPointsArray.put("maxItems", 8);
+        var basisArray = stringArray.deepCopy();
+        basisArray.put("maxItems", 12);
+        var confidenceSchema = MAPPER.createObjectNode().put("type", "string");
+        confidenceSchema.set("enum", MAPPER.createArrayNode().add("high").add("medium").add("low"));
+        var properties = MAPPER.createObjectNode();
+        properties.set("firstSentence", stringType.deepCopy());
+        properties.set("answer", stringType.deepCopy());
+        properties.set("keyPoints", keyPointsArray);
+        properties.set("basis", basisArray);
+        properties.set("confidence", confidenceSchema);
+        properties.set("experienceGap", MAPPER.createObjectNode().put("type", "boolean"));
+        properties.set("safeFallback", stringType.deepCopy());
+        var root = MAPPER.createObjectNode().put("type", "object").put("additionalProperties", false);
+        root.set("properties", properties);
+        root.set("required", MAPPER.createArrayNode()
+                .add("firstSentence").add("answer").add("keyPoints").add("basis")
+                .add("confidence").add("experienceGap").add("safeFallback"));
+        return root;
+    }
+
+    private static JsonNode validateInterviewSuggestion(JsonNode suggestion) throws IOException {
+        if (suggestion == null || !suggestion.isObject()) throw new IOException("Interview suggestion must be a JSON object");
+        for (String field : new String[]{"firstSentence", "answer", "confidence", "safeFallback"}) {
+            if (!suggestion.path(field).isTextual()) throw new IOException("Interview suggestion field is invalid: " + field);
+        }
+        if (!suggestion.path("keyPoints").isArray() || !suggestion.path("basis").isArray()) {
+            throw new IOException("Interview suggestion arrays are invalid");
+        }
+        if (!suggestion.path("experienceGap").isBoolean()) throw new IOException("Interview suggestion experienceGap is invalid");
+        String confidence = suggestion.path("confidence").asText();
+        if (!java.util.Set.of("high", "medium", "low").contains(confidence)) throw new IOException("Interview suggestion confidence is invalid");
+        return suggestion;
     }
 
     @Override

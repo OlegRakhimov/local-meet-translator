@@ -2,10 +2,12 @@ package local.meettranslator;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import local.meettranslator.config.BridgeConfig;
 import local.meettranslator.http.RequestContext;
 import local.meettranslator.http.RequestRegistry;
 import local.meettranslator.openai.AiClient;
+import local.meettranslator.model.InterviewSuggestionRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -86,6 +88,31 @@ class BridgeServerTest {
     }
 
     @Test
+    void createsGroundedInterviewSuggestionWithTypedRequest() throws Exception {
+        String body = """
+                {
+                  "question":"Tell me about a difficult project",
+                  "languageLevel":"B1",
+                  "answerStyle":"simple",
+                  "candidateProfile":{"targetRole":"Android Developer"},
+                  "confirmedFacts":["I built Work Time Calculator from scratch."],
+                  "reviewedAnswers":[]
+                }
+                """;
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/interview/suggest-answer"))
+                .header("X-Auth-Token", "test-token")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+        JsonNode json = MAPPER.readTree(response.body());
+        assertTrue(json.path("ok").asBoolean());
+        assertEquals("I can describe Work Time Calculator.", json.path("suggestion").path("firstSentence").asText());
+        assertEquals("high", json.path("suggestion").path("confidence").asText());
+    }
+
+    @Test
     void rejectsMalformedJsonWithoutStackTrace() throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/translate-text"))
                 .header("X-Auth-Token", "test-token")
@@ -122,6 +149,19 @@ class BridgeServerTest {
         @Override
         public String translateText(RequestContext context, String sourceLang, String targetLang, String text) {
             return "translated:" + text;
+        }
+
+        @Override
+        public JsonNode suggestInterviewAnswer(RequestContext context, InterviewSuggestionRequest request) {
+            ObjectNode suggestion = MAPPER.createObjectNode();
+            suggestion.put("firstSentence", "I can describe Work Time Calculator.");
+            suggestion.put("answer", "I built the project from scratch and solved technical problems step by step.");
+            suggestion.set("keyPoints", MAPPER.createArrayNode().add("Built from scratch"));
+            suggestion.set("basis", MAPPER.createArrayNode().add("I built Work Time Calculator from scratch."));
+            suggestion.put("confidence", "high");
+            suggestion.put("experienceGap", false);
+            suggestion.put("safeFallback", "");
+            return suggestion;
         }
 
         @Override

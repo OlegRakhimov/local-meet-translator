@@ -176,6 +176,26 @@
       </div>
     </section>
 
+    <section class="card navigationCard liveAssistantCard">
+      <div class="navigationCardHeader">
+        <div>
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="liveAssistantTitle">Live Interview Assistant</h2>
+          <p class="hint" data-i18n="liveAssistantDescription">Detect interview questions, use reviewed answers first, and prepare grounded suggestions without automatic speech.</p>
+        </div>
+        <button id="openLiveAssistant" type="button" data-i18n="openLiveAssistant">Open assistant</button>
+      </div>
+      <div class="profileStatus" role="status">
+        <span id="liveAssistantDot" class="dot"></span>
+        <strong id="liveAssistantStatusText" data-i18n="liveAssistantWaiting">Assistant: waiting for a question</strong>
+        <small id="liveAssistantProtectionText"></small>
+      </div>
+      <div class="summaryChips">
+        <span id="liveAssistantQuestionSummary" class="summaryChip" data-i18n="noQuestionDetected">No interview question detected</span>
+        <span id="liveAssistantSourceSummary" class="summaryChip" data-i18n="manualAnalysisDefault">Automatic AI analysis is off</span>
+      </div>
+    </section>
+
     <section class="card">
       <h2 data-i18n="services">3. Services</h2>
       <div class="statusGrid">
@@ -286,6 +306,77 @@
         <button id="exportCandidateProfile" type="button" class="secondary" data-i18n="exportCandidateProfile">Export JSON</button>
         <button id="resetCandidateProfile" type="button" class="danger" data-i18n="resetCandidateProfile">Clear local profile</button>
       </div>
+    </section>
+
+    <section id="liveAssistantScreen" class="appView focusedView" data-view="live-assistant" hidden>
+      <div class="screenToolbar">
+        <button id="backFromLiveAssistant" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="liveAssistantTitle">Live Interview Assistant</h2>
+          <p data-i18n="liveAssistantScreenDescription">Questions are detected from incoming subtitles. The Answer Library is checked before any AI request.</p>
+        </div>
+        <button id="showAssistantWindowTop" type="button" data-i18n="showAssistantWindow">Show assistant window</button>
+      </div>
+
+      <div class="assistantWorkspaceGrid">
+        <section class="card assistantControlCard">
+          <h3 data-i18n="assistantWindowSettings">Assistant window and analysis</h3>
+          <div class="grid">
+            <label class="check"><input id="assistantEnabled" type="checkbox" /> <span data-i18n="assistantEnabled">Enable Live Assistant</span></label>
+            <label class="check"><input id="assistantAutoAnalyze" type="checkbox" /> <span data-i18n="assistantAutoAnalyze">Analyze detected questions automatically</span></label>
+            <label class="check"><input id="assistantContentProtection" type="checkbox" /> <span data-i18n="assistantContentProtection">Protect assistant window from screen capture</span></label>
+            <label class="check"><input id="assistantAlwaysOnTop" type="checkbox" /> <span data-i18n="assistantAlwaysOnTop">Keep assistant window on top</span></label>
+            <label class="check"><input id="assistantClickThrough" type="checkbox" /> <span data-i18n="assistantClickThrough">Click-through mode</span></label>
+          </div>
+          <div class="grid threeColumns">
+            <label><span data-i18n="assistantLanguageLevel">Answer English level</span>
+              <select id="assistantLanguageLevel"><option value="A2">A2</option><option value="B1" selected>B1</option><option value="B2">B2</option></select>
+            </label>
+            <label><span data-i18n="assistantAnswerStyle">Answer style</span>
+              <select id="assistantAnswerStyle"><option value="simple" data-i18n="answerStyleSimple">Simple</option><option value="technical" data-i18n="answerStyleTechnical">Technical</option><option value="star" data-i18n="answerStyleStar">STAR</option><option value="general" data-i18n="answerStyleGeneral">General</option></select>
+            </label>
+            <label><span data-i18n="assistantFontSize">Assistant font size</span><input id="assistantFontSize" type="number" min="14" max="36" step="1" value="20" /></label>
+          </div>
+          <div class="grid">
+            <label><span data-i18n="assistantBackgroundOpacity">Window opacity</span><input id="assistantBackgroundOpacity" type="number" min="0.5" max="1" step="0.05" value="0.94" /></label>
+            <label><span data-i18n="assistantHotkey">Show/hide hotkey</span><input id="assistantHotkey" value="CommandOrControl+Shift+A" /></label>
+          </div>
+          <p class="hint" data-i18n="assistantCostHint">Automatic analysis can create OpenAI API charges. It is disabled by default. Local Answer Library matches do not call the API.</p>
+          <div class="buttons screenActions">
+            <button id="saveAssistantSettings" type="button" data-i18n="saveAssistantSettings">Save assistant settings</button>
+            <button id="showAssistantWindow" type="button" class="secondary" data-i18n="showAssistantWindow">Show window</button>
+            <button id="hideAssistantWindow" type="button" class="secondary" data-i18n="hideAssistantWindow">Hide window</button>
+            <button id="clearAssistantSession" type="button" class="danger" data-i18n="clearAssistantSession">Clear current session</button>
+          </div>
+        </section>
+
+        <section class="card assistantQuestionCard">
+          <h3 data-i18n="currentInterviewQuestion">Current interview question</h3>
+          <textarea id="assistantQuestionInput" rows="5" placeholder="Tell me about yourself"></textarea>
+          <div class="buttons">
+            <button id="analyzeAssistantQuestion" type="button" data-i18n="analyzeQuestion">Analyze question</button>
+            <button id="useLastDetectedQuestion" type="button" class="secondary" data-i18n="useLastDetectedQuestion">Use last detected question</button>
+          </div>
+          <p id="assistantAnalysisMessage" class="hint" data-i18n="assistantWaitingForQuestion">Waiting for an interview question.</p>
+          <div class="assistantResultPreview">
+            <div class="assistantResultMeta"><span id="assistantResultSource" class="summaryChip">—</span><span id="assistantResultConfidence" class="summaryChip">—</span></div>
+            <label><span data-i18n="assistantFirstSentence">Start with</span><textarea id="assistantResultFirstSentence" rows="3" readonly></textarea></label>
+            <label><span data-i18n="assistantSuggestedAnswer">Suggested answer</span><textarea id="assistantResultAnswer" rows="10" readonly></textarea></label>
+            <div class="grid">
+              <label><span data-i18n="assistantKeyPoints">Key points</span><textarea id="assistantResultKeyPoints" rows="6" readonly></textarea></label>
+              <label><span data-i18n="assistantGrounding">Grounding used</span><textarea id="assistantResultBasis" rows="6" readonly></textarea></label>
+            </div>
+            <label><span data-i18n="assistantHonestFallback">Honest fallback when experience is missing</span><textarea id="assistantResultFallback" rows="4" readonly></textarea></label>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <h3 data-i18n="detectedQuestionHistory">Detected question history</h3>
+        <div id="assistantQuestionHistory" class="questionHistory"></div>
+        <p id="assistantQuestionHistoryEmpty" class="emptyState" data-i18n="noDetectedQuestionsYet">No detected questions yet.</p>
+      </section>
     </section>
 
     <section id="answerLibraryScreen" class="appView focusedView" data-view="answer-library" hidden>

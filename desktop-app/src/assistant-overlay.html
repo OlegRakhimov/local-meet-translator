@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interview Assistant</title>
+  <link rel="stylesheet" href="assistant-overlay.css" />
+</head>
+<body>
+  <main id="assistantRoot" class="assistantRoot idle">
+    <header class="dragBar">
+      <div>
+        <span class="eyebrow">LOCAL MEET TRANSLATOR</span>
+        <strong>Interview Assistant</strong>
+      </div>
+      <div class="windowActions"><span id="statusBadge" class="statusBadge">Waiting</span><button id="hideAssistantOverlay" type="button" aria-label="Hide">×</button></div>
+    </header>
+    <section class="questionBlock">
+      <span class="label">Question</span>
+      <p id="questionText">Waiting for an interview question…</p>
+    </section>
+    <section id="suggestionBlock" class="suggestionBlock" hidden>
+      <div class="metaRow">
+        <span id="sourceBadge" class="sourceBadge">AI</span>
+        <span id="confidenceBadge" class="confidenceBadge">Low confidence</span>
+      </div>
+      <div class="firstSentenceBlock">
+        <span class="label">Start with</span>
+        <p id="firstSentence"></p>
+      </div>
+      <div class="answerBlock">
+        <span class="label">Suggested answer</span>
+        <p id="answerText"></p>
+      </div>
+      <div id="fallbackBlock" class="fallbackBlock" hidden>
+        <span class="label">Honest fallback</span>
+        <p id="fallbackText"></p>
+      </div>
+      <div class="columns">
+        <div>
+          <span class="label">Key points</span>
+          <ul id="keyPoints"></ul>
+        </div>
+        <div>
+          <span class="label">Grounding</span>
+          <ul id="basis"></ul>
+        </div>
+      </div>
+    </section>
+    <section id="emptyState" class="emptyState">Automatic AI analysis is off by default. The last detected question can be analyzed from the desktop app.</section>
+    <section id="errorState" class="errorState" hidden></section>
+  </main>
+  <script src="assistant-overlay-renderer.js"></script>
+</body>
+</html>

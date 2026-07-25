@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld('lmt', {
   setWorkspaceDirty: (state) => ipcRenderer.send('workspace:dirty-state', state || {}),
   subtitleStatus: () => ipcRenderer.invoke('subtitle-overlay:status'),
   subtitleControl: (action, payload = {}) => ipcRenderer.invoke('subtitle-overlay:control', action, payload),
+  interviewAssistantStatus: () => ipcRenderer.invoke('interview-assistant:status'),
+  interviewAssistantControl: (action, payload = {}) => ipcRenderer.invoke('interview-assistant:control', action, payload),
+  interviewAssistantAnalyze: (question) => ipcRenderer.invoke('interview-assistant:analyze', question || ''),
+  interviewAssistantLastQuestion: () => ipcRenderer.invoke('interview-assistant:last-question'),
   candidateProfileLoad: () => ipcRenderer.invoke('candidate-profile:load'),
   candidateProfileSave: (profile) => ipcRenderer.invoke('candidate-profile:save', profile || {}),
   candidateProfileReset: () => ipcRenderer.invoke('candidate-profile:reset'),
@@ -28,5 +32,19 @@ contextBridge.exposeInMainWorld('lmt', {
   startTranslation: (options) => ipcRenderer.invoke('extension:startTranslation', options || {}),
   stopTranslation: () => ipcRenderer.invoke('extension:stopTranslation'),
   openEnv: () => ipcRenderer.invoke('env:open'),
-  onLog: (cb) => ipcRenderer.on('app:log', (_event, line) => cb(line))
+  onLog: (cb) => {
+    const handler = (_event, line) => cb(line);
+    ipcRenderer.on('app:log', handler);
+    return () => ipcRenderer.removeListener('app:log', handler);
+  },
+  onInterviewQuestion: (cb) => {
+    const handler = (_event, question) => cb(question);
+    ipcRenderer.on('interview:question-detected', handler);
+    return () => ipcRenderer.removeListener('interview:question-detected', handler);
+  },
+  onInterviewAssistantState: (cb) => {
+    const handler = (_event, state) => cb(state);
+    ipcRenderer.on('interview:assistant-state', handler);
+    return () => ipcRenderer.removeListener('interview:assistant-state', handler);
+  }
 });

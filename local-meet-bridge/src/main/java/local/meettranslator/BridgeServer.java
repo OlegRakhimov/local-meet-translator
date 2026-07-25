@@ -6,6 +6,7 @@ import local.meettranslator.http.ApiException;
 import local.meettranslator.http.HttpSupport;
 import local.meettranslator.http.RequestRegistry;
 import local.meettranslator.model.TranscribeAndTranslateRequest;
+import local.meettranslator.model.InterviewSuggestionRequest;
 import local.meettranslator.model.TranslateTextRequest;
 import local.meettranslator.model.TtsRequest;
 import local.meettranslator.openai.AiClient;
@@ -143,6 +144,19 @@ public final class BridgeServer implements AutoCloseable {
                     .put("targetLang", request.targetLang())
                     .put("transcript", Objects.requireNonNullElse(transcript, ""))
                     .put("translation", translation), context.requestId());
+        }));
+
+        server.createContext("/interview/suggest-answer", exchange -> HttpSupport.handle(exchange, "POST", config.authToken(), requestRegistry, (ex, context) -> {
+            InterviewSuggestionRequest request = InterviewSuggestionRequest.from(HttpSupport.readJsonBody(ex, 1_500_000));
+            com.fasterxml.jackson.databind.JsonNode suggestion;
+            try {
+                suggestion = aiClient.suggestInterviewAnswer(context, request);
+            } catch (IOException cause) {
+                throw HttpSupport.upstream("openai_interview_suggestion_failed", cause);
+            }
+            HttpSupport.writeJson(ex, 200, HttpSupport.MAPPER.createObjectNode()
+                    .put("ok", true)
+                    .set("suggestion", suggestion), context.requestId());
         }));
 
         server.createContext("/tts", exchange -> HttpSupport.handle(exchange, "POST", config.authToken(), requestRegistry, (ex, context) -> {
