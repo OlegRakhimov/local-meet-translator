@@ -75,6 +75,10 @@ let answerEditorDirty = false;
 let suppressAnswerDirty = false;
 let assistantState = { status: 'idle', question: null, suggestion: null, settings: {}, protection: {} };
 let assistantQuestionHistory = [];
+let interviewTrainingState = { schemaVersion: 1, sessions: [], updatedAt: '' };
+let interviewTrainingPath = '';
+let activeTrainingSessionId = '';
+let trainerReferenceVisible = false;
 
 function stableJson(value) {
   return JSON.stringify(value || {});
@@ -192,6 +196,17 @@ function apply(s) {
   if ($('assistantFontSize')) $('assistantFontSize').value = s.INTERVIEW_ASSISTANT_FONT_SIZE || '20';
   if ($('assistantBackgroundOpacity')) $('assistantBackgroundOpacity').value = s.INTERVIEW_ASSISTANT_BACKGROUND_OPACITY || '0.94';
   if ($('assistantHotkey')) $('assistantHotkey').value = s.INTERVIEW_ASSISTANT_HOTKEY || 'CommandOrControl+Shift+A';
+  if ($('assistantMoveHotkey')) $('assistantMoveHotkey').value = s.INTERVIEW_ASSISTANT_MOVE_HOTKEY || 'CommandOrControl+Shift+M';
+  if ($('assistantTeleprompterEnabled')) $('assistantTeleprompterEnabled').checked = String(s.INTERVIEW_TELEPROMPTER_ENABLED || 'true') === 'true';
+  if ($('assistantTeleprompterFrozen')) $('assistantTeleprompterFrozen').checked = String(s.INTERVIEW_TELEPROMPTER_FROZEN || 'false') === 'true';
+  if ($('assistantTeleprompterAutoStart')) $('assistantTeleprompterAutoStart').checked = String(s.INTERVIEW_TELEPROMPTER_AUTO_START || 'true') === 'true';
+  if ($('assistantTeleprompterShowPlan')) $('assistantTeleprompterShowPlan').checked = String(s.INTERVIEW_TELEPROMPTER_SHOW_PLAN || 'true') === 'true';
+  if ($('assistantTeleprompterShowKeywords')) $('assistantTeleprompterShowKeywords').checked = String(s.INTERVIEW_TELEPROMPTER_SHOW_KEYWORDS || 'true') === 'true';
+  if ($('assistantTeleprompterChunkMode')) $('assistantTeleprompterChunkMode').value = s.INTERVIEW_TELEPROMPTER_CHUNK_MODE || 'medium';
+  if ($('assistantTeleprompterNextHotkey')) $('assistantTeleprompterNextHotkey').value = s.INTERVIEW_TELEPROMPTER_NEXT_HOTKEY || 'CommandOrControl+Shift+Right';
+  if ($('assistantTeleprompterPreviousHotkey')) $('assistantTeleprompterPreviousHotkey').value = s.INTERVIEW_TELEPROMPTER_PREVIOUS_HOTKEY || 'CommandOrControl+Shift+Left';
+  if ($('assistantTeleprompterFreezeHotkey')) $('assistantTeleprompterFreezeHotkey').value = s.INTERVIEW_TELEPROMPTER_FREEZE_HOTKEY || 'CommandOrControl+Shift+F';
+  if ($('assistantTeleprompterPendingHotkey')) $('assistantTeleprompterPendingHotkey').value = s.INTERVIEW_TELEPROMPTER_LOAD_PENDING_HOTKEY || 'CommandOrControl+Shift+Enter';
 }
 function readSettings() {
   return {
@@ -242,7 +257,18 @@ function readSettings() {
     INTERVIEW_ASSISTANT_ANSWER_STYLE: $('assistantAnswerStyle') ? val('assistantAnswerStyle') || 'simple' : 'simple',
     INTERVIEW_ASSISTANT_FONT_SIZE: $('assistantFontSize') ? val('assistantFontSize') || '20' : '20',
     INTERVIEW_ASSISTANT_BACKGROUND_OPACITY: $('assistantBackgroundOpacity') ? val('assistantBackgroundOpacity') || '0.94' : '0.94',
-    INTERVIEW_ASSISTANT_HOTKEY: $('assistantHotkey') ? val('assistantHotkey') || 'CommandOrControl+Shift+A' : 'CommandOrControl+Shift+A'
+    INTERVIEW_ASSISTANT_HOTKEY: $('assistantHotkey') ? val('assistantHotkey') || 'CommandOrControl+Shift+A' : 'CommandOrControl+Shift+A',
+    INTERVIEW_ASSISTANT_MOVE_HOTKEY: $('assistantMoveHotkey') ? val('assistantMoveHotkey') || 'CommandOrControl+Shift+M' : 'CommandOrControl+Shift+M',
+    INTERVIEW_TELEPROMPTER_ENABLED: $('assistantTeleprompterEnabled') && checked('assistantTeleprompterEnabled') ? 'true' : 'false',
+    INTERVIEW_TELEPROMPTER_FROZEN: $('assistantTeleprompterFrozen') && checked('assistantTeleprompterFrozen') ? 'true' : 'false',
+    INTERVIEW_TELEPROMPTER_AUTO_START: $('assistantTeleprompterAutoStart') && checked('assistantTeleprompterAutoStart') ? 'true' : 'false',
+    INTERVIEW_TELEPROMPTER_SHOW_PLAN: $('assistantTeleprompterShowPlan') && checked('assistantTeleprompterShowPlan') ? 'true' : 'false',
+    INTERVIEW_TELEPROMPTER_SHOW_KEYWORDS: $('assistantTeleprompterShowKeywords') && checked('assistantTeleprompterShowKeywords') ? 'true' : 'false',
+    INTERVIEW_TELEPROMPTER_CHUNK_MODE: $('assistantTeleprompterChunkMode') ? val('assistantTeleprompterChunkMode') || 'medium' : 'medium',
+    INTERVIEW_TELEPROMPTER_NEXT_HOTKEY: $('assistantTeleprompterNextHotkey') ? val('assistantTeleprompterNextHotkey') || 'CommandOrControl+Shift+Right' : 'CommandOrControl+Shift+Right',
+    INTERVIEW_TELEPROMPTER_PREVIOUS_HOTKEY: $('assistantTeleprompterPreviousHotkey') ? val('assistantTeleprompterPreviousHotkey') || 'CommandOrControl+Shift+Left' : 'CommandOrControl+Shift+Left',
+    INTERVIEW_TELEPROMPTER_FREEZE_HOTKEY: $('assistantTeleprompterFreezeHotkey') ? val('assistantTeleprompterFreezeHotkey') || 'CommandOrControl+Shift+F' : 'CommandOrControl+Shift+F',
+    INTERVIEW_TELEPROMPTER_LOAD_PENDING_HOTKEY: $('assistantTeleprompterPendingHotkey') ? val('assistantTeleprompterPendingHotkey') || 'CommandOrControl+Shift+Enter' : 'CommandOrControl+Shift+Enter'
   };
 }
 function splitProfileLines(value) {
@@ -569,6 +595,25 @@ function renderAssistantSuggestion(suggestion) {
   if ($('assistantResultFallback')) $('assistantResultFallback').value = value.safeFallback || '';
 }
 
+function renderTeleprompterState(teleprompter = {}) {
+  const current = teleprompter.current || {};
+  const document = current.document || {};
+  const chunks = Array.isArray(document.chunks) ? document.chunks : [];
+  const activeIndex = Math.max(0, Math.min(chunks.length - 1, Number(teleprompter.activeChunkIndex || 0)));
+  if ($('assistantTeleprompterChunk')) $('assistantTeleprompterChunk').value = chunks[activeIndex] || current.suggestion?.answer || '';
+  if ($('assistantTeleprompterProgress')) $('assistantTeleprompterProgress').textContent = chunks.length ? `${activeIndex + 1} / ${chunks.length}` : '0 / 0';
+  if ($('assistantPreviousChunk')) $('assistantPreviousChunk').disabled = activeIndex <= 0;
+  if ($('assistantNextChunk')) $('assistantNextChunk').disabled = !chunks.length || activeIndex >= chunks.length - 1;
+  if ($('assistantToggleFreeze')) $('assistantToggleFreeze').textContent = teleprompter.frozen ? t('teleprompterUnfreeze') : t('teleprompterFreeze');
+  if ($('assistantTeleprompterFrozen')) $('assistantTeleprompterFrozen').checked = !!teleprompter.frozen;
+  const pendingQuestion = teleprompter.pendingQuestion?.text || teleprompter.pending?.question?.text || '';
+  if ($('assistantTeleprompterPending')) {
+    $('assistantTeleprompterPending').hidden = !pendingQuestion;
+    $('assistantTeleprompterPending').textContent = pendingQuestion ? `${t('teleprompterPendingQuestion')}: ${pendingQuestion}` : '';
+  }
+  if ($('assistantLoadPending')) $('assistantLoadPending').disabled = !teleprompter.pending;
+}
+
 function renderAssistantState(state = {}) {
   assistantState = { ...assistantState, ...(state || {}) };
   const status = assistantState.status || 'idle';
@@ -584,7 +629,9 @@ function renderAssistantState(state = {}) {
   };
   if ($('liveAssistantStatusText')) $('liveAssistantStatusText').textContent = statusLabels[status] || status;
   if ($('liveAssistantProtectionText')) $('liveAssistantProtectionText').textContent = assistantProtectionSummary(protection);
-  if ($('liveAssistantQuestionSummary')) $('liveAssistantQuestionSummary').textContent = assistantState.question?.text || t('noQuestionDetected');
+  if ($('liveAssistantQuestionSummary')) {
+    $('liveAssistantQuestionSummary').textContent = assistantState.teleprompter?.pendingQuestion?.text || assistantState.question?.text || t('noQuestionDetected');
+  }
   if ($('liveAssistantSourceSummary')) {
     $('liveAssistantSourceSummary').textContent = assistantState.suggestion
       ? (assistantState.suggestion.source === 'library' ? t('assistantSourceLibrary') : t('assistantSourceAi'))
@@ -604,8 +651,10 @@ function renderAssistantState(state = {}) {
   if (assistantState.settings) {
     if ($('assistantClickThrough')) $('assistantClickThrough').checked = !!assistantState.settings.clickThrough;
   }
+  if ($('moveAssistantWindow')) $('moveAssistantWindow').textContent = assistantState.moveMode ? t('finishMovingAssistantWindow') : t('moveAssistantWindow');
   if (assistantState.question) rememberDetectedQuestion(assistantState.question);
-  renderAssistantSuggestion(assistantState.suggestion);
+  renderAssistantSuggestion(assistantState.suggestion || assistantState.teleprompter?.current?.suggestion);
+  renderTeleprompterState(assistantState.teleprompter || {});
 }
 
 async function refreshAssistantStatus() {
@@ -726,6 +775,229 @@ window.addEventListener('beforeunload', (event) => {
   event.preventDefault();
   event.returnValue = '';
 });
+
+
+function trainingSummaryLocal() {
+  const completed = (interviewTrainingState.sessions || []).filter(session => session.status === 'completed');
+  const attempts = completed.flatMap(session => Array.isArray(session.attempts) ? session.attempts : []);
+  const average = values => values.length ? (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2) : '—';
+  const ratings = attempts.map(item => Number(item.rating || 0)).filter(value => value > 0);
+  const confidence = attempts.map(item => Number(item.confidence || 0)).filter(value => value > 0);
+  return {
+    totalSessions: completed.length,
+    totalAttempts: attempts.length,
+    averageRating: average(ratings),
+    averageConfidence: average(confidence),
+    needsPracticeCount: attempts.filter(item => item.needsPractice).length
+  };
+}
+
+function activeTrainingSession() {
+  const sessions = interviewTrainingState.sessions || [];
+  if (activeTrainingSessionId) {
+    const selected = sessions.find(session => session.id === activeTrainingSessionId && session.status === 'active');
+    if (selected) return selected;
+  }
+  return sessions.find(session => session.status === 'active') || null;
+}
+
+function currentTrainingEntry(session = activeTrainingSession()) {
+  if (!session) return null;
+  const id = (session.selectedQuestionIds || [])[Number(session.currentIndex || 0)];
+  return (answerLibraryState.entries || []).find(entry => entry.id === id) || null;
+}
+
+function renderTrainingSummary() {
+  const summary = trainingSummaryLocal();
+  if ($('interviewTrainerDot')) $('interviewTrainerDot').className = `dot ${interviewTrainingPath ? 'ok' : ''}`;
+  if ($('interviewTrainerStatusText')) $('interviewTrainerStatusText').textContent = interviewTrainingPath ? t('interviewTrainerLoaded') : t('interviewTrainerNotLoaded');
+  if ($('interviewTrainerPath')) $('interviewTrainerPath').textContent = interviewTrainingPath;
+  if ($('interviewTrainerSessionCount')) $('interviewTrainerSessionCount').textContent = `${summary.totalSessions} ${t('trainingSessionsMetric').toLowerCase()}`;
+  if ($('interviewTrainerAttemptCount')) $('interviewTrainerAttemptCount').textContent = `${summary.totalAttempts} ${t('trainingAttemptsMetric').toLowerCase()}`;
+  if ($('trainingMetricSessions')) $('trainingMetricSessions').textContent = String(summary.totalSessions);
+  if ($('trainingMetricAttempts')) $('trainingMetricAttempts').textContent = String(summary.totalAttempts);
+  if ($('trainingMetricRating')) $('trainingMetricRating').textContent = summary.averageRating === '—' ? '—' : `${summary.averageRating} / 5`;
+  if ($('trainingMetricConfidence')) $('trainingMetricConfidence').textContent = summary.averageConfidence === '—' ? '—' : `${summary.averageConfidence} / 5`;
+  if ($('trainingMetricNeedsPractice')) $('trainingMetricNeedsPractice').textContent = String(summary.needsPracticeCount);
+  renderTrainingHistory();
+  renderTrainingPractice();
+}
+
+function renderTrainingHistory() {
+  const root = $('trainingSessionHistory');
+  const empty = $('trainingHistoryEmpty');
+  if (!root || !empty) return;
+  root.innerHTML = '';
+  const sessions = (interviewTrainingState.sessions || []).filter(session => session.status === 'completed');
+  empty.hidden = sessions.length > 0;
+  for (const session of sessions) {
+    const card = document.createElement('article');
+    card.className = 'trainingHistoryItem';
+    const attempts = Array.isArray(session.attempts) ? session.attempts : [];
+    const ratings = attempts.map(item => Number(item.rating || 0)).filter(value => value > 0);
+    const average = ratings.length ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1) : '—';
+    const header = document.createElement('div');
+    header.className = 'trainingHistoryHeader';
+    const title = document.createElement('strong'); title.textContent = session.title || t('interviewTrainerTitle');
+    const meta = document.createElement('span'); meta.textContent = `${attempts.length} · ${average}/5 · ${new Date(session.completedAt || session.startedAt).toLocaleString()}`;
+    header.append(title, meta);
+    const list = document.createElement('ul');
+    for (const attempt of attempts.filter(item => item.needsPractice).slice(0, 5)) {
+      const item = document.createElement('li'); item.textContent = `${attempt.question}${attempt.rating ? ` — ${attempt.rating}/5` : ''}`; list.appendChild(item);
+    }
+    card.appendChild(header);
+    if (list.children.length) card.appendChild(list);
+    root.appendChild(card);
+  }
+}
+
+function clearTrainingAttemptFields() {
+  if ($('trainerPracticeAnswer')) $('trainerPracticeAnswer').value = '';
+  if ($('trainerAnswerRating')) $('trainerAnswerRating').value = '0';
+  if ($('trainerConfidenceRating')) $('trainerConfidenceRating').value = '0';
+  if ($('trainerNeedsPractice')) $('trainerNeedsPractice').checked = false;
+  if ($('trainerNotes')) $('trainerNotes').value = '';
+  trainerReferenceVisible = false;
+}
+
+function renderTrainingPractice() {
+  const session = activeTrainingSession();
+  const entry = currentTrainingEntry(session);
+  if ($('resumeTrainingSession')) $('resumeTrainingSession').disabled = !session;
+  if (!session || !entry) {
+    if ($('trainerProgress')) $('trainerProgress').textContent = '0 / 0';
+    if ($('trainerSessionStatus')) $('trainerSessionStatus').textContent = t('trainerIdle');
+    if ($('trainerQuestionText')) $('trainerQuestionText').textContent = t('trainerNoQuestion');
+    if ($('trainerReferencePanel')) $('trainerReferencePanel').hidden = true;
+    for (const id of ['saveTrainingAttempt','finishTrainingSession','showTrainerReference']) if ($(id)) $(id).disabled = true;
+    return;
+  }
+  activeTrainingSessionId = session.id;
+  const index = Math.max(0, Number(session.currentIndex || 0));
+  if ($('trainerProgress')) $('trainerProgress').textContent = `${index + 1} / ${(session.selectedQuestionIds || []).length}`;
+  if ($('trainerSessionStatus')) $('trainerSessionStatus').textContent = session.title || t('interviewTrainerTitle');
+  if ($('trainerQuestionText')) $('trainerQuestionText').textContent = entry.question || t('trainerNoQuestion');
+  if ($('trainerReferenceFirstSentence')) $('trainerReferenceFirstSentence').textContent = entry.firstSentence || '';
+  if ($('trainerReferenceAnswer')) $('trainerReferenceAnswer').textContent = entry.answer || '';
+  if ($('trainerReferencePanel')) $('trainerReferencePanel').hidden = !trainerReferenceVisible;
+  if ($('showTrainerReference')) $('showTrainerReference').textContent = trainerReferenceVisible ? t('hideTrainerReference') : t('showTrainerReference');
+  for (const id of ['saveTrainingAttempt','finishTrainingSession','showTrainerReference']) if ($(id)) $(id).disabled = false;
+}
+
+async function saveInterviewTraining() {
+  const result = await window.lmt.interviewTrainingSave(interviewTrainingState);
+  interviewTrainingState = result.data || interviewTrainingState;
+  interviewTrainingPath = result.path || interviewTrainingPath;
+  renderTrainingSummary();
+  return result;
+}
+
+async function loadInterviewTraining() {
+  const result = await window.lmt.interviewTrainingLoad();
+  interviewTrainingState = result.data || { schemaVersion: 1, sessions: [], updatedAt: '' };
+  interviewTrainingPath = result.path || '';
+  const active = activeTrainingSession();
+  activeTrainingSessionId = active?.id || '';
+  renderTrainingSummary();
+  if (result.warning) log(`[TRAINER] ${result.warning}`);
+  return result;
+}
+
+function shuffled(values) {
+  const output = [...values];
+  for (let index = output.length - 1; index > 0; index -= 1) {
+    const target = Math.floor(Math.random() * (index + 1));
+    [output[index], output[target]] = [output[target], output[index]];
+  }
+  return output;
+}
+
+function trainingQuestionIds(order, count) {
+  const entries = (answerLibraryState.entries || []).filter(entry => entry.question && entry.answer);
+  let ordered = [...entries];
+  if (order === 'random') ordered = shuffled(ordered);
+  if (order === 'needs-practice') {
+    const difficult = new Set((interviewTrainingState.sessions || []).flatMap(session => session.attempts || []).filter(attempt => attempt.needsPractice).map(attempt => attempt.answerEntryId));
+    ordered.sort((a, b) => Number(difficult.has(b.id)) - Number(difficult.has(a.id)));
+  }
+  return ordered.slice(0, Math.max(1, Math.min(50, count))).map(entry => entry.id);
+}
+
+async function startTrainingSession() {
+  const count = Number.parseInt(val('trainerQuestionCount'), 10) || 5;
+  const ids = trainingQuestionIds(val('trainerQuestionOrder') || 'random', count);
+  if (!ids.length) {
+    if ($('trainerSetupMessage')) $('trainerSetupMessage').textContent = t('trainerNeedsAnswers');
+    return;
+  }
+  for (const session of interviewTrainingState.sessions || []) {
+    if (session.status === 'active') {
+      session.status = 'completed';
+      session.completedAt = new Date().toISOString();
+    }
+  }
+  const session = {
+    id: createClientId('training-session'),
+    title: val('trainerSessionTitle') || `${t('interviewTrainerTitle')} ${new Date().toLocaleDateString()}`,
+    status: 'active',
+    startedAt: new Date().toISOString(),
+    completedAt: '',
+    selectedQuestionIds: ids,
+    currentIndex: 0,
+    attempts: []
+  };
+  interviewTrainingState.sessions = [session, ...(interviewTrainingState.sessions || [])];
+  activeTrainingSessionId = session.id;
+  clearTrainingAttemptFields();
+  if ($('trainerSetupMessage')) $('trainerSetupMessage').textContent = t('trainerSessionStarted');
+  await saveInterviewTraining();
+}
+
+async function saveTrainingAttempt() {
+  const session = activeTrainingSession();
+  const entry = currentTrainingEntry(session);
+  if (!session || !entry) return;
+  const attempt = {
+    id: createClientId('training-attempt'),
+    answerEntryId: entry.id,
+    question: entry.question,
+    referenceAnswer: entry.answer,
+    firstSentence: entry.firstSentence || '',
+    practiceAnswer: val('trainerPracticeAnswer'),
+    notes: val('trainerNotes'),
+    rating: Number.parseInt(val('trainerAnswerRating'), 10) || 0,
+    confidence: Number.parseInt(val('trainerConfidenceRating'), 10) || 0,
+    needsPractice: checked('trainerNeedsPractice'),
+    completedAt: new Date().toISOString(),
+    order: Number(session.currentIndex || 0)
+  };
+  session.attempts = [...(session.attempts || []).filter(item => item.answerEntryId !== entry.id), attempt];
+  session.currentIndex = Number(session.currentIndex || 0) + 1;
+  if (session.currentIndex >= (session.selectedQuestionIds || []).length) {
+    session.status = 'completed';
+    session.completedAt = new Date().toISOString();
+    activeTrainingSessionId = '';
+  }
+  clearTrainingAttemptFields();
+  await saveInterviewTraining();
+}
+
+async function finishTrainingSession() {
+  const session = activeTrainingSession();
+  if (!session) return;
+  session.status = 'completed';
+  session.completedAt = new Date().toISOString();
+  activeTrainingSessionId = '';
+  clearTrainingAttemptFields();
+  await saveInterviewTraining();
+}
+
+async function exportTraining(format) {
+  const result = await window.lmt.interviewTrainingExport(format, interviewTrainingState);
+  if (result && !result.canceled && !result.ok) throw new Error(result.error || 'Training report export failed.');
+  if (result?.ok) log(`[TRAINER] ${t('trainingReportExported')}: ${result.filePath || ''}`);
+  return result;
+}
 
 window.addEventListener('DOMContentLoaded', async () => {
   applyI18n();
@@ -910,6 +1182,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   if ($('openAnswerLibrary')) $('openAnswerLibrary').onclick = () => showView('answer-library');
   if ($('backFromAnswerLibrary')) $('backFromAnswerLibrary').onclick = () => showView('home');
   if ($('openLiveAssistant')) $('openLiveAssistant').onclick = () => showView('live-assistant');
+  if ($('openInterviewTrainer')) $('openInterviewTrainer').onclick = () => showView('interview-trainer');
+  if ($('backFromInterviewTrainer')) $('backFromInterviewTrainer').onclick = () => showView('home');
   if ($('backFromLiveAssistant')) $('backFromLiveAssistant').onclick = () => showView('home');
   const saveProfileAction = async (buttonId) => {
     await runUiAction('Save candidate profile clicked.', buttonId, async () => {
@@ -1007,6 +1281,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   if ($('showAssistantWindowTop')) $('showAssistantWindowTop').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('show'));
   if ($('showAssistantWindow')) $('showAssistantWindow').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('show'));
   if ($('hideAssistantWindow')) $('hideAssistantWindow').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('hide'));
+  if ($('moveAssistantWindow')) $('moveAssistantWindow').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('moveMode'));
   if ($('clearAssistantSession')) $('clearAssistantSession').onclick = async () => {
     renderAssistantState(await window.lmt.interviewAssistantControl('clear'));
     assistantQuestionHistory = [];
@@ -1025,9 +1300,40 @@ window.addEventListener('DOMContentLoaded', async () => {
       $('assistantAnalysisMessage').textContent = t('noQuestionDetected');
     }
   };
+  if ($('assistantPreviousChunk')) $('assistantPreviousChunk').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('previousChunk'));
+  if ($('assistantNextChunk')) $('assistantNextChunk').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('nextChunk'));
+  if ($('assistantToggleFreeze')) $('assistantToggleFreeze').onclick = async () => {
+    const enabled = !(assistantState.teleprompter?.frozen);
+    renderAssistantState(await window.lmt.interviewAssistantControl('freezeTeleprompter', { enabled }));
+  };
+  if ($('assistantLoadPending')) $('assistantLoadPending').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('loadPending'));
+  if ($('assistantTeleprompterFrozen')) $('assistantTeleprompterFrozen').onchange = async () => {
+    renderAssistantState(await window.lmt.interviewAssistantControl('freezeTeleprompter', { enabled: checked('assistantTeleprompterFrozen') }));
+  };
   if ($('assistantClickThrough')) $('assistantClickThrough').onchange = async () => {
     const saved = await saveAssistantSettings();
     renderAssistantState(saved.assistant || await window.lmt.interviewAssistantStatus());
+  };
+
+  if ($('startTrainingSession')) $('startTrainingSession').onclick = async () => runUiAction('Start interview training session clicked.', 'startTrainingSession', startTrainingSession);
+  if ($('resumeTrainingSession')) $('resumeTrainingSession').onclick = () => { const session = activeTrainingSession(); if (session) { activeTrainingSessionId = session.id; clearTrainingAttemptFields(); renderTrainingPractice(); } };
+  if ($('showTrainerReference')) $('showTrainerReference').onclick = () => { trainerReferenceVisible = !trainerReferenceVisible; renderTrainingPractice(); };
+  if ($('saveTrainingAttempt')) $('saveTrainingAttempt').onclick = async () => runUiAction('Save interview training attempt clicked.', 'saveTrainingAttempt', saveTrainingAttempt);
+  if ($('finishTrainingSession')) $('finishTrainingSession').onclick = async () => runUiAction('Finish interview training session clicked.', 'finishTrainingSession', finishTrainingSession);
+  if ($('exportTrainingMarkdown')) $('exportTrainingMarkdown').onclick = async () => runUiAction('Export training Markdown report clicked.', 'exportTrainingMarkdown', () => exportTraining('md'));
+  if ($('exportTrainingJson')) $('exportTrainingJson').onclick = async () => runUiAction('Export training JSON clicked.', 'exportTrainingJson', () => exportTraining('json'));
+  if ($('exportTrainingReportTop')) $('exportTrainingReportTop').onclick = async () => runUiAction('Export training report clicked.', 'exportTrainingReportTop', () => exportTraining('md'));
+  if ($('resetTrainingHistory')) $('resetTrainingHistory').onclick = async () => {
+    if (!window.confirm(t('resetTrainingHistoryConfirm'))) return;
+    await runUiAction('Reset interview training history clicked.', 'resetTrainingHistory', async () => {
+      const result = await window.lmt.interviewTrainingReset();
+      interviewTrainingState = result.data || { schemaVersion: 1, sessions: [], updatedAt: '' };
+      interviewTrainingPath = result.path || interviewTrainingPath;
+      activeTrainingSessionId = '';
+      clearTrainingAttemptFields();
+      renderTrainingSummary();
+      return result;
+    });
   };
 
   if ($('extAudioIsolationMode')) $('extAudioIsolationMode').onchange = () => {
@@ -1047,8 +1353,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     await refreshAssistantStatus();
     await loadCandidateProfile();
     await loadAnswerLibrary();
+    await loadInterviewTraining();
     renderAssistantQuestionHistory();
-    log('[INIT] Settings, candidate profile, Answer Library and Live Assistant loaded; controls are ready.');
+    log('[INIT] Settings, candidate profile, Answer Library, Interview Trainer and Live Assistant loaded; controls are ready.');
   } catch (e) {
     log(`[INIT ERROR] Settings load failed: ${String(e && (e.message || e) || e)}`);
   }

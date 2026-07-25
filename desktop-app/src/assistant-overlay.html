@@ -13,40 +13,90 @@
         <span class="eyebrow">LOCAL MEET TRANSLATOR</span>
         <strong>Interview Assistant</strong>
       </div>
-      <div class="windowActions"><span id="statusBadge" class="statusBadge">Waiting</span><button id="hideAssistantOverlay" type="button" aria-label="Hide">×</button></div>
+      <div class="windowActions">
+        <span id="moveBadge" class="moveBadge" hidden>MOVE WINDOW</span>
+        <span id="freezeBadge" class="freezeBadge" hidden>FROZEN</span>
+        <span id="statusBadge" class="statusBadge">Waiting</span>
+        <button id="moveAssistantOverlay" type="button" aria-label="Move window" title="Move window">↔</button>
+        <button id="hideAssistantOverlay" type="button" aria-label="Hide">×</button>
+      </div>
     </header>
+
     <section class="questionBlock">
       <span class="label">Question</span>
       <p id="questionText">Waiting for an interview question…</p>
     </section>
+
+    <section id="pendingBlock" class="pendingBlock" hidden>
+      <div>
+        <span class="label">Pending question</span>
+        <p id="pendingQuestionText"></p>
+      </div>
+      <button id="loadPendingAnswer" type="button">Load pending</button>
+    </section>
+
     <section id="suggestionBlock" class="suggestionBlock" hidden>
       <div class="metaRow">
         <span id="sourceBadge" class="sourceBadge">AI</span>
         <span id="confidenceBadge" class="confidenceBadge">Low confidence</span>
       </div>
-      <div class="firstSentenceBlock">
-        <span class="label">Start with</span>
-        <p id="firstSentence"></p>
-      </div>
-      <div class="answerBlock">
-        <span class="label">Suggested answer</span>
-        <p id="answerText"></p>
-      </div>
-      <div id="fallbackBlock" class="fallbackBlock" hidden>
-        <span class="label">Honest fallback</span>
-        <p id="fallbackText"></p>
-      </div>
-      <div class="columns">
-        <div>
-          <span class="label">Key points</span>
-          <ul id="keyPoints"></ul>
+
+      <section id="teleprompterBlock" class="teleprompterBlock">
+        <div class="teleprompterHeader">
+          <div>
+            <span class="eyebrow">ENGLISH TELEPROMPTER</span>
+            <strong id="chunkProgress">1 / 1</strong>
+          </div>
+          <span id="chunkModeBadge" class="chunkModeBadge">MEDIUM CHUNKS</span>
         </div>
-        <div>
-          <span class="label">Grounding</span>
-          <ul id="basis"></ul>
+        <div class="firstSentenceBlock">
+          <span class="label">Start with</span>
+          <p id="firstSentence"></p>
         </div>
-      </div>
+        <div class="activeChunkBlock">
+          <span class="label">Say this part</span>
+          <p id="activeChunk"></p>
+        </div>
+        <div class="teleprompterControls">
+          <button id="previousChunk" type="button">← Previous</button>
+          <button id="freezeTeleprompter" type="button">Freeze</button>
+          <button id="nextChunk" type="button">Next →</button>
+        </div>
+        <div id="teleprompterGuidance" class="teleprompterGuidance">
+          <div id="planColumn">
+            <span class="label">Answer plan</span>
+            <ul id="answerPlan"></ul>
+          </div>
+          <div id="keywordsColumn">
+            <span class="label">Keywords</span>
+            <div id="keywordChips" class="keywordChips"></div>
+          </div>
+        </div>
+      </section>
+
+      <details class="detailsPanel">
+        <summary>Full answer and factual basis</summary>
+        <div class="answerBlock">
+          <span class="label">Suggested answer</span>
+          <p id="answerText"></p>
+        </div>
+        <div id="fallbackBlock" class="fallbackBlock" hidden>
+          <span class="label">Honest fallback</span>
+          <p id="fallbackText"></p>
+        </div>
+        <div class="columns">
+          <div>
+            <span class="label">Key points</span>
+            <ul id="keyPoints"></ul>
+          </div>
+          <div>
+            <span class="label">Grounding</span>
+            <ul id="basis"></ul>
+          </div>
+        </div>
+      </details>
     </section>
+
     <section id="emptyState" class="emptyState">Automatic AI analysis is off by default. The last detected question can be analyzed from the desktop app.</section>
     <section id="errorState" class="errorState" hidden></section>
   </main>

@@ -460,3 +460,36 @@ Key rules:
 The Live Interview Assistant screen lets the user select A2/B1/B2, choose an answer style, enable automatic analysis, manually analyze the latest question, and control the separate assistant window.
 
 Default assistant-window hotkey: `Ctrl+Shift+A`.
+
+## Stage 6: English teleprompter
+
+The protected assistant window can now present an existing reviewed suggestion as readable speaking chunks. The teleprompter does not rewrite, expand, or invent answer content; it only splits the already prepared answer locally.
+
+Features:
+
+- short, medium, or long speaking chunks;
+- a separate first sentence for starting the answer;
+- answer plan and keywords;
+- previous and next chunk navigation;
+- freeze the current answer;
+- a new question and answer are queued while frozen instead of replacing the visible answer;
+- load the pending answer manually;
+- existing supported screen-capture protection remains enabled;
+- no automatic TTS for interview suggestions.
+
+Default hotkeys:
+
+- `Ctrl+Shift+Right` — next chunk;
+- `Ctrl+Shift+Left` — previous chunk;
+- `Ctrl+Shift+F` — freeze or unfreeze;
+- `Ctrl+Shift+Enter` — load the pending answer.
+
+Stage 6 adds no new OpenAI API call. Chunking is performed locally after Live Interview Assistant has already selected a reviewed library answer or produced a grounded suggestion.
+
+## Stage 7: Interview Trainer and movable teleprompter
+
+The Interview Trainer uses reviewed entries from the local Answer Library. It creates local practice sessions, stores the user's practice answer, rating, confidence and notes, and produces Markdown or JSON progress reports. Training content is not sent to OpenAI.
+
+The protected Interview Assistant window can now enter Move mode. Use the Move window button or `Ctrl+Shift+M`, drag the title area to another position, then finish Move mode. The selected bounds remain stored in the existing assistant window state file.
+
+Training history is stored at `%APPDATA%\\Local Meet Translator\\interview-training.json`.

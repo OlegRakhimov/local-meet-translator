@@ -12,6 +12,7 @@ const { createSubtitleOverlayController, sanitizeSubtitleEvent } = require('./ma
 const { createSubtitleDedupeGuard } = require('./main/subtitle-dedupe');
 const { createCandidateProfileStore } = require('./main/candidate-profile-store');
 const { createAnswerLibraryStore } = require('./main/answer-library-store');
+const { createInterviewTrainingStore } = require('./main/interview-training-store');
 const { createQuestionDetector, cleanQuestionText } = require('./main/question-detector');
 const { matchAnswerLibrary } = require('./main/answer-matcher');
 const { createAssistantOverlayController, normalizeAssistantSettings } = require('./main/assistant-overlay');
@@ -30,6 +31,7 @@ const legacyEnvPath = path.join(repoRoot, '.env');
 const subtitleWindowStatePath = path.join(userConfigDir, 'subtitle-window-state.json');
 const candidateProfilePath = path.join(userConfigDir, 'candidate-profile.json');
 const answerLibraryPath = path.join(userConfigDir, 'answer-library.json');
+const interviewTrainingPath = path.join(userConfigDir, 'interview-training.json');
 const assistantWindowStatePath = path.join(userConfigDir, 'assistant-window-state.json');
 const extensionPath = isPackaged ? path.join(repoRoot, 'browser-extensions') : repoRoot;
 const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPath });
@@ -38,6 +40,7 @@ const translationSession = new SessionStateMachine({ mode: 'translator' });
 const subtitleDedupe = createSubtitleDedupeGuard();
 const candidateProfileStore = createCandidateProfileStore({ profilePath: candidateProfilePath });
 const answerLibraryStore = createAnswerLibraryStore({ libraryPath: answerLibraryPath });
+const interviewTrainingStore = createInterviewTrainingStore({ trainingPath: interviewTrainingPath });
 const questionDetector = createQuestionDetector();
 let windowManager;
 let subtitleOverlay;
@@ -814,6 +817,12 @@ ipcMain.handle('interview-assistant:control', (_event, action, payload = {}) => 
     case 'toggle': return assistantOverlay.toggle();
     case 'clear': questionDetector.clear(); lastDetectedQuestion = null; assistantAnalysisGeneration += 1; return assistantOverlay.clear();
     case 'clickThrough': return assistantOverlay.setClickThrough(!!payload.enabled);
+    case 'moveMode': return assistantOverlay.setMoveMode(payload.enabled);
+    case 'freezeTeleprompter': return assistantOverlay.setFrozen(!!payload.enabled);
+    case 'nextChunk': return assistantOverlay.nextChunk();
+    case 'previousChunk': return assistantOverlay.previousChunk();
+    case 'firstChunk': return assistantOverlay.firstChunk();
+    case 'loadPending': return assistantOverlay.loadPending();
     case 'rehome': return assistantOverlay.rehome();
     default: return { ok:false, message:`Unknown interview assistant action: ${String(action || '')}` };
   }
@@ -905,6 +914,30 @@ ipcMain.handle('answer-library:export', async (_event, library) => {
     return { ok: false, error: error.message || String(error) };
   }
 });
+ipcMain.handle('interview-training:load', () => interviewTrainingStore.load());
+ipcMain.handle('interview-training:save', (_event, data) => interviewTrainingStore.save(data || {}));
+ipcMain.handle('interview-training:reset', () => interviewTrainingStore.reset());
+ipcMain.handle('interview-training:export', async (_event, format, data) => {
+  const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
+  const normalizedFormat = String(format || '').toLowerCase() === 'json' ? 'json' : 'md';
+  const options = {
+    title: 'Export interview training report',
+    defaultPath: normalizedFormat === 'json' ? 'local-meet-translator-training.json' : 'local-meet-translator-training-report.md',
+    filters: normalizedFormat === 'json'
+      ? [{ name: 'JSON', extensions: ['json'] }]
+      : [{ name: 'Markdown', extensions: ['md'] }]
+  };
+  const selection = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
+  if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+  try {
+    return normalizedFormat === 'json'
+      ? interviewTrainingStore.exportJson(selection.filePath, data || {})
+      : interviewTrainingStore.exportMarkdown(selection.filePath, data || {});
+  } catch (error) {
+    return { ok: false, error: error.message || String(error) };
+  }
+});
+
 ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_e, settings) => {
   const saved = saveSettings(settings);

@@ -176,6 +176,26 @@
       </div>
     </section>
 
+    <section class="card navigationCard interviewTrainerCard">
+      <div class="navigationCardHeader">
+        <div>
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="interviewTrainerTitle">Interview Trainer</h2>
+          <p class="hint" data-i18n="interviewTrainerDescription">Practice saved questions, compare your answer with the reviewed reference, and keep local progress reports.</p>
+        </div>
+        <button id="openInterviewTrainer" type="button" data-i18n="openInterviewTrainer">Open trainer</button>
+      </div>
+      <div class="profileStatus" role="status">
+        <span id="interviewTrainerDot" class="dot"></span>
+        <strong id="interviewTrainerStatusText" data-i18n="interviewTrainerNotLoaded">Training history: not loaded</strong>
+        <small id="interviewTrainerPath"></small>
+      </div>
+      <div class="summaryChips">
+        <span id="interviewTrainerSessionCount" class="summaryChip" data-i18n="interviewTrainerNoSessions">No completed sessions</span>
+        <span id="interviewTrainerAttemptCount" class="summaryChip" data-i18n="interviewTrainerNoAttempts">No practiced answers</span>
+      </div>
+    </section>
+
     <section class="card navigationCard liveAssistantCard">
       <div class="navigationCardHeader">
         <div>
@@ -341,11 +361,41 @@
           <div class="grid">
             <label><span data-i18n="assistantBackgroundOpacity">Window opacity</span><input id="assistantBackgroundOpacity" type="number" min="0.5" max="1" step="0.05" value="0.94" /></label>
             <label><span data-i18n="assistantHotkey">Show/hide hotkey</span><input id="assistantHotkey" value="CommandOrControl+Shift+A" /></label>
+            <label><span data-i18n="assistantMoveHotkey">Move window hotkey</span><input id="assistantMoveHotkey" value="CommandOrControl+Shift+M" /></label>
           </div>
           <p class="hint" data-i18n="assistantCostHint">Automatic analysis can create OpenAI API charges. It is disabled by default. Local Answer Library matches do not call the API.</p>
+
+          <div class="subcard teleprompterSettingsCard">
+            <h4 data-i18n="teleprompterSettingsTitle">English teleprompter</h4>
+            <p class="hint" data-i18n="teleprompterSettingsDescription">Read the answer in short speaking chunks. Freezing keeps the current answer visible while a new question waits.</p>
+            <div class="grid">
+              <label class="check"><input id="assistantTeleprompterEnabled" type="checkbox" /> <span data-i18n="teleprompterEnabled">Enable teleprompter view</span></label>
+              <label class="check"><input id="assistantTeleprompterFrozen" type="checkbox" /> <span data-i18n="teleprompterFrozen">Freeze the current answer</span></label>
+              <label class="check"><input id="assistantTeleprompterAutoStart" type="checkbox" /> <span data-i18n="teleprompterAutoStart">Start from the first chunk when an answer arrives</span></label>
+              <label class="check"><input id="assistantTeleprompterShowPlan" type="checkbox" /> <span data-i18n="teleprompterShowPlan">Show answer plan</span></label>
+              <label class="check"><input id="assistantTeleprompterShowKeywords" type="checkbox" /> <span data-i18n="teleprompterShowKeywords">Show keywords</span></label>
+            </div>
+            <div class="grid threeColumns">
+              <label><span data-i18n="teleprompterChunkMode">Speaking chunk size</span>
+                <select id="assistantTeleprompterChunkMode">
+                  <option value="short" data-i18n="teleprompterChunkShort">Short</option>
+                  <option value="medium" selected data-i18n="teleprompterChunkMedium">Medium</option>
+                  <option value="long" data-i18n="teleprompterChunkLong">Long</option>
+                </select>
+              </label>
+              <label><span data-i18n="teleprompterNextHotkey">Next chunk hotkey</span><input id="assistantTeleprompterNextHotkey" value="CommandOrControl+Shift+Right" /></label>
+              <label><span data-i18n="teleprompterPreviousHotkey">Previous chunk hotkey</span><input id="assistantTeleprompterPreviousHotkey" value="CommandOrControl+Shift+Left" /></label>
+            </div>
+            <div class="grid">
+              <label><span data-i18n="teleprompterFreezeHotkey">Freeze hotkey</span><input id="assistantTeleprompterFreezeHotkey" value="CommandOrControl+Shift+F" /></label>
+              <label><span data-i18n="teleprompterPendingHotkey">Load pending answer hotkey</span><input id="assistantTeleprompterPendingHotkey" value="CommandOrControl+Shift+Enter" /></label>
+            </div>
+          </div>
+
           <div class="buttons screenActions">
             <button id="saveAssistantSettings" type="button" data-i18n="saveAssistantSettings">Save assistant settings</button>
             <button id="showAssistantWindow" type="button" class="secondary" data-i18n="showAssistantWindow">Show window</button>
+            <button id="moveAssistantWindow" type="button" class="secondary" data-i18n="moveAssistantWindow">Move window</button>
             <button id="hideAssistantWindow" type="button" class="secondary" data-i18n="hideAssistantWindow">Hide window</button>
             <button id="clearAssistantSession" type="button" class="danger" data-i18n="clearAssistantSession">Clear current session</button>
           </div>
@@ -362,6 +412,20 @@
           <div class="assistantResultPreview">
             <div class="assistantResultMeta"><span id="assistantResultSource" class="summaryChip">—</span><span id="assistantResultConfidence" class="summaryChip">—</span></div>
             <label><span data-i18n="assistantFirstSentence">Start with</span><textarea id="assistantResultFirstSentence" rows="3" readonly></textarea></label>
+            <div class="teleprompterPreviewCard">
+              <div class="teleprompterPreviewHeader">
+                <strong data-i18n="teleprompterCurrentChunk">Current speaking chunk</strong>
+                <span id="assistantTeleprompterProgress" class="summaryChip">0 / 0</span>
+              </div>
+              <textarea id="assistantTeleprompterChunk" rows="5" readonly></textarea>
+              <p id="assistantTeleprompterPending" class="pendingText" hidden></p>
+              <div class="buttons">
+                <button id="assistantPreviousChunk" type="button" class="secondary" data-i18n="teleprompterPrevious">Previous</button>
+                <button id="assistantToggleFreeze" type="button" class="secondary" data-i18n="teleprompterFreeze">Freeze</button>
+                <button id="assistantNextChunk" type="button" class="secondary" data-i18n="teleprompterNext">Next</button>
+                <button id="assistantLoadPending" type="button" class="secondary" data-i18n="teleprompterLoadPending">Load pending</button>
+              </div>
+            </div>
             <label><span data-i18n="assistantSuggestedAnswer">Suggested answer</span><textarea id="assistantResultAnswer" rows="10" readonly></textarea></label>
             <div class="grid">
               <label><span data-i18n="assistantKeyPoints">Key points</span><textarea id="assistantResultKeyPoints" rows="6" readonly></textarea></label>
@@ -376,6 +440,97 @@
         <h3 data-i18n="detectedQuestionHistory">Detected question history</h3>
         <div id="assistantQuestionHistory" class="questionHistory"></div>
         <p id="assistantQuestionHistoryEmpty" class="emptyState" data-i18n="noDetectedQuestionsYet">No detected questions yet.</p>
+      </section>
+    </section>
+
+    <section id="interviewTrainerScreen" class="appView focusedView" data-view="interview-trainer" hidden>
+      <div class="screenToolbar">
+        <button id="backFromInterviewTrainer" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="interviewTrainerTitle">Interview Trainer</h2>
+          <p data-i18n="interviewTrainerScreenDescription">Practice locally from the Answer Library. Training answers and reports are not sent to OpenAI.</p>
+        </div>
+        <button id="exportTrainingReportTop" type="button" class="secondary" data-i18n="exportTrainingReport">Export report</button>
+      </div>
+
+      <div class="trainerWorkspaceGrid">
+        <section class="card trainerSetupCard">
+          <h3 data-i18n="trainerSessionSetup">Practice session</h3>
+          <label><span data-i18n="trainerSessionTitle">Session title</span><input id="trainerSessionTitle" placeholder="Android interview practice" /></label>
+          <div class="grid">
+            <label><span data-i18n="trainerQuestionCount">Number of questions</span><input id="trainerQuestionCount" type="number" min="1" max="50" value="5" /></label>
+            <label><span data-i18n="trainerQuestionOrder">Question order</span>
+              <select id="trainerQuestionOrder">
+                <option value="random" data-i18n="trainerRandomOrder">Random</option>
+                <option value="library" data-i18n="trainerLibraryOrder">Answer Library order</option>
+                <option value="needs-practice" data-i18n="trainerNeedsPracticeOrder">Needs practice first</option>
+              </select>
+            </label>
+          </div>
+          <div class="buttons">
+            <button id="startTrainingSession" type="button" data-i18n="startTrainingSession">Start session</button>
+            <button id="resumeTrainingSession" type="button" class="secondary" data-i18n="resumeTrainingSession">Resume active session</button>
+          </div>
+          <p id="trainerSetupMessage" class="hint"></p>
+        </section>
+
+        <section class="card trainerPracticeCard">
+          <div class="trainerProgressHeader">
+            <div>
+              <span class="eyebrow" data-i18n="trainerCurrentQuestion">Current question</span>
+              <strong id="trainerProgress">0 / 0</strong>
+            </div>
+            <span id="trainerSessionStatus" class="summaryChip" data-i18n="trainerIdle">Not started</span>
+          </div>
+          <div class="trainerQuestionBox"><p id="trainerQuestionText" data-i18n="trainerNoQuestion">Start a session to receive a question.</p></div>
+          <label><span data-i18n="trainerPracticeAnswer">Your practice answer or transcript</span><textarea id="trainerPracticeAnswer" rows="8"></textarea></label>
+          <div class="buttons">
+            <button id="showTrainerReference" type="button" class="secondary" data-i18n="showTrainerReference">Show reviewed answer</button>
+          </div>
+          <div id="trainerReferencePanel" class="trainerReferencePanel" hidden>
+            <span class="eyebrow" data-i18n="trainerReviewedReference">Reviewed reference</span>
+            <p id="trainerReferenceFirstSentence"></p>
+            <div id="trainerReferenceAnswer"></div>
+          </div>
+          <div class="grid threeColumns">
+            <label><span data-i18n="trainerAnswerRating">Answer rating</span>
+              <select id="trainerAnswerRating"><option value="0">—</option><option value="1">1 / 5</option><option value="2">2 / 5</option><option value="3">3 / 5</option><option value="4">4 / 5</option><option value="5">5 / 5</option></select>
+            </label>
+            <label><span data-i18n="trainerConfidenceRating">Confidence</span>
+              <select id="trainerConfidenceRating"><option value="0">—</option><option value="1">1 / 5</option><option value="2">2 / 5</option><option value="3">3 / 5</option><option value="4">4 / 5</option><option value="5">5 / 5</option></select>
+            </label>
+            <label class="check trainerNeedsCheck"><input id="trainerNeedsPractice" type="checkbox" /> <span data-i18n="trainerNeedsMorePractice">Needs more practice</span></label>
+          </div>
+          <label><span data-i18n="trainerNotes">Notes</span><textarea id="trainerNotes" rows="4"></textarea></label>
+          <div class="buttons screenActions">
+            <button id="saveTrainingAttempt" type="button" data-i18n="trainerSaveAndNext">Save and next</button>
+            <button id="finishTrainingSession" type="button" class="danger" data-i18n="finishTrainingSession">Finish session</button>
+          </div>
+        </section>
+      </div>
+
+      <section class="card trainerReportCard">
+        <div class="navigationCardHeader">
+          <div>
+            <h3 data-i18n="trainingProgressReport">Training progress report</h3>
+            <p class="hint" data-i18n="trainingProgressReportDescription">Completed sessions are stored locally and can be exported as Markdown or JSON.</p>
+          </div>
+          <div class="buttons">
+            <button id="exportTrainingMarkdown" type="button" class="secondary" data-i18n="exportMarkdown">Export Markdown</button>
+            <button id="exportTrainingJson" type="button" class="secondary" data-i18n="exportJson">Export JSON</button>
+            <button id="resetTrainingHistory" type="button" class="danger" data-i18n="resetTrainingHistory">Clear history</button>
+          </div>
+        </div>
+        <div class="trainingMetricGrid">
+          <div><span data-i18n="trainingSessionsMetric">Sessions</span><strong id="trainingMetricSessions">0</strong></div>
+          <div><span data-i18n="trainingAttemptsMetric">Answers</span><strong id="trainingMetricAttempts">0</strong></div>
+          <div><span data-i18n="trainingAverageRatingMetric">Average rating</span><strong id="trainingMetricRating">—</strong></div>
+          <div><span data-i18n="trainingConfidenceMetric">Confidence</span><strong id="trainingMetricConfidence">—</strong></div>
+          <div><span data-i18n="trainingNeedsPracticeMetric">Needs practice</span><strong id="trainingMetricNeedsPractice">0</strong></div>
+        </div>
+        <div id="trainingSessionHistory" class="trainingSessionHistory"></div>
+        <p id="trainingHistoryEmpty" class="emptyState" data-i18n="trainingHistoryEmpty">No completed training sessions yet.</p>
       </section>
     </section>
 

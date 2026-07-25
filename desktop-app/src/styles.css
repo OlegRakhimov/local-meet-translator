@@ -314,3 +314,32 @@ body.focusedMode .wrap { max-width: 1180px; }
 .questionHistoryItem { width:100%; text-align:left; background:#111d31; color:#dbe7f7; border:1px solid rgba(148,163,184,.18); padding:12px 14px; border-radius:12px; line-height:1.4; }
 .questionHistoryItem:hover { border-color:#5b8cff; background:#14243e; }
 @media (max-width: 1050px) { .assistantWorkspaceGrid { grid-template-columns:1fr; } }
+.teleprompterSettingsCard { margin-top:16px; border-color:rgba(91,140,255,.35); background:rgba(10,22,39,.72); }
+.teleprompterSettingsCard h4 { margin:0 0 6px; color:#dce9ff; font-size:15px; }
+.teleprompterPreviewCard { margin:12px 0 16px; padding:14px; border:1px solid rgba(91,140,255,.32); border-radius:14px; background:linear-gradient(145deg,rgba(15,31,54,.94),rgba(9,19,34,.94)); }
+.teleprompterPreviewHeader { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+.teleprompterPreviewCard textarea { font-size:18px; font-weight:700; line-height:1.45; background:#07101d; border-color:rgba(112,159,226,.25); }
+.pendingText { margin:10px 0; padding:10px 12px; border:1px solid #8a621c; border-radius:10px; background:rgba(126,86,14,.16); color:#f2c96f; font-size:12px; line-height:1.4; }
+
+/* Stage 7: interview trainer and movable teleprompter */
+.trainerWorkspaceGrid { display:grid; grid-template-columns:minmax(300px,.72fr) minmax(460px,1.28fr); gap:18px; align-items:start; }
+.trainerSetupCard,.trainerPracticeCard { margin:0; }
+.trainerProgressHeader { display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:14px; }
+.trainerProgressHeader strong { display:block; margin-top:5px; font-size:18px; }
+.trainerQuestionBox { min-height:104px; display:flex; align-items:center; margin:12px 0 16px; padding:18px; border-radius:14px; border:1px solid rgba(94,146,255,.34); background:linear-gradient(150deg,rgba(17,38,68,.96),rgba(9,19,34,.96)); }
+.trainerQuestionBox p { margin:0; font-size:20px; line-height:1.45; font-weight:750; color:#f1f6ff; }
+.trainerReferencePanel { margin:14px 0; padding:15px; border:1px solid rgba(64,190,145,.32); border-radius:14px; background:rgba(10,49,40,.42); }
+.trainerReferencePanel p { margin:8px 0; color:#c8ffec; font-weight:750; }
+.trainerReferencePanel div { white-space:pre-wrap; line-height:1.5; color:#d9e7e2; }
+.trainerNeedsCheck { align-self:end; min-height:44px; }
+.trainingMetricGrid { display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); gap:12px; margin:18px 0; }
+.trainingMetricGrid > div { padding:14px; border:1px solid rgba(148,163,184,.18); border-radius:13px; background:rgba(15,27,45,.82); }
+.trainingMetricGrid span { display:block; color:#9eb0c9; font-size:12px; }
+.trainingMetricGrid strong { display:block; margin-top:6px; font-size:23px; }
+.trainingSessionHistory { display:grid; gap:10px; }
+.trainingHistoryItem { padding:14px; border:1px solid rgba(148,163,184,.17); border-radius:13px; background:rgba(12,23,39,.8); }
+.trainingHistoryHeader { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; }
+.trainingHistoryHeader span { color:#95a9c4; font-size:12px; text-align:right; }
+.trainingHistoryItem ul { margin-bottom:0; }
+@media (max-width:1050px){.trainerWorkspaceGrid{grid-template-columns:1fr}.trainingMetricGrid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.trainingMetricGrid{grid-template-columns:1fr}.trainingHistoryHeader{flex-direction:column}.trainingHistoryHeader span{text-align:left}}
