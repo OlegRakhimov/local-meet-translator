@@ -327,6 +327,14 @@ function createSubtitleOverlayController({
     // Protection is applied before loading or showing sensitive subtitle content.
     applyContentProtection();
     applyWindowSettings();
+    if (typeof subtitleWindow.webContents.setWindowOpenHandler === 'function') {
+      subtitleWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    }
+    if (typeof subtitleWindow.webContents.on === 'function') {
+      subtitleWindow.webContents.on('will-navigate', (event, url) => {
+        if (typeof subtitleWindow.webContents.getURL === 'function' && url !== subtitleWindow.webContents.getURL()) event.preventDefault();
+      });
+    }
     subtitleWindow.loadFile(path.resolve(htmlPath));
     subtitleWindow.on('move', persistBounds);
     subtitleWindow.on('resize', persistBounds);

@@ -29,6 +29,14 @@ function createWindowManager({ BrowserWindow, preloadPath, htmlPath, onCloseRequ
         sandbox: true
       }
     });
+    if (typeof mainWindow.webContents.setWindowOpenHandler === 'function') {
+      mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    }
+    if (typeof mainWindow.webContents.on === 'function') {
+      mainWindow.webContents.on('will-navigate', (event, url) => {
+        if (typeof mainWindow.webContents.getURL === 'function' && url !== mainWindow.webContents.getURL()) event.preventDefault();
+      });
+    }
     mainWindow.loadFile(path.resolve(htmlPath));
     mainWindow.on('close', (event) => {
       if (typeof onCloseRequested === 'function') onCloseRequested(event, mainWindow);

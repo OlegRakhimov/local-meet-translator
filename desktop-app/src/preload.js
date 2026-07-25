@@ -2,6 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('lmt', {
   appInfo: () => ipcRenderer.invoke('app:info'),
+  diagnosticsLoad: () => ipcRenderer.invoke('diagnostics:load'),
+  diagnosticsRun: () => ipcRenderer.invoke('diagnostics:run'),
+  diagnosticsResetTransient: () => ipcRenderer.invoke('diagnostics:reset-transient'),
+  diagnosticsExport: (format) => ipcRenderer.invoke('diagnostics:export', format || 'json'),
   sessionStatus: () => ipcRenderer.invoke('session:status'),
   setWorkspaceDirty: (state) => ipcRenderer.send('workspace:dirty-state', state || {}),
   subtitleStatus: () => ipcRenderer.invoke('subtitle-overlay:status'),

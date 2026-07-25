@@ -524,3 +524,19 @@ For coding tasks the protected assistant displays a speaking start, a brief appr
 Java is used when no language is requested. Explicit requests for Kotlin, Python, JavaScript, TypeScript, or SQL are respected. A standalone algorithm task normally receives a runnable example with a class, `main`, sample data, and a helper method, while method-only or Android-specific requests keep the requested scope.
 
 Coding guidance is shown in the protected Interview Assistant window and in the desktop assistant screen. It is also preserved in the local post-session review. Raw audio is still not stored.
+
+## Diagnostics, privacy and release readiness (1.0.17)
+
+Version 1.0.17 adds a separate **Diagnostics and privacy** screen. It runs local readiness checks for the desktop server, Java bridge, optional voice service, browser-extension connection and protected subtitle/assistant windows.
+
+The exported diagnostics report is intentionally sanitized. It does not contain API keys, bridge or extension tokens, pairing codes, subtitle/transcript text, translations, resume text or confirmed candidate facts. The report may contain only service states, application/runtime versions, redacted local paths, the active meeting hostname and numeric counters.
+
+The desktop companion now enforces a single running instance, constant-time extension-token comparison, bounded JSON request bodies, local rate limits, no-store response headers, strict Content Security Policy and blocked external navigation in Electron windows.
+
+The Windows build writes these files to `desktop-app/dist`:
+
+- `Local Meet Translator-1.0.17-Setup-x64.exe`
+- `Local Meet Translator-1.0.17-Setup-x64.exe.sha256`
+- `RELEASE_MANIFEST.json`
+
+The diagnostics action **Reset transient subtitle and assistant state** clears only temporary questions, pending analysis and deduplication buffers. It does not delete the candidate profile, Answer Library, training history or live-interview reviews.

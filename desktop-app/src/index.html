@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" />
   <title>Local Meet Translator</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -235,6 +236,27 @@
       <div class="summaryChips">
         <span id="postSessionReviewSessionCount" class="summaryChip" data-i18n="postSessionReviewNoSessions">No completed live sessions</span>
         <span id="postSessionReviewQuestionCount" class="summaryChip" data-i18n="postSessionReviewNoQuestions">No reviewed questions</span>
+      </div>
+    </section>
+
+
+    <section class="card navigationCard diagnosticsCard">
+      <div class="navigationCardHeader">
+        <div>
+          <p class="eyebrow" data-i18n="systemWorkspace">System workspace</p>
+          <h2 data-i18n="diagnosticsTitle">Diagnostics and privacy</h2>
+          <p class="hint" data-i18n="diagnosticsDescription">Run local readiness checks, inspect sanitized counters and export a report without secrets or transcript text.</p>
+        </div>
+        <button id="openDiagnostics" type="button" data-i18n="openDiagnostics">Open diagnostics</button>
+      </div>
+      <div class="profileStatus" role="status">
+        <span id="diagnosticsDot" class="dot"></span>
+        <strong id="diagnosticsStatusText" data-i18n="diagnosticsNotChecked">Diagnostics: not checked</strong>
+        <small id="diagnosticsVersionSummary"></small>
+      </div>
+      <div class="summaryChips">
+        <span id="diagnosticsServerSummary" class="summaryChip" data-i18n="diagnosticsLocalServer">Local server only</span>
+        <span id="diagnosticsPrivacySummary" class="summaryChip" data-i18n="diagnosticsSanitizedReport">Reports exclude secrets and transcripts</span>
       </div>
     </section>
 
@@ -651,6 +673,71 @@
             <label><span data-i18n="postSessionNotes">Session notes</span><textarea id="postSessionNotes" rows="4"></textarea></label>
             <div id="postSessionQuestionList" class="postSessionQuestionList"></div>
           </div>
+        </section>
+      </div>
+    </section>
+
+
+    <section id="diagnosticsScreen" class="appView focusedView" data-view="diagnostics" hidden>
+      <div class="screenToolbar">
+        <button id="backFromDiagnostics" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="systemWorkspace">System workspace</p>
+          <h2 data-i18n="diagnosticsTitle">Diagnostics and privacy</h2>
+          <p data-i18n="diagnosticsScreenDescription">All checks are local. The exported report contains service states and counters, but no API keys, tokens, resume text or subtitle content.</p>
+        </div>
+        <button id="runDiagnosticsTop" type="button" data-i18n="runDiagnostics">Run local self-test</button>
+      </div>
+
+      <div class="diagnosticsGrid">
+        <section class="card diagnosticsSummaryCard">
+          <div class="navigationCardHeader">
+            <div>
+              <h3 data-i18n="diagnosticsReadiness">Release readiness</h3>
+              <p id="diagnosticsGeneratedAt" class="hint">—</p>
+            </div>
+            <span id="diagnosticsOverallBadge" class="summaryChip">—</span>
+          </div>
+          <div class="statusGrid diagnosticsStatusGrid">
+            <div><span id="diagDesktopDot" class="dot"></span> <span data-i18n="diagDesktopServer">Desktop server</span> <small id="diagDesktopText">—</small></div>
+            <div><span id="diagBridgeDot" class="dot"></span> <span data-i18n="bridge">Bridge</span> <small id="diagBridgeText">—</small></div>
+            <div><span id="diagVoiceDot" class="dot"></span> <span data-i18n="voiceConversion">Voice conversion</span> <small id="diagVoiceText">—</small></div>
+            <div><span id="diagExtensionDot" class="dot"></span> <span data-i18n="diagExtension">Meeting extension</span> <small id="diagExtensionText">—</small></div>
+            <div><span id="diagSubtitleProtectionDot" class="dot"></span> <span data-i18n="diagSubtitleProtection">Subtitle protection</span> <small id="diagSubtitleProtectionText">—</small></div>
+            <div><span id="diagAssistantProtectionDot" class="dot"></span> <span data-i18n="diagAssistantProtection">Assistant protection</span> <small id="diagAssistantProtectionText">—</small></div>
+          </div>
+          <div class="buttons">
+            <button id="runDiagnostics" type="button" data-i18n="runDiagnostics">Run local self-test</button>
+            <button id="exportDiagnosticsJson" type="button" class="secondary" data-i18n="exportDiagnosticsJson">Export sanitized JSON</button>
+            <button id="exportDiagnosticsMarkdown" type="button" class="secondary" data-i18n="exportDiagnosticsMarkdown">Export sanitized Markdown</button>
+          </div>
+        </section>
+
+        <section class="card diagnosticsRuntimeCard">
+          <h3 data-i18n="diagnosticsRuntime">Runtime state</h3>
+          <div class="diagnosticsFacts">
+            <div><span data-i18n="diagnosticsAppVersion">App version</span><strong id="diagAppVersion">—</strong></div>
+            <div><span data-i18n="diagnosticsBuildMode">Build mode</span><strong id="diagBuildMode">—</strong></div>
+            <div><span data-i18n="diagnosticsLanguages">Incoming languages</span><strong id="diagLanguages">—</strong></div>
+            <div><span data-i18n="diagnosticsAssistantMode">Assistant analysis</span><strong id="diagAssistantMode">—</strong></div>
+            <div><span data-i18n="diagnosticsSessionState">Translation state</span><strong id="diagSessionState">—</strong></div>
+            <div><span data-i18n="diagnosticsMeetingHost">Active meeting host</span><strong id="diagMeetingHost">—</strong></div>
+          </div>
+          <h3 data-i18n="diagnosticsCounters">Local counters</h3>
+          <div id="diagnosticsCounterGrid" class="trainingMetricGrid diagnosticsCounterGrid"></div>
+          <button id="resetTransientState" type="button" class="danger" data-i18n="resetTransientState">Reset transient subtitle and assistant state</button>
+          <p class="hint" data-i18n="resetTransientStateHint">This clears temporary questions, pending analysis and deduplication buffers. It does not delete your profile, Answer Library or interview history.</p>
+        </section>
+
+        <section class="card diagnosticsPrivacyCard">
+          <h3 data-i18n="diagnosticsPrivacy">Privacy guarantees for this report</h3>
+          <ul class="privacyChecklist">
+            <li data-i18n="privacyNoRawAudio">Raw audio is not stored by the desktop app.</li>
+            <li data-i18n="privacyNoSecrets">API keys, bridge tokens, extension tokens and pairing codes are excluded.</li>
+            <li data-i18n="privacyNoTranscript">Subtitle text, translations, resume text and confirmed facts are excluded.</li>
+            <li data-i18n="privacyLocalOnly">The diagnostics screen does not call OpenAI.</li>
+          </ul>
+          <label><span data-i18n="diagnosticsReportPreview">Sanitized report preview</span><textarea id="diagnosticsReportPreview" class="codeTextarea" rows="22" readonly spellcheck="false"></textarea></label>
         </section>
       </div>
     </section>

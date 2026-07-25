@@ -243,6 +243,14 @@ function createAssistantOverlayController({
       }
     });
     applyWindowSettings();
+    if (typeof assistantWindow.webContents.setWindowOpenHandler === 'function') {
+      assistantWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    }
+    if (typeof assistantWindow.webContents.on === 'function') {
+      assistantWindow.webContents.on('will-navigate', (event, url) => {
+        if (typeof assistantWindow.webContents.getURL === 'function' && url !== assistantWindow.webContents.getURL()) event.preventDefault();
+      });
+    }
     assistantWindow.loadFile(htmlPath);
     assistantWindow.on('move', persistBounds);
     assistantWindow.on('resize', persistBounds);

@@ -18,10 +18,15 @@ const { createQuestionDetector, cleanQuestionText, classifyInterviewUtterance, d
 const { matchAnswerLibrary } = require('./main/answer-matcher');
 const { createAssistantOverlayController, normalizeAssistantSettings } = require('./main/assistant-overlay');
 const { createAutomaticAnalysisCoordinator } = require('./main/assistant-auto-analysis');
+const { constantTimeEqual, createSlidingWindowRateLimiter, isJsonRequest, applyLocalSecurityHeaders } = require('./main/security-guard');
+const { createDiagnosticsTracker, buildDiagnosticsReport, diagnosticsToMarkdown } = require('./main/diagnostics');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('local.meet.translator.desktop');
 }
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
 
 const isPackaged = app.isPackaged;
 const repoRoot = isPackaged ? process.resourcesPath : path.resolve(__dirname, '..', '..');
@@ -41,6 +46,10 @@ const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, l
 const { loadSettings, saveSettings, migrateLegacyEnvIfNeeded, getSystemLanguageCode } = configStore;
 const translationSession = new SessionStateMachine({ mode: 'translator' });
 const subtitleDedupe = createSubtitleDedupeGuard();
+const diagnosticsTracker = createDiagnosticsTracker();
+const pairingRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 10 });
+const subtitleRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 180 });
+const controlRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 600 });
 const candidateProfileStore = createCandidateProfileStore({ profilePath: candidateProfilePath });
 const answerLibraryStore = createAnswerLibraryStore({ libraryPath: answerLibraryPath });
 const interviewTrainingStore = createInterviewTrainingStore({ trainingPath: interviewTrainingPath });
@@ -88,6 +97,9 @@ function initializeAssistantAutoAnalysis() {
     onState: event => {
       const safeStatuses = new Set(['queued', 'started', 'completed', 'not-completed', 'failed', 'pending-canceled', 'cleared', 'stopped']);
       if (safeStatuses.has(event.status)) sendLog(`[ASSISTANT] Automatic analysis ${event.status}.`);
+      if (event.status === 'started') diagnosticsTracker.record('analysisStarted', { status: event.status });
+      if (event.status === 'completed') diagnosticsTracker.record('analysisCompleted', { status: event.status });
+      if (event.status === 'failed' || event.status === 'not-completed') diagnosticsTracker.record('analysisFailed', { status: event.status, reason: event.reason || event.error || '' });
     }
   });
   return assistantAutoAnalysis;
@@ -175,6 +187,82 @@ function emitLiveInterviewState(result = null) {
   if (!windowManager) return;
   const payload = result && result.data ? result : liveInterviewStore.load();
   windowManager.send('interview:session-state', payload);
+}
+
+function safeOverlayDiagnostics(snapshot = {}) {
+  return {
+    visible: snapshot.visible === true,
+    status: String(snapshot.status || 'unavailable').slice(0, 80),
+    protection: snapshot.protection ? {
+      requested: snapshot.protection.requested === true,
+      supported: snapshot.protection.supported === true,
+      applied: snapshot.protection.applied === true,
+      platform: String(snapshot.protection.platform || '').slice(0, 40)
+    } : { requested: false, supported: false, applied: false, platform: process.platform },
+    clickThrough: snapshot.settings?.clickThrough === true,
+    alwaysOnTop: snapshot.settings?.alwaysOnTop === true,
+    frozen: snapshot.teleprompter?.frozen === true,
+    hasPending: !!snapshot.teleprompter?.pending
+  };
+}
+
+async function createDiagnosticsSnapshot() {
+  const settings = loadSettings();
+  const bridgePort = settings.LOCAL_MEET_TRANSLATOR_PORT || '8799';
+  const voicePort = settings.VOICE_CONVERSION_PORT || '18799';
+  const [bridge, voice] = await Promise.all([
+    requestJson(`http://127.0.0.1:${bridgePort}/health`, settings.LOCAL_MEET_TRANSLATOR_TOKEN),
+    requestJson(`http://127.0.0.1:${voicePort}/health`, '')
+  ]);
+  const recentClients = getRecentExtensionClients();
+  const activeClient = extensionClientRegistry.getActive();
+  return buildDiagnosticsReport({
+    appInfo: {
+      name: app.getName(),
+      version: app.getVersion(),
+      packaged: isPackaged,
+      platform: process.platform,
+      arch: process.arch,
+      electron: process.versions.electron,
+      node: process.versions.node
+    },
+    settings,
+    services: {
+      desktopServer: { ok: !!(configServer && configServer.listening), address: '127.0.0.1:18798' },
+      bridge: { ok: bridge.ok, status: bridge.status, message: bridge.ok ? 'ready' : String(bridge.body || 'offline').slice(0, 160) },
+      voiceConversion: { ok: voice.ok, status: voice.status, message: voice.ok ? 'ready' : String(voice.body || 'offline').slice(0, 160) }
+    },
+    overlays: {
+      subtitles: safeOverlayDiagnostics(subtitleOverlay ? subtitleOverlay.snapshot() : {}),
+      assistant: safeOverlayDiagnostics(assistantOverlay ? assistantOverlay.snapshot() : {})
+    },
+    extension: {
+      recentClientCount: recentClients.length,
+      hasActiveClient: !!activeClient,
+      activeMeetingUrl: activeClient?.url || ''
+    },
+    session: translationSession.snapshot(),
+    tracker: diagnosticsTracker.snapshot(),
+    paths: {
+      config: envPath,
+      profile: candidateProfilePath,
+      answerLibrary: answerLibraryPath,
+      interviewHistory: liveInterviewPath
+    },
+    homeDirectory: app.getPath('home')
+  });
+}
+
+function resetTransientAssistantState() {
+  assistantAnalysisGeneration += 1;
+  lastDetectedQuestion = null;
+  questionDetector.clear();
+  subtitleDedupe.reset();
+  if (assistantAutoAnalysis) assistantAutoAnalysis.clear();
+  if (assistantOverlay) assistantOverlay.clear();
+  diagnosticsTracker.reset();
+  emitAssistantState();
+  return { ok: true, message: 'Transient subtitle and assistant state was reset.' };
 }
 
 function recordDetectedQuestion(question) {
@@ -357,9 +445,22 @@ function spawnLogged(cmd, args, options, tag) {
   p.on('error', err => sendLog(`[${tag}] failed: ${err.message}`));
   return p;
 }
-function writeJsonResponse(res, status, obj) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+function writeJsonResponse(res, status, obj, extraHeaders = {}) {
+  applyLocalSecurityHeaders(res);
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', ...extraHeaders });
   res.end(JSON.stringify(obj));
+}
+function requireJsonRequest(req, res) {
+  if (isJsonRequest(req)) return true;
+  writeJsonResponse(res, 415, { ok: false, error: 'Content-Type must be application/json.' });
+  return false;
+}
+function rateLimitOrReject(limiter, key, res) {
+  const decision = limiter.consume(key);
+  if (decision.allowed) return true;
+  diagnosticsTracker.record('rateLimited', { reason: key });
+  writeJsonResponse(res, 429, { ok: false, error: 'Too many local requests. Retry shortly.' }, { 'Retry-After': String(Math.max(1, Math.ceil(decision.retryAfterMs / 1000))) });
+  return false;
 }
 function readJsonRequest(req, maxBytes = 128 * 1024) {
   return new Promise((resolve, reject) => {
@@ -455,7 +556,8 @@ function readExtensionToken(req) {
 }
 function requireExtensionToken(req, res, expectedToken) {
   const token = readExtensionToken(req);
-  if (!expectedToken || token !== expectedToken) {
+  if (!constantTimeEqual(expectedToken, token)) {
+    diagnosticsTracker.record('authRejected', { reason: 'extension-token' });
     writeJsonResponse(res, 401, { ok: false, error: 'Missing or invalid X-Desktop-Extension-Token' });
     return false;
   }
@@ -489,6 +591,7 @@ function getRecentExtensionClients(maxAgeMs = 120000) { return extensionClientRe
 function startConfigServer() {
   if (configServer) return;
   configServer = http.createServer((req, res) => {
+    applyLocalSecurityHeaders(res);
     const origin = getRequestOrigin(req);
     const extensionOriginAllowed = isAllowedExtensionOrigin(origin);
     if (extensionOriginAllowed && origin) {
@@ -519,6 +622,7 @@ function startConfigServer() {
     }
 
     if (url.pathname === '/health') {
+      if (req.method !== 'GET') { writeJsonResponse(res, 405, { ok:false, error:'Method not allowed' }, { Allow: 'GET' }); return; }
       if (!requireExtensionToken(req, res, extensionToken)) return;
       const command = extensionCommandCoordinator.snapshot().command;
       writeJsonResponse(res, 200, { ok:true, service:'local-meet-translator-desktop', sessionId: desktopSessionId, commandSeq: command.seq, command: command.action });
@@ -526,12 +630,14 @@ function startConfigServer() {
     }
 
     if (url.pathname === '/extension-config') {
+      if (req.method !== 'GET') { writeJsonResponse(res, 405, { ok:false, error:'Method not allowed' }, { Allow: 'GET' }); return; }
       if (!requireExtensionToken(req, res, extensionToken)) return;
       writeJsonResponse(res, 200, { ok:true, ...getExtensionConfig() });
       return;
     }
 
     if (url.pathname === '/extension/pairing-code' && req.method === 'GET') {
+      if (!rateLimitOrReject(controlRateLimiter, `pairing-code:${origin || 'local'}`, res)) return;
       writeJsonResponse(res, 200, {
         ok: true,
         pairingCode: settings.DESKTOP_EXTENSION_PAIRING_CODE || getPairingCode(),
@@ -541,30 +647,33 @@ function startConfigServer() {
     }
 
     if (url.pathname === '/extension/pair' && req.method === 'POST') {
-      let body = '';
-      req.on('data', d => { body += d; });
-      req.on('end', () => {
-        let data = {};
-        try { data = body ? JSON.parse(body) : {}; } catch (_) {}
-        const pairingCode = String(data.pairingCode || '').trim().replace(/[\s-]+/g, '').toUpperCase();
-        const expected = String(settings.DESKTOP_EXTENSION_PAIRING_CODE || getPairingCode()).trim().replace(/[\s-]+/g, '').toUpperCase();
-        if (!pairingCode || pairingCode !== expected) {
-          writeJsonResponse(res, 401, { ok: false, error: 'Invalid pairing code' });
-          return;
-        }
-        writeJsonResponse(res, 200, {
-          ok: true,
-          token: extensionToken,
-          sessionId: desktopSessionId,
-          clientId: String(data.clientId || ''),
-          pairingCode: settings.DESKTOP_EXTENSION_PAIRING_CODE || getPairingCode()
-        });
-      });
+      if (!requireJsonRequest(req, res)) return;
+      if (!rateLimitOrReject(pairingRateLimiter, `pair:${origin || 'local'}`, res)) return;
+      readJsonRequest(req, 8 * 1024)
+        .then(data => {
+          const pairingCode = String(data.pairingCode || '').trim().replace(/[\s-]+/g, '').toUpperCase();
+          const expected = String(settings.DESKTOP_EXTENSION_PAIRING_CODE || getPairingCode()).trim().replace(/[\s-]+/g, '').toUpperCase();
+          if (!constantTimeEqual(expected, pairingCode)) {
+            diagnosticsTracker.record('authRejected', { reason: 'pairing-code' });
+            writeJsonResponse(res, 401, { ok: false, error: 'Invalid pairing code' });
+            return;
+          }
+          writeJsonResponse(res, 200, {
+            ok: true,
+            token: extensionToken,
+            sessionId: desktopSessionId,
+            clientId: String(data.clientId || '').slice(0, 256),
+            pairingCode: settings.DESKTOP_EXTENSION_PAIRING_CODE || getPairingCode()
+          });
+        })
+        .catch(error => writeJsonResponse(res, error.statusCode || 400, { ok: false, error: error.message || 'Invalid pairing request.' }));
       return;
     }
 
     if (url.pathname === '/extension/subtitle' && req.method === 'POST') {
+      if (!requireJsonRequest(req, res)) return;
       if (!requireExtensionToken(req, res, extensionToken)) return;
+      if (!rateLimitOrReject(subtitleRateLimiter, `subtitle:${origin || 'local'}`, res)) return;
       readJsonRequest(req, 64 * 1024)
         .then(data => {
           const event = sanitizeSubtitleEvent({
@@ -579,6 +688,7 @@ function startConfigServer() {
           }
           const decision = subtitleDedupe.evaluate(event, event.ts || Date.now());
           if (!decision.accepted) {
+            diagnosticsTracker.record(decision.reason === 'duplicate' || decision.reason === 'near-duplicate' ? 'subtitleDuplicate' : 'subtitleRejected', { reason: decision.reason });
             writeJsonResponse(res, 200, {
               ok: true,
               accepted: false,
@@ -593,13 +703,17 @@ function startConfigServer() {
             ? { ...event, replaceEventId: decision.replaceEventId }
             : event;
           subtitleOverlay.pushSubtitle(deliveredEvent);
+          diagnosticsTracker.record('subtitleAccepted', { reason: decision.reason });
           const questionDecision = questionDetector.consume(deliveredEvent, deliveredEvent.ts || Date.now());
           if (questionDecision.accepted && questionDecision.question) {
+            diagnosticsTracker.record(questionDecision.question.kind === 'coding-task' ? 'codingTaskDetected' : 'questionDetected', { reason: questionDecision.reason });
             recordDetectedQuestion(questionDecision.question);
             const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
             if (assistantSettings.enabled && assistantSettings.autoAnalyze) {
               initializeAssistantAutoAnalysis().queue(questionDecision.question);
             }
+          } else if (questionDecision.reason === 'remark') {
+            diagnosticsTracker.record('remarkIgnored', { reason: 'remark' });
           }
           writeJsonResponse(res, 200, {
             ok: true,
@@ -617,34 +731,36 @@ function startConfigServer() {
     }
 
     if (url.pathname === '/extension-client/armed' && req.method === 'POST') {
+      if (!requireJsonRequest(req, res)) return;
       if (!requireExtensionToken(req, res, extensionToken)) return;
-      let body = '';
-      req.on('data', d => { body += d; });
-      req.on('end', () => {
-        let data = {};
-        try { data = body ? JSON.parse(body) : {}; } catch (_) {}
-        const client = rememberExtensionClient({
-          clientId: data.clientId,
-          url: data.url,
-          visible: true,
-          armed: true
-        });
-        if (client) {
-          extensionClientRegistry.markActive(client.id);
-          const previousLog = extensionClientLogState.get(client.id) || { url:'', at:0 };
-          const now = Date.now();
-          if (previousLog.url !== client.url || now - previousLog.at >= 30000) {
-            sendLog(`Meeting tab connected for control: ${client.url}`);
-            extensionClientLogState.set(client.id, { url: client.url, at: now });
+      if (!rateLimitOrReject(controlRateLimiter, `armed:${origin || 'local'}`, res)) return;
+      readJsonRequest(req, 16 * 1024)
+        .then(data => {
+          const client = rememberExtensionClient({
+            clientId: data.clientId,
+            url: data.url,
+            visible: true,
+            armed: true
+          });
+          if (client) {
+            extensionClientRegistry.markActive(client.id);
+            const previousLog = extensionClientLogState.get(client.id) || { url:'', at:0 };
+            const now = Date.now();
+            if (previousLog.url !== client.url || now - previousLog.at >= 30000) {
+              sendLog(`Meeting tab connected for control: ${client.url}`);
+              extensionClientLogState.set(client.id, { url: client.url, at: now });
+            }
           }
-        }
-        writeJsonResponse(res, client ? 200 : 400, { ok: !!client, clientId: client ? client.id : '', url: client ? client.url : '' });
-      });
+          writeJsonResponse(res, client ? 200 : 400, { ok: !!client, clientId: client ? client.id : '', url: client ? client.url : '' });
+        })
+        .catch(error => writeJsonResponse(res, error.statusCode || 400, { ok: false, error: error.message || 'Invalid client status.' }));
       return;
     }
 
     if (url.pathname === '/extension-command') {
+      if (req.method !== 'GET') { writeJsonResponse(res, 405, { ok:false, error:'Method not allowed' }, { Allow: 'GET' }); return; }
       if (!requireExtensionToken(req, res, extensionToken)) return;
+      if (!rateLimitOrReject(controlRateLimiter, `command:${origin || 'local'}`, res)) return;
       const clientId = String(url.searchParams.get('clientId') || '');
       rememberExtensionClient({
         clientId,
@@ -686,38 +802,37 @@ function startConfigServer() {
     }
 
     if (url.pathname === '/extension-command/ack') {
+      if (req.method !== 'POST') { writeJsonResponse(res, 405, { ok:false, error:'Method not allowed' }, { Allow: 'POST' }); return; }
+      if (!requireJsonRequest(req, res)) return;
       if (!requireExtensionToken(req, res, extensionToken)) return;
-      let body = '';
-      req.on('data', d => { body += d; });
-      req.on('end', () => {
-        let data = {};
-        try { data = body ? JSON.parse(body) : {}; } catch (_) {}
-        const seq = Number(data.seq || url.searchParams.get('seq') || '0');
-        const action = String(data.action || url.searchParams.get('action') || '?');
-        const ok = data.ok === undefined ? true : !!data.ok;
-        const text = data.message || data.error || '';
-        const clientId = String(data.clientId || '');
-        const sessionId = String(data.sessionId || url.searchParams.get('sessionId') || '');
-        const ackResult = extensionCommandCoordinator.acknowledge({
-          seq,
-          action,
-          ok,
-          message: text,
-          details: data.details || {},
-          clientId,
-          sessionId
-        });
-        // The command sequence and desktop session scope the ACK to the current app.
-        // Client IDs may legitimately change after a meeting-tab reload.
-        if (!ackResult.ok) {
-          writeJsonResponse(res, 400, { ok: false, error: ackResult.error });
-          return;
-        }
-        if (ok && action === 'start' && clientId) extensionClientRegistry.markActive(clientId);
-        if (action === 'stop') extensionClientRegistry.clearActive(clientId);
-        sendLog(`Extension ${ok ? 'ACK' : 'ERROR'} for ${action} #${seq}${text ? ': ' + text : ''}`);
-        writeJsonResponse(res, 200, { ok:true });
-      });
+      if (!rateLimitOrReject(controlRateLimiter, `ack:${origin || 'local'}`, res)) return;
+      readJsonRequest(req, 32 * 1024)
+        .then(data => {
+          const seq = Number(data.seq || url.searchParams.get('seq') || '0');
+          const action = String(data.action || url.searchParams.get('action') || '?').slice(0, 80);
+          const ok = data.ok === undefined ? true : !!data.ok;
+          const text = String(data.message || data.error || '').slice(0, 1000);
+          const clientId = String(data.clientId || '').slice(0, 256);
+          const sessionId = String(data.sessionId || url.searchParams.get('sessionId') || '').slice(0, 128);
+          const ackResult = extensionCommandCoordinator.acknowledge({
+            seq,
+            action,
+            ok,
+            message: text,
+            details: data.details || {},
+            clientId,
+            sessionId
+          });
+          if (!ackResult.ok) {
+            writeJsonResponse(res, 400, { ok: false, error: ackResult.error });
+            return;
+          }
+          if (ok && action === 'start' && clientId) extensionClientRegistry.markActive(clientId);
+          if (action === 'stop') extensionClientRegistry.clearActive(clientId);
+          sendLog(`Extension ${ok ? 'ACK' : 'ERROR'} for ${action} #${seq}${text ? ': ' + text : ''}`);
+          writeJsonResponse(res, 200, { ok:true });
+        })
+        .catch(error => writeJsonResponse(res, error.statusCode || 400, { ok: false, error: error.message || 'Invalid command acknowledgement.' }));
       return;
     }
 
@@ -808,7 +923,18 @@ function initializeWindowManager() {
   assistantOverlay.initialize();
   return windowManager.createMainWindow();
 }
-app.whenReady().then(() => {
+app.on('second-instance', () => {
+  if (!hasSingleInstanceLock || !windowManager) return;
+  const mainWindow = windowManager.getMainWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  } catch (_) {}
+});
+
+if (hasSingleInstanceLock) app.whenReady().then(() => {
   const migration = migrateLegacyEnvIfNeeded();
   initializeWindowManager();
   startConfigServer();
@@ -831,6 +957,42 @@ app.on('before-quit', () => {
 });
 
 ipcMain.handle('app:info', () => ({ name: app.getName(), version: app.getVersion(), platform: process.platform, packaged: isPackaged }));
+ipcMain.handle('diagnostics:load', async () => ({ ok: true, report: await createDiagnosticsSnapshot() }));
+ipcMain.handle('diagnostics:run', async () => {
+  const report = await createDiagnosticsSnapshot();
+  return {
+    ok: true,
+    report,
+    summary: {
+      desktopServer: report.services.desktopServer.ok,
+      bridge: report.services.bridge.ok,
+      voiceConversion: report.services.voiceConversion.ok,
+      extensionConnected: report.services.extension.recentClientCount > 0,
+      subtitleProtectionApplied: report.overlays.subtitles.protection.applied,
+      assistantProtectionApplied: report.overlays.assistant.protection.applied
+    }
+  };
+});
+ipcMain.handle('diagnostics:reset-transient', () => resetTransientAssistantState());
+ipcMain.handle('diagnostics:export', async (_event, format = 'json') => {
+  const report = await createDiagnosticsSnapshot();
+  const normalizedFormat = String(format || 'json').toLowerCase() === 'md' ? 'md' : 'json';
+  const extension = normalizedFormat === 'md' ? 'md' : 'json';
+  const result = await dialog.showSaveDialog(windowManager ? windowManager.getMainWindow() : null, {
+    title: 'Export sanitized diagnostics',
+    defaultPath: path.join(app.getPath('documents'), `local-meet-translator-diagnostics-${Date.now()}.${extension}`),
+    filters: normalizedFormat === 'md'
+      ? [{ name: 'Markdown', extensions: ['md'] }]
+      : [{ name: 'JSON', extensions: ['json'] }]
+  });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  const content = normalizedFormat === 'md'
+    ? diagnosticsToMarkdown(report)
+    : `${JSON.stringify(report, null, 2)}
+`;
+  fs.writeFileSync(result.filePath, content, 'utf8');
+  return { ok: true, filePath: result.filePath, format: normalizedFormat };
+});
 ipcMain.on('workspace:dirty-state', (_event, state = {}) => {
   workspaceDirtyState = {
     candidateProfile: state.candidateProfile === true,

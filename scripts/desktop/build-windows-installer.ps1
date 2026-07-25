@@ -72,6 +72,7 @@ $DesktopControlsValidator = Join-Path $RepoRoot "scripts\tests\validate-desktop-
 $VoiceModeSwitchValidator = Join-Path $RepoRoot "scripts\tests\validate-voice-mode-switch.js"
 $FeedbackGuardValidator = Join-Path $RepoRoot "scripts\tests\validate-feedback-guard.js"
 $VoicePassthroughValidator = Join-Path $RepoRoot "scripts\tests\validate-voice-conversion-passthrough.py"
+$ReleaseReadinessValidator = Join-Path $RepoRoot "scripts\tests\validate-stage10-release-readiness.js"
 $DistDir = Join-Path $DesktopDir "dist"
 
 $Java = Require-Command "java"
@@ -112,6 +113,8 @@ Write-Host "Validating live subtitles/voice mode switching..."
 Invoke-External $Node @($VoiceModeSwitchValidator) $RepoRoot
 Write-Host "Validating outgoing feedback guard..."
 Invoke-External $Node @($FeedbackGuardValidator) $RepoRoot
+Write-Host "Validating Stage 10 release readiness..."
+Invoke-External $Node @($ReleaseReadinessValidator) $RepoRoot
 
 $pythonVersion = (& $Python --version).Trim()
 if ($pythonVersion -notmatch '^Python 3\.(11|12|13)\.') {
@@ -204,6 +207,14 @@ $installers = @(Get-ChildItem $DistDir -Filter "*-Setup-x64.exe" -File -ErrorAct
 if ($installers.Count -ne 1) {
   throw "Expected exactly one Windows installer in $DistDir, found $($installers.Count)."
 }
+$PackageJson = Get-Content -LiteralPath (Join-Path $DesktopDir "package.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$ExpectedInstallerName = "Local Meet Translator-$($PackageJson.version)-Setup-x64.exe"
+if ($installers[0].Name -ne $ExpectedInstallerName) {
+  throw "Unexpected installer name. Expected '$ExpectedInstallerName', found '$($installers[0].Name)'."
+}
+if ($installers[0].Length -lt 100MB) {
+  throw "Windows installer is unexpectedly small: $($installers[0].Length) bytes."
+}
 
 $PackagedResources = Join-Path $DistDir "win-unpacked\resources"
 $PackagedJar = Join-Path $PackagedResources "local-meet-bridge\target\local-meet-bridge.jar"
@@ -231,5 +242,37 @@ if ((Get-FileHash $VoiceExecutable -Algorithm SHA256).Hash -ne (Get-FileHash $Pa
   throw "The packaged voice service does not match the PyInstaller build output."
 }
 
+$InstallerHash = (Get-FileHash $installers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+$ShaPath = "$($installers[0].FullName).sha256"
+"$InstallerHash  $($installers[0].Name)" | Set-Content -LiteralPath $ShaPath -Encoding ASCII
+$ReleaseManifestPath = Join-Path $DistDir "RELEASE_MANIFEST.json"
+[PSCustomObject]@{
+  product = "Local Meet Translator"
+  version = [string]$PackageJson.version
+  generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+  platform = "win32"
+  arch = "x64"
+  installer = [PSCustomObject]@{
+    name = $installers[0].Name
+    sizeBytes = $installers[0].Length
+    sha256 = $InstallerHash
+  }
+  components = [PSCustomObject]@{
+    bridgeJarSha256 = (Get-FileHash $PackagedJar -Algorithm SHA256).Hash.ToLowerInvariant()
+    voiceServiceSha256 = (Get-FileHash $PackagedVoice -Algorithm SHA256).Hash.ToLowerInvariant()
+    bundledJava = $true
+    chromeExtension = $true
+    edgeExtension = $true
+    firefoxExtension = $true
+  }
+  privacy = [PSCustomObject]@{
+    rawAudioPersistenceDefault = $false
+    diagnosticsExcludeSecrets = $true
+    appDataPreservedOnUpdate = $true
+  }
+} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $ReleaseManifestPath -Encoding UTF8
+
 Write-Host ""
 Write-Host "Full build completed: $($installers[0].FullName)"
+Write-Host "SHA-256: $InstallerHash"
+Write-Host "Release manifest: $ReleaseManifestPath"

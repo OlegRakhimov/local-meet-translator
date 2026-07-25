@@ -83,6 +83,7 @@ let liveInterviewData = { schemaVersion: 1, activeSessionId: '', sessions: [], u
 let liveInterviewPath = '';
 let selectedReviewSessionId = '';
 let postSessionReviewDirty = false;
+let diagnosticsReport = null;
 
 function stableJson(value) {
   return JSON.stringify(value || {});
@@ -1313,6 +1314,91 @@ async function exportTraining(format) {
   return result;
 }
 
+const DIAGNOSTIC_COUNTER_LABELS = {
+  subtitleAccepted: 'diagCounterSubtitleAccepted',
+  subtitleDuplicate: 'diagCounterSubtitleDuplicate',
+  subtitleRejected: 'diagCounterSubtitleRejected',
+  questionDetected: 'diagCounterQuestionDetected',
+  codingTaskDetected: 'diagCounterCodingDetected',
+  remarkIgnored: 'diagCounterRemarkIgnored',
+  analysisStarted: 'diagCounterAnalysisStarted',
+  analysisCompleted: 'diagCounterAnalysisCompleted',
+  analysisFailed: 'diagCounterAnalysisFailed',
+  authRejected: 'diagCounterAuthRejected',
+  rateLimited: 'diagCounterRateLimited'
+};
+
+function renderDiagnostics(report) {
+  diagnosticsReport = report || null;
+  if (!report) return;
+  const services = report.services || {};
+  const overlays = report.overlays || {};
+  const settings = report.settings || {};
+  const extension = services.extension || {};
+  const subtitleProtection = overlays.subtitles?.protection || {};
+  const assistantProtection = overlays.assistant?.protection || {};
+  const coreReady = !!services.desktopServer?.ok && !!services.bridge?.ok;
+
+  if ($('diagnosticsDot')) dot('diagnosticsDot', coreReady);
+  if ($('diagnosticsStatusText')) $('diagnosticsStatusText').textContent = coreReady ? t('diagnosticsReady') : t('diagnosticsNeedsAttention');
+  if ($('diagnosticsVersionSummary')) $('diagnosticsVersionSummary').textContent = `${report.application?.version || '—'} · ${report.application?.platform || '—'} ${report.application?.arch || ''}`;
+  if ($('diagnosticsServerSummary')) $('diagnosticsServerSummary').textContent = services.desktopServer?.ok ? t('diagnosticsServerReady') : t('diagnosticsServerOffline');
+  if ($('diagnosticsPrivacySummary')) $('diagnosticsPrivacySummary').textContent = t('diagnosticsSanitizedReport');
+  if ($('diagnosticsGeneratedAt')) $('diagnosticsGeneratedAt').textContent = `${t('diagnosticsGenerated')}: ${report.generatedAt ? new Date(report.generatedAt).toLocaleString() : '—'}`;
+  if ($('diagnosticsOverallBadge')) $('diagnosticsOverallBadge').textContent = coreReady ? t('diagnosticsReady') : t('diagnosticsNeedsAttention');
+
+  const setStatus = (dotId, textId, ok, text) => {
+    if ($(dotId)) dot(dotId, !!ok);
+    if ($(textId)) $(textId).textContent = text;
+  };
+  setStatus('diagDesktopDot', 'diagDesktopText', services.desktopServer?.ok, services.desktopServer?.ok ? t('ready') : t('diagnosticsOffline'));
+  setStatus('diagBridgeDot', 'diagBridgeText', services.bridge?.ok, services.bridge?.ok ? t('ready') : (services.bridge?.message || t('diagnosticsOffline')));
+  const voiceRequired = settings.voiceConversionEnabled;
+  setStatus('diagVoiceDot', 'diagVoiceText', services.voiceConversion?.ok || !voiceRequired, services.voiceConversion?.ok ? t('ready') : (voiceRequired ? t('diagnosticsOffline') : t('diagnosticsOptional')));
+  setStatus('diagExtensionDot', 'diagExtensionText', extension.recentClientCount > 0, extension.recentClientCount > 0 ? `${extension.recentClientCount} · ${extension.activeMeetingHost || t('ready')}` : t('diagnosticsNoExtensionClient'));
+  const subtitleProtectionOk = !subtitleProtection.requested || subtitleProtection.applied || !overlays.subtitles?.visible;
+  const assistantProtectionOk = !assistantProtection.requested || assistantProtection.applied || !overlays.assistant?.visible;
+  setStatus('diagSubtitleProtectionDot', 'diagSubtitleProtectionText', subtitleProtectionOk, subtitleProtection.applied ? t('diagnosticsApplied') : (!subtitleProtection.requested ? t('diagnosticsDisabled') : (!overlays.subtitles?.visible ? t('diagnosticsNotActiveYet') : t('diagnosticsNotApplied'))));
+  setStatus('diagAssistantProtectionDot', 'diagAssistantProtectionText', assistantProtectionOk, assistantProtection.applied ? t('diagnosticsApplied') : (!assistantProtection.requested ? t('diagnosticsDisabled') : (!overlays.assistant?.visible ? t('diagnosticsNotActiveYet') : t('diagnosticsNotApplied'))));
+
+  if ($('diagAppVersion')) $('diagAppVersion').textContent = report.application?.version || '—';
+  if ($('diagBuildMode')) $('diagBuildMode').textContent = report.application?.packaged ? t('diagnosticsPackaged') : t('diagnosticsDevelopment');
+  if ($('diagLanguages')) $('diagLanguages').textContent = `${settings.sourceLanguage || 'auto'} → ${settings.targetLanguage || '—'} · ${settings.incomingChunkSeconds || '—'}s`;
+  if ($('diagAssistantMode')) $('diagAssistantMode').textContent = settings.assistantAutoAnalyze ? t('diagnosticsAutomatic') : t('diagnosticsManual');
+  if ($('diagSessionState')) $('diagSessionState').textContent = report.session?.state || '—';
+  if ($('diagMeetingHost')) $('diagMeetingHost').textContent = extension.activeMeetingHost || t('diagnosticsNone');
+
+  const counterRoot = $('diagnosticsCounterGrid');
+  if (counterRoot) {
+    counterRoot.innerHTML = '';
+    for (const [key, value] of Object.entries(report.runtime?.counters || {})) {
+      const item = document.createElement('div');
+      const label = document.createElement('span');
+      const number = document.createElement('strong');
+      label.textContent = t(DIAGNOSTIC_COUNTER_LABELS[key] || key);
+      number.textContent = String(value);
+      item.append(label, number);
+      counterRoot.appendChild(item);
+    }
+  }
+  if ($('diagnosticsReportPreview')) $('diagnosticsReportPreview').value = JSON.stringify(report, null, 2);
+}
+
+async function loadDiagnostics(run = false) {
+  const result = run ? await window.lmt.diagnosticsRun() : await window.lmt.diagnosticsLoad();
+  if (!result?.ok) throw new Error(result?.error || 'Diagnostics failed.');
+  renderDiagnostics(result.report);
+  if (run) log(`[DIAGNOSTICS] ${t('diagnosticsCompleted')}`);
+  return result;
+}
+
+async function exportDiagnostics(format) {
+  const result = await window.lmt.diagnosticsExport(format);
+  if (result && !result.canceled && !result.ok) throw new Error(result.error || 'Diagnostics export failed.');
+  if (result?.ok) log(`[DIAGNOSTICS] ${t('diagnosticsExported')}: ${result.filePath || ''}`);
+  return result;
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
   applyI18n();
   initVoices();
@@ -1502,6 +1588,28 @@ window.addEventListener('DOMContentLoaded', async () => {
   if ($('openInterviewTrainer')) $('openInterviewTrainer').onclick = () => showView('interview-trainer');
   if ($('backFromInterviewTrainer')) $('backFromInterviewTrainer').onclick = () => showView('home');
   if ($('backFromLiveAssistant')) $('backFromLiveAssistant').onclick = () => showView('home');
+  if ($('openDiagnostics')) $('openDiagnostics').onclick = async () => {
+    showView('diagnostics');
+    await runUiAction('Open diagnostics clicked.', 'openDiagnostics', () => loadDiagnostics(false));
+  };
+  if ($('backFromDiagnostics')) $('backFromDiagnostics').onclick = () => showView('home');
+  if ($('runDiagnostics')) $('runDiagnostics').onclick = async () => runUiAction('Run diagnostics clicked.', 'runDiagnostics', () => loadDiagnostics(true));
+  if ($('runDiagnosticsTop')) $('runDiagnosticsTop').onclick = async () => runUiAction('Run diagnostics clicked.', 'runDiagnosticsTop', () => loadDiagnostics(true));
+  if ($('exportDiagnosticsJson')) $('exportDiagnosticsJson').onclick = async () => runUiAction('Export diagnostics JSON clicked.', 'exportDiagnosticsJson', () => exportDiagnostics('json'));
+  if ($('exportDiagnosticsMarkdown')) $('exportDiagnosticsMarkdown').onclick = async () => runUiAction('Export diagnostics Markdown clicked.', 'exportDiagnosticsMarkdown', () => exportDiagnostics('md'));
+  if ($('resetTransientState')) $('resetTransientState').onclick = async () => {
+    if (!window.confirm(t('resetTransientStateConfirm'))) return;
+    await runUiAction('Reset transient assistant state clicked.', 'resetTransientState', async () => {
+      const result = await window.lmt.diagnosticsResetTransient();
+      if (!result?.ok) throw new Error(result?.message || 'Transient reset failed.');
+      assistantQuestionHistory = [];
+      renderAssistantQuestionHistory();
+      if ($('assistantQuestionInput')) $('assistantQuestionInput').value = '';
+      await loadDiagnostics(false);
+      log(`[DIAGNOSTICS] ${t('transientStateReset')}`);
+      return result;
+    });
+  };
   const saveProfileAction = async (buttonId) => {
     await runUiAction('Save candidate profile clicked.', buttonId, async () => {
       const result = await window.lmt.candidateProfileSave(candidateProfileFromUi());
@@ -1692,8 +1800,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadAnswerLibrary();
     await loadInterviewTraining();
     await loadLiveInterviews();
+    await loadDiagnostics(false);
     renderAssistantQuestionHistory();
-    log('[INIT] Settings, candidate profile, Answer Library, Interview Trainer, Live Assistant and Post-session Review loaded; controls are ready.');
+    log('[INIT] Settings, interview workspace, diagnostics and local services loaded; controls are ready.');
   } catch (e) {
     log(`[INIT ERROR] Settings load failed: ${String(e && (e.message || e) || e)}`);
   }
