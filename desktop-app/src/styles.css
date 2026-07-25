@@ -343,3 +343,40 @@ body.focusedMode .wrap { max-width: 1180px; }
 .trainingHistoryItem ul { margin-bottom:0; }
 @media (max-width:1050px){.trainerWorkspaceGrid{grid-template-columns:1fr}.trainingMetricGrid{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:620px){.trainingMetricGrid{grid-template-columns:1fr}.trainingHistoryHeader{flex-direction:column}.trainingHistoryHeader span{text-align:left}}
+
+/* Stage 8: live session lifecycle and post-session review */
+.postSessionReviewCard { border-color:rgba(84,191,149,.38); background:linear-gradient(145deg,rgba(13,42,38,.96),rgba(10,25,30,.98)); }
+.liveSessionLifecycleCard { margin:0 0 18px; border-color:rgba(84,191,149,.32); background:linear-gradient(145deg,rgba(13,39,37,.92),rgba(10,23,31,.96)); }
+.postSessionWorkspace { display:grid; grid-template-columns:330px minmax(0,1fr); gap:16px; align-items:start; }
+.postSessionSidebar { position:sticky; top:112px; max-height:calc(100vh - 138px); overflow:auto; margin:0; }
+.postSessionEditor { margin:0; min-height:420px; }
+.postSessionList { display:grid; gap:8px; }
+.postSessionListItem { width:100%; display:flex; flex-direction:column; align-items:flex-start; gap:5px; padding:11px 12px; border:1px solid #30363d; border-radius:11px; background:#0d1117; color:#e6edf3; text-align:left; }
+.postSessionListItem:hover { border-color:#54bf95; }
+.postSessionListItem.selected { border-color:#54bf95; background:rgba(40,145,107,.13); }
+.postSessionListItem strong { width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.postSessionListItem span { color:#93a7a0; font-size:11px; }
+.compactMetrics { grid-template-columns:repeat(2,1fr); margin:8px 0 14px; }
+.compactMetrics > div { padding:10px; }
+.compactMetrics strong { font-size:19px; }
+.postSessionQuestionList { display:grid; gap:14px; margin-top:18px; }
+.postQuestionReviewCard { padding:15px; border:1px solid rgba(148,163,184,.18); border-radius:14px; background:rgba(12,24,36,.88); }
+.postQuestionReviewHeader { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
+.postQuestionReviewHeader h4 { margin:0; color:#eff7f4; font-size:17px; line-height:1.4; }
+.postQuestionReviewHeader span { flex:none; }
+.postQuestionSuggestion { margin:10px 0 14px; padding:12px; border:1px solid rgba(84,191,149,.22); border-radius:11px; background:rgba(27,83,66,.18); }
+.postQuestionSuggestion strong { display:block; margin-bottom:6px; color:#b9f2dc; }
+.postQuestionSuggestion p { margin:6px 0; white-space:pre-wrap; line-height:1.5; }
+.postQuestionBasis { margin:8px 0 0; padding-left:20px; color:#aebfba; }
+.postQuestionReviewGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; align-items:end; }
+.postQuestionReviewGrid .check { min-height:44px; }
+@media (max-width:1050px){.postSessionWorkspace{grid-template-columns:1fr}.postSessionSidebar{position:static;max-height:none}.postQuestionReviewGrid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:620px){.postQuestionReviewGrid{grid-template-columns:1fr}.compactMetrics{grid-template-columns:1fr}.postQuestionReviewHeader{flex-direction:column}}
+.assistantCodingResult { margin-top:16px; padding:16px; border:1px solid rgba(52,211,153,.32); border-radius:14px; background:rgba(6,35,31,.72); }
+.assistantCodingHeader { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.assistantCodingHeader strong { color:#bbf7d0; }
+.codeTextarea { font-family:Consolas,"Cascadia Code",monospace; line-height:1.5; tab-size:4; white-space:pre; }
+.postQuestionCode { max-height:360px; overflow:auto; padding:14px; border-radius:10px; background:#071018; border:1px solid rgba(96,165,250,.2); color:#dbeafe; white-space:pre; }
+.postQuestionCode code { font-family:Consolas,"Cascadia Code",monospace; font-size:13px; line-height:1.5; }
+.postQuestionWalkthrough { padding-left:22px; }
+.postQuestionWalkthrough li { margin:6px 0; line-height:1.45; }

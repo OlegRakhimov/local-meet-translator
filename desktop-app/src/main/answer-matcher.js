@@ -45,6 +45,7 @@ function entryToSuggestion(entry, score) {
   return {
     source: 'library',
     sourceEntryId: String(entry.id || ''),
+    responseType: 'interview_answer',
     question: String(entry.question || ''),
     firstSentence: String(entry.firstSentence || '').trim() || String(entry.answer || '').split(/(?<=[.!?])\s+/)[0] || '',
     answer: String(entry.answer || ''),

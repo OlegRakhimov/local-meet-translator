@@ -92,18 +92,28 @@ function sanitizeSuggestion(input = {}) {
     .filter(Boolean)
     .slice(0, maxItems);
   const confidence = ['high', 'medium', 'low'].includes(source.confidence) ? source.confidence : 'low';
+  const responseType = source.responseType === 'coding_solution' ? 'coding_solution' : 'interview_answer';
   return {
     source: source.source === 'library' ? 'library' : 'ai',
     sourceEntryId: cleanText(source.sourceEntryId, 128),
-    question: cleanText(source.question, 1600),
+    responseType,
+    question: cleanText(source.question, 2400),
     firstSentence: cleanText(source.firstSentence, 2500),
-    answer: cleanText(source.answer, 16_000),
+    answer: cleanText(source.answer, 20_000),
     keyPoints: list(source.keyPoints, 8, 1000),
     keywords: list(source.keywords || source.keyPoints, 12, 300),
     basis: list(source.basis, 12, 1500),
     confidence,
     experienceGap: source.experienceGap === true,
     safeFallback: cleanText(source.safeFallback, 4000),
+    approachSummary: cleanText(source.approachSummary, 5000),
+    implementationPlan: list(source.implementationPlan, 10, 1200),
+    codeLanguage: cleanText(source.codeLanguage, 80),
+    code: cleanText(source.code, 30_000),
+    codeWalkthrough: list(source.codeWalkthrough, 120, 1200),
+    complexity: cleanText(source.complexity, 3000),
+    edgeCases: list(source.edgeCases, 12, 1000),
+    speakingNotes: list(source.speakingNotes, 16, 1000),
     score: Number.isFinite(Number(source.score)) ? Number(source.score) : null
   };
 }
@@ -337,7 +347,13 @@ function createAssistantOverlayController({
   }
   function setFrozen(enabled) {
     settings = { ...settings, teleprompterFrozen: !!enabled };
-    teleprompter.setFrozen(!!enabled);
+    const result = teleprompter.setFrozen(!!enabled);
+    if (result.loadedPending && result.current) {
+      question = result.current.question ? { ...result.current.question } : question;
+      suggestion = result.current.suggestion ? { ...result.current.suggestion } : suggestion;
+      status = suggestion ? 'ready' : question ? 'question' : 'idle';
+      error = '';
+    }
     if (typeof saveSettings === 'function') saveSettings({ INTERVIEW_TELEPROMPTER_FROZEN: settings.teleprompterFrozen ? 'true' : 'false' });
     sendState();
     return { ok: true, ...snapshot() };

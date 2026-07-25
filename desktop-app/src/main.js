@@ -13,9 +13,11 @@ const { createSubtitleDedupeGuard } = require('./main/subtitle-dedupe');
 const { createCandidateProfileStore } = require('./main/candidate-profile-store');
 const { createAnswerLibraryStore } = require('./main/answer-library-store');
 const { createInterviewTrainingStore } = require('./main/interview-training-store');
-const { createQuestionDetector, cleanQuestionText } = require('./main/question-detector');
+const { createLiveInterviewStore } = require('./main/live-interview-store');
+const { createQuestionDetector, cleanQuestionText, classifyInterviewUtterance, detectCodingLanguage } = require('./main/question-detector');
 const { matchAnswerLibrary } = require('./main/answer-matcher');
 const { createAssistantOverlayController, normalizeAssistantSettings } = require('./main/assistant-overlay');
+const { createAutomaticAnalysisCoordinator } = require('./main/assistant-auto-analysis');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('local.meet.translator.desktop');
@@ -32,6 +34,7 @@ const subtitleWindowStatePath = path.join(userConfigDir, 'subtitle-window-state.
 const candidateProfilePath = path.join(userConfigDir, 'candidate-profile.json');
 const answerLibraryPath = path.join(userConfigDir, 'answer-library.json');
 const interviewTrainingPath = path.join(userConfigDir, 'interview-training.json');
+const liveInterviewPath = path.join(userConfigDir, 'live-interviews.json');
 const assistantWindowStatePath = path.join(userConfigDir, 'assistant-window-state.json');
 const extensionPath = isPackaged ? path.join(repoRoot, 'browser-extensions') : repoRoot;
 const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPath });
@@ -41,18 +44,20 @@ const subtitleDedupe = createSubtitleDedupeGuard();
 const candidateProfileStore = createCandidateProfileStore({ profilePath: candidateProfilePath });
 const answerLibraryStore = createAnswerLibraryStore({ libraryPath: answerLibraryPath });
 const interviewTrainingStore = createInterviewTrainingStore({ trainingPath: interviewTrainingPath });
+const liveInterviewStore = createLiveInterviewStore({ historyPath: liveInterviewPath });
 const questionDetector = createQuestionDetector();
 let windowManager;
 let subtitleOverlay;
 let assistantOverlay;
 let assistantAnalysisGeneration = 0;
 let lastDetectedQuestion = null;
+let assistantAutoAnalysis = null;
 let bridgeProc = null;
 let voiceProc = null;
 let configServer = null;
 let appClosing = false;
 let closeConfirmationPending = false;
-let workspaceDirtyState = { candidateProfile: false, answerLibrary: false };
+let workspaceDirtyState = { candidateProfile: false, answerLibrary: false, postSessionReview: false };
 const desktopSessionId = crypto.randomBytes(12).toString('hex');
 const extensionCommandCoordinator = new ExtensionCommandCoordinator({ sessionId: desktopSessionId });
 const extensionClientRegistry = new ExtensionClientRegistry();
@@ -69,6 +74,25 @@ function sendLog(line) {
     // Window is already closing/destroyed. Logging must never crash the app.
   }
 }
+function initializeAssistantAutoAnalysis() {
+  if (assistantAutoAnalysis) return assistantAutoAnalysis;
+  assistantAutoAnalysis = createAutomaticAnalysisCoordinator({
+    delayMs: 1200,
+    analyze: async question => {
+      const settings = normalizeAssistantSettings(loadSettings(), process.platform);
+      if (!settings.enabled || !settings.autoAnalyze) {
+        return { ok: false, skipped: true, message: 'Automatic analysis is disabled.' };
+      }
+      return analyzeInterviewQuestion(question, { source: 'automatic' });
+    },
+    onState: event => {
+      const safeStatuses = new Set(['queued', 'started', 'completed', 'not-completed', 'failed', 'pending-canceled', 'cleared', 'stopped']);
+      if (safeStatuses.has(event.status)) sendLog(`[ASSISTANT] Automatic analysis ${event.status}.`);
+    }
+  });
+  return assistantAutoAnalysis;
+}
+
 function requestJson(url, token) {
   return new Promise(resolve => {
     const u = new URL(url);
@@ -147,9 +171,19 @@ function emitAssistantState() {
   windowManager.send('interview:assistant-state', assistantOverlay.snapshot());
 }
 
+function emitLiveInterviewState(result = null) {
+  if (!windowManager) return;
+  const payload = result && result.data ? result : liveInterviewStore.load();
+  windowManager.send('interview:session-state', payload);
+}
+
 function recordDetectedQuestion(question) {
   lastDetectedQuestion = question ? { ...question } : null;
   if (assistantOverlay && question) assistantOverlay.setQuestion(question);
+  if (question) {
+    const recorded = liveInterviewStore.recordQuestion(question);
+    if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+  }
   if (windowManager && question) windowManager.send('interview:question-detected', { ...question });
   emitAssistantState();
 }
@@ -168,13 +202,21 @@ async function ensureBridgeForAssistant() {
 }
 
 async function analyzeInterviewQuestion(questionInput, options = {}) {
-  const questionText = cleanQuestionText(typeof questionInput === 'string' ? questionInput : questionInput?.text);
-  if (!questionText) return { ok:false, message:'Interview question is empty.' };
+  const inputObject = questionInput && typeof questionInput === 'object' ? questionInput : null;
+  const questionText = cleanQuestionText(typeof questionInput === 'string' ? questionInput : inputObject?.text);
+  if (!questionText) return { ok:false, message:'Interview question or coding task is empty.' };
+  const classification = classifyInterviewUtterance(questionText);
+  const taskKind = inputObject?.kind === 'coding-task' || classification.kind === 'coding-task'
+    ? 'coding-task'
+    : 'question';
+  const codingLanguage = cleanQuestionText(inputObject?.codingLanguage || detectCodingLanguage(questionText)).toLowerCase();
   if (!lastDetectedQuestion || lastDetectedQuestion.text !== questionText) {
     const manualQuestion = {
       id: `manual-question-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`,
       text: questionText,
       normalized: questionText.toLowerCase(),
+      kind: taskKind,
+      codingLanguage,
       detectedAt: Date.now(),
       eventId: '', clientId: '', tabId: '', url: ''
     };
@@ -185,22 +227,26 @@ async function analyzeInterviewQuestion(questionInput, options = {}) {
   const libraryResult = answerLibraryStore.load();
   const profile = profileResult.profile || {};
   const library = libraryResult.library || { entries: [] };
-  const localMatch = matchAnswerLibrary(questionText, library.entries || [], { threshold: 0.52 });
+  const localMatch = taskKind === 'coding-task'
+    ? { matched:false, score:0, suggestion:null, candidates:[] }
+    : matchAnswerLibrary(questionText, library.entries || [], { threshold: 0.52 });
   if (localMatch.matched && localMatch.suggestion) {
     const suggestion = { ...localMatch.suggestion, question: questionText };
     if (assistantOverlay && generation === assistantAnalysisGeneration) assistantOverlay.setSuggestion(suggestion);
+    const recorded = liveInterviewStore.recordSuggestion(questionText, suggestion);
+    if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
     emitAssistantState();
     return { ok:true, source:'library', suggestion, matchScore:localMatch.score };
   }
 
+  if (assistantOverlay && generation === assistantAnalysisGeneration) assistantOverlay.setAnalyzing(true);
+  emitAssistantState();
   const bridge = await ensureBridgeForAssistant();
   if (!bridge.ok) {
     if (assistantOverlay && generation === assistantAnalysisGeneration) assistantOverlay.setError(bridge.message);
     emitAssistantState();
     return { ok:false, message:bridge.message };
   }
-  if (assistantOverlay && generation === assistantAnalysisGeneration) assistantOverlay.setAnalyzing(true);
-  emitAssistantState();
   const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
   const reviewedAnswers = localMatch.candidates.map(item => ({
     id: String(item.entry.id || ''),
@@ -218,6 +264,8 @@ async function analyzeInterviewQuestion(questionInput, options = {}) {
     bridge.settings.LOCAL_MEET_TRANSLATOR_TOKEN,
     {
       question: questionText,
+      taskKind,
+      codingLanguage,
       languageLevel: assistantSettings.languageLevel,
       answerStyle: assistantSettings.answerStyle,
       candidateProfile: buildInterviewGrounding(profile),
@@ -234,6 +282,8 @@ async function analyzeInterviewQuestion(questionInput, options = {}) {
   }
   const suggestion = { ...(response.json.suggestion || response.json), source:'ai', question:questionText };
   if (assistantOverlay) assistantOverlay.setSuggestion(suggestion);
+  const recorded = liveInterviewStore.recordSuggestion(questionText, suggestion);
+  if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
   emitAssistantState();
   return { ok:true, source:'ai', suggestion, requestId:response.requestId };
 }
@@ -548,13 +598,7 @@ function startConfigServer() {
             recordDetectedQuestion(questionDecision.question);
             const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
             if (assistantSettings.enabled && assistantSettings.autoAnalyze) {
-              setImmediate(() => {
-                analyzeInterviewQuestion(questionDecision.question, { source:'automatic' })
-                  .catch(error => {
-                    if (assistantOverlay) assistantOverlay.setError(error.message || String(error));
-                    emitAssistantState();
-                  });
-              });
+              initializeAssistantAutoAnalysis().queue(questionDecision.question);
             }
           }
           writeJsonResponse(res, 200, {
@@ -700,7 +744,7 @@ function initializeWindowManager() {
       event.preventDefault();
       if (closeConfirmationPending) return;
       closeConfirmationPending = true;
-      const hasUnsavedWorkspaceChanges = !!(workspaceDirtyState.candidateProfile || workspaceDirtyState.answerLibrary);
+      const hasUnsavedWorkspaceChanges = !!(workspaceDirtyState.candidateProfile || workspaceDirtyState.answerLibrary || workspaceDirtyState.postSessionReview);
       Promise.resolve().then(async () => {
         if (hasUnsavedWorkspaceChanges) {
           const result = await dialog.showMessageBox(mainWindow, {
@@ -710,7 +754,7 @@ function initializeWindowManager() {
             cancelId: 1,
             noLink: true,
             title: 'Unsaved interview workspace changes',
-            message: 'The candidate profile or Answer Library has unsaved changes.',
+            message: 'The interview workspace has unsaved changes.',
             detail: 'Save the changes first, or choose Exit without saving.'
           });
           if (result.response !== 0) return;
@@ -723,6 +767,7 @@ function initializeWindowManager() {
         setTimeout(() => {
           try { if (configServer) configServer.close(); } catch (_) {}
           try { if (subtitleOverlay) subtitleOverlay.destroy(); } catch (_) {}
+          try { if (assistantAutoAnalysis) assistantAutoAnalysis.stop(); } catch (_) {}
           try { if (assistantOverlay) assistantOverlay.destroy(); } catch (_) {}
           try { windowManager.destroyMainWindow(); } catch (_) {}
           app.quit();
@@ -781,6 +826,7 @@ app.on('before-quit', () => {
   killProcessTree(voiceProc, 'voice');
   try { if (configServer) configServer.close(); } catch (_) {}
   try { if (subtitleOverlay) subtitleOverlay.destroy(); } catch (_) {}
+  try { if (assistantAutoAnalysis) assistantAutoAnalysis.stop(); } catch (_) {}
   try { if (assistantOverlay) assistantOverlay.destroy(); } catch (_) {}
 });
 
@@ -788,7 +834,8 @@ ipcMain.handle('app:info', () => ({ name: app.getName(), version: app.getVersion
 ipcMain.on('workspace:dirty-state', (_event, state = {}) => {
   workspaceDirtyState = {
     candidateProfile: state.candidateProfile === true,
-    answerLibrary: state.answerLibrary === true
+    answerLibrary: state.answerLibrary === true,
+    postSessionReview: state.postSessionReview === true
   };
 });
 ipcMain.handle('session:status', () => translationSession.snapshot());
@@ -815,7 +862,12 @@ ipcMain.handle('interview-assistant:control', (_event, action, payload = {}) => 
     case 'show': return assistantOverlay.show();
     case 'hide': return assistantOverlay.hide();
     case 'toggle': return assistantOverlay.toggle();
-    case 'clear': questionDetector.clear(); lastDetectedQuestion = null; assistantAnalysisGeneration += 1; return assistantOverlay.clear();
+    case 'clear':
+      questionDetector.clear();
+      lastDetectedQuestion = null;
+      assistantAnalysisGeneration += 1;
+      if (assistantAutoAnalysis) assistantAutoAnalysis.clear();
+      return assistantOverlay.clear();
     case 'clickThrough': return assistantOverlay.setClickThrough(!!payload.enabled);
     case 'moveMode': return assistantOverlay.setMoveMode(payload.enabled);
     case 'freezeTeleprompter': return assistantOverlay.setFrozen(!!payload.enabled);
@@ -827,7 +879,10 @@ ipcMain.handle('interview-assistant:control', (_event, action, payload = {}) => 
     default: return { ok:false, message:`Unknown interview assistant action: ${String(action || '')}` };
   }
 });
-ipcMain.handle('interview-assistant:analyze', async (_event, question) => analyzeInterviewQuestion(question || lastDetectedQuestion || ''));
+ipcMain.handle('interview-assistant:analyze', async (_event, question) => {
+  if (assistantAutoAnalysis) assistantAutoAnalysis.cancelPending();
+  return analyzeInterviewQuestion(question || lastDetectedQuestion || '', { source: 'manual' });
+});
 ipcMain.handle('interview-assistant:last-question', () => lastDetectedQuestion ? { ok:true, question:{ ...lastDetectedQuestion } } : { ok:true, question:null });
 
 ipcMain.handle('candidate-profile:load', () => candidateProfileStore.load());
@@ -914,6 +969,48 @@ ipcMain.handle('answer-library:export', async (_event, library) => {
     return { ok: false, error: error.message || String(error) };
   }
 });
+ipcMain.handle('live-interview:load', () => liveInterviewStore.load());
+ipcMain.handle('live-interview:start', (_event, details) => {
+  const result = liveInterviewStore.startSession(details || {});
+  emitLiveInterviewState(result);
+  return result;
+});
+ipcMain.handle('live-interview:end', (_event, sessionId) => {
+  const result = liveInterviewStore.endSession(sessionId || '');
+  emitLiveInterviewState(result);
+  return result;
+});
+ipcMain.handle('live-interview:update', (_event, session) => {
+  const result = liveInterviewStore.updateSession(session || {});
+  emitLiveInterviewState(result);
+  return result;
+});
+ipcMain.handle('live-interview:reset', () => {
+  const result = liveInterviewStore.reset();
+  emitLiveInterviewState(result);
+  return result;
+});
+ipcMain.handle('live-interview:export', async (_event, format, data) => {
+  const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
+  const normalizedFormat = String(format || '').toLowerCase() === 'json' ? 'json' : 'md';
+  const options = {
+    title: 'Export post-session interview review',
+    defaultPath: normalizedFormat === 'json' ? 'local-meet-translator-live-interviews.json' : 'local-meet-translator-post-session-review.md',
+    filters: normalizedFormat === 'json'
+      ? [{ name: 'JSON', extensions: ['json'] }]
+      : [{ name: 'Markdown', extensions: ['md'] }]
+  };
+  const selection = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options);
+  if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+  try {
+    return normalizedFormat === 'json'
+      ? liveInterviewStore.exportJson(selection.filePath, data || {})
+      : liveInterviewStore.exportMarkdown(selection.filePath, data || {});
+  } catch (error) {
+    return { ok: false, error: error.message || String(error) };
+  }
+});
+
 ipcMain.handle('interview-training:load', () => interviewTrainingStore.load());
 ipcMain.handle('interview-training:save', (_event, data) => interviewTrainingStore.save(data || {}));
 ipcMain.handle('interview-training:reset', () => interviewTrainingStore.reset());

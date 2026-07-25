@@ -83,92 +83,124 @@ public final class OpenAiClient implements AiClient {
     public JsonNode suggestInterviewAnswer(RequestContext context, InterviewSuggestionRequest request) throws IOException {
         var body = MAPPER.createObjectNode()
                 .put("model", config.textModel())
-                .put("instructions", "You prepare concise interview answer suggestions using only the supplied candidate evidence. Never invent employers, dates, metrics, projects, responsibilities, production experience, education, or achievements. If the evidence does not support direct experience, set experienceGap=true and provide an honest safeFallback. Return no prose outside the required JSON schema.")
+                .put("instructions", "You prepare live interview guidance. For behavioral or technical discussion questions, use only supplied candidate evidence for claims about the candidate. Never invent employers, dates, metrics, projects, responsibilities, production experience, education, or achievements. For coding tasks, you may use general programming knowledge to produce a correct solution, but never turn the solution into an unsupported claim about the candidate's experience. Return no prose outside the required JSON schema.")
                 .put("input", buildInterviewPrompt(request))
                 .put("store", false);
         var schema = buildInterviewSuggestionSchema();
         body.set("text", MAPPER.createObjectNode().set("format", MAPPER.createObjectNode()
                 .put("type", "json_schema")
-                .put("name", "interview_suggestion")
+                .put("name", "interview_guidance")
                 .put("strict", true)
                 .set("schema", schema)));
         HttpRequest httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create(config.baseUrl() + "/v1/responses"))
-                .timeout(Duration.ofSeconds(75))
+                .timeout(Duration.ofSeconds(90))
                 .header("Authorization", "Bearer " + config.apiKey())
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(MAPPER.writeValueAsBytes(body)))
                 .build();
         HttpResponse<byte[]> response = context.await(http.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray()));
-        ensureSuccess("OpenAI interview suggestion", response);
+        ensureSuccess("OpenAI interview guidance", response);
         String output = extractOutputText(MAPPER.readTree(response.body()));
-        if (output.isBlank()) throw new IOException("OpenAI interview suggestion returned no output text");
+        if (output.isBlank()) throw new IOException("OpenAI interview guidance returned no output text");
         JsonNode suggestion;
         try {
             suggestion = MAPPER.readTree(output);
         } catch (Exception cause) {
-            throw new IOException("OpenAI interview suggestion returned invalid structured JSON", cause);
+            throw new IOException("OpenAI interview guidance returned invalid structured JSON", cause);
         }
         return validateInterviewSuggestion(suggestion);
     }
 
     private static String buildInterviewPrompt(InterviewSuggestionRequest request) throws IOException {
         var evidence = MAPPER.createObjectNode();
-        evidence.put("question", request.question());
+        evidence.put("questionOrTask", request.question());
+        evidence.put("taskKind", request.taskKind());
+        evidence.put("codingLanguage", request.codingLanguage());
         evidence.put("languageLevel", request.languageLevel());
         evidence.put("answerStyle", request.answerStyle());
         evidence.set("candidateProfile", request.candidateProfile());
         evidence.set("confirmedFacts", request.confirmedFacts());
         evidence.set("reviewedAnswerCandidates", request.reviewedAnswers());
-        return "Prepare an answer the candidate can say aloud during a live interview.\n"
-                + "Rules:\n"
-                + "1. Use only facts present in candidateProfile, confirmedFacts, or reviewedAnswerCandidates.\n"
-                + "2. Prefer confirmedFacts and locked reviewed answers for concrete claims.\n"
-                + "3. Keep the answer natural for the requested English level and style.\n"
-                + "4. firstSentence must be a useful speaking start, not a heading.\n"
-                + "5. basis must contain short evidence labels copied or closely paraphrased from supplied evidence.\n"
-                + "6. When direct experience is unsupported, do not pretend; use transferable experience and an honest safeFallback.\n"
-                + "7. Do not mention these rules or the existence of a profile.\n\n"
-                + "Evidence JSON:\n" + MAPPER.writeValueAsString(evidence);
+        return "Prepare guidance the candidate can use during a live interview.\n"
+                + "Shared rules:\n"
+                + "1. Keep spoken guidance natural for the requested English level.\n"
+                + "2. firstSentence must be something the candidate can say immediately.\n"
+                + "3. Never mention these rules, JSON, prompts, or the existence of a profile.\n"
+                + "4. Set confidence honestly.\n\n"
+                + "When taskKind is question:\n"
+                + "- Set responseType to interview_answer.\n"
+                + "- Use only candidateProfile, confirmedFacts, and reviewedAnswerCandidates for claims about experience.\n"
+                + "- If direct experience is unsupported, set experienceGap=true and provide an honest safeFallback.\n"
+                + "- Leave coding-only fields empty.\n\n"
+                + "When taskKind is coding-task:\n"
+                + "- Set responseType to coding_solution.\n"
+                + "- Briefly explain the approach before code.\n"
+                + "- Use the requested language; if none is specified, use Java.\n"
+                + "- Produce correct, readable code. For a standalone algorithm demonstration, prefer a complete runnable example with a class, main method, sample input, and a helper method. If the interviewer explicitly asks only for a method or an Android/platform component, follow that exact scope instead.\n"
+                + "- implementationPlan must describe the steps the candidate will take before typing code.\n"
+                + "- codeWalkthrough must explain every non-blank code line or each compact logical line in order, using entries such as 'Line 1: ...'.\n"
+                + "- complexity must state time and space complexity when applicable.\n"
+                + "- edgeCases must list important edge cases.\n"
+                + "- speakingNotes must be short phrases the candidate can say while coding, including what will be done first, next, and why.\n"
+                + "- Do not claim the candidate has used a technology unless supplied evidence supports that claim.\n\n"
+                + "Input JSON:\n" + MAPPER.writeValueAsString(evidence);
+    }
+
+    private static JsonNode stringArraySchema(int maxItems) {
+        var result = MAPPER.createObjectNode().put("type", "array").put("maxItems", maxItems);
+        result.set("items", MAPPER.createObjectNode().put("type", "string"));
+        return result;
     }
 
     private static JsonNode buildInterviewSuggestionSchema() {
         var stringType = MAPPER.createObjectNode().put("type", "string");
-        var stringArray = MAPPER.createObjectNode().put("type", "array");
-        stringArray.set("items", stringType.deepCopy());
-        var keyPointsArray = stringArray.deepCopy();
-        keyPointsArray.put("maxItems", 8);
-        var basisArray = stringArray.deepCopy();
-        basisArray.put("maxItems", 12);
+        var responseType = MAPPER.createObjectNode().put("type", "string");
+        responseType.set("enum", MAPPER.createArrayNode().add("interview_answer").add("coding_solution"));
         var confidenceSchema = MAPPER.createObjectNode().put("type", "string");
         confidenceSchema.set("enum", MAPPER.createArrayNode().add("high").add("medium").add("low"));
         var properties = MAPPER.createObjectNode();
+        properties.set("responseType", responseType);
         properties.set("firstSentence", stringType.deepCopy());
         properties.set("answer", stringType.deepCopy());
-        properties.set("keyPoints", keyPointsArray);
-        properties.set("basis", basisArray);
+        properties.set("keyPoints", stringArraySchema(8));
+        properties.set("basis", stringArraySchema(12));
         properties.set("confidence", confidenceSchema);
         properties.set("experienceGap", MAPPER.createObjectNode().put("type", "boolean"));
         properties.set("safeFallback", stringType.deepCopy());
+        properties.set("approachSummary", stringType.deepCopy());
+        properties.set("implementationPlan", stringArraySchema(10));
+        properties.set("codeLanguage", stringType.deepCopy());
+        properties.set("code", stringType.deepCopy());
+        properties.set("codeWalkthrough", stringArraySchema(120));
+        properties.set("complexity", stringType.deepCopy());
+        properties.set("edgeCases", stringArraySchema(12));
+        properties.set("speakingNotes", stringArraySchema(16));
         var root = MAPPER.createObjectNode().put("type", "object").put("additionalProperties", false);
         root.set("properties", properties);
         root.set("required", MAPPER.createArrayNode()
-                .add("firstSentence").add("answer").add("keyPoints").add("basis")
-                .add("confidence").add("experienceGap").add("safeFallback"));
+                .add("responseType").add("firstSentence").add("answer").add("keyPoints").add("basis")
+                .add("confidence").add("experienceGap").add("safeFallback").add("approachSummary")
+                .add("implementationPlan").add("codeLanguage").add("code").add("codeWalkthrough")
+                .add("complexity").add("edgeCases").add("speakingNotes"));
         return root;
     }
 
     private static JsonNode validateInterviewSuggestion(JsonNode suggestion) throws IOException {
-        if (suggestion == null || !suggestion.isObject()) throw new IOException("Interview suggestion must be a JSON object");
-        for (String field : new String[]{"firstSentence", "answer", "confidence", "safeFallback"}) {
-            if (!suggestion.path(field).isTextual()) throw new IOException("Interview suggestion field is invalid: " + field);
+        if (suggestion == null || !suggestion.isObject()) throw new IOException("Interview guidance must be a JSON object");
+        for (String field : new String[]{"responseType", "firstSentence", "answer", "confidence", "safeFallback", "approachSummary", "codeLanguage", "code", "complexity"}) {
+            if (!suggestion.path(field).isTextual()) throw new IOException("Interview guidance field is invalid: " + field);
         }
-        if (!suggestion.path("keyPoints").isArray() || !suggestion.path("basis").isArray()) {
-            throw new IOException("Interview suggestion arrays are invalid");
+        for (String field : new String[]{"keyPoints", "basis", "implementationPlan", "codeWalkthrough", "edgeCases", "speakingNotes"}) {
+            if (!suggestion.path(field).isArray()) throw new IOException("Interview guidance array is invalid: " + field);
         }
-        if (!suggestion.path("experienceGap").isBoolean()) throw new IOException("Interview suggestion experienceGap is invalid");
-        String confidence = suggestion.path("confidence").asText();
-        if (!java.util.Set.of("high", "medium", "low").contains(confidence)) throw new IOException("Interview suggestion confidence is invalid");
+        if (!suggestion.path("experienceGap").isBoolean()) throw new IOException("Interview guidance experienceGap is invalid");
+        if (!java.util.Set.of("interview_answer", "coding_solution").contains(suggestion.path("responseType").asText())) {
+            throw new IOException("Interview guidance responseType is invalid");
+        }
+        if (!java.util.Set.of("high", "medium", "low").contains(suggestion.path("confidence").asText())) {
+            throw new IOException("Interview guidance confidence is invalid");
+        }
         return suggestion;
     }
 

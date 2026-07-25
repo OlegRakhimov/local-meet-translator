@@ -9,6 +9,8 @@ import java.util.Set;
 
 public record InterviewSuggestionRequest(
         String question,
+        String taskKind,
+        String codingLanguage,
         String languageLevel,
         String answerStyle,
         ObjectNode candidateProfile,
@@ -17,16 +19,19 @@ public record InterviewSuggestionRequest(
 ) {
     private static final Set<String> LEVELS = Set.of("A2", "B1", "B2");
     private static final Set<String> STYLES = Set.of("simple", "technical", "star", "general");
+    private static final Set<String> TASK_KINDS = Set.of("question", "coding-task");
 
     public static InterviewSuggestionRequest from(JsonNode json) {
         if (json == null || !json.isObject()) throw new ApiException(400, "invalid_request", "Request body must be a JSON object.");
-        String question = JsonContract.requiredText(json, "question", 1_600);
+        String question = JsonContract.requiredText(json, "question", 2_400);
+        String taskKind = JsonContract.enumText(json, "taskKind", "question", TASK_KINDS);
+        String codingLanguage = JsonContract.text(json, "codingLanguage", "", 80).trim();
         String level = JsonContract.enumText(json, "languageLevel", "B1", LEVELS);
         String style = JsonContract.enumText(json, "answerStyle", "simple", STYLES);
         ObjectNode profile = objectCopy(json.get("candidateProfile"), "candidateProfile", 40_000);
         ArrayNode facts = textArrayCopy(json.get("confirmedFacts"), "confirmedFacts", 120, 1_500);
         ArrayNode answers = objectArrayCopy(json.get("reviewedAnswers"), "reviewedAnswers", 5, 30_000);
-        return new InterviewSuggestionRequest(question, level, style, profile, facts, answers);
+        return new InterviewSuggestionRequest(question, taskKind, codingLanguage, level, style, profile, facts, answers);
     }
 
     private static ObjectNode objectCopy(JsonNode value, String field, int maxSerializedLength) {

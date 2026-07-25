@@ -23,7 +23,7 @@
     </header>
 
     <section class="questionBlock">
-      <span class="label">Question</span>
+      <span id="questionLabel" class="label">Question</span>
       <p id="questionText">Waiting for an interview question…</p>
     </section>
 
@@ -38,6 +38,7 @@
     <section id="suggestionBlock" class="suggestionBlock" hidden>
       <div class="metaRow">
         <span id="sourceBadge" class="sourceBadge">AI</span>
+        <span id="taskTypeBadge" class="taskTypeBadge">INTERVIEW ANSWER</span>
         <span id="confidenceBadge" class="confidenceBadge">Low confidence</span>
       </div>
 
@@ -71,6 +72,44 @@
             <span class="label">Keywords</span>
             <div id="keywordChips" class="keywordChips"></div>
           </div>
+        </div>
+      </section>
+
+      <section id="codingSolutionBlock" class="codingSolutionBlock" hidden>
+        <div class="codingHeader">
+          <div>
+            <span class="eyebrow">CODING TASK</span>
+            <strong id="codeLanguage">Java</strong>
+          </div>
+          <span class="codeReadyBadge">SOLUTION READY</span>
+        </div>
+        <div class="approachBlock">
+          <span class="label">Brief approach</span>
+          <p id="approachSummary"></p>
+        </div>
+        <div class="codingColumns">
+          <div>
+            <span class="label">Implementation plan</span>
+            <ol id="implementationPlan"></ol>
+          </div>
+          <div>
+            <span class="label">Complexity</span>
+            <p id="complexityText"></p>
+            <span class="label secondaryLabel">Edge cases</span>
+            <ul id="edgeCases"></ul>
+          </div>
+        </div>
+        <div class="codeBlock">
+          <span class="label">Code</span>
+          <pre><code id="codeText"></code></pre>
+        </div>
+        <details class="codeWalkthroughPanel" open>
+          <summary>Line-by-line explanation</summary>
+          <ol id="codeWalkthrough"></ol>
+        </details>
+        <div class="speakingNotesBlock">
+          <span class="label">What to say while coding</span>
+          <ul id="speakingNotes"></ul>
         </div>
       </section>
 

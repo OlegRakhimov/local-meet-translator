@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld('lmt', {
   answerLibraryReset: () => ipcRenderer.invoke('answer-library:reset'),
   answerLibraryImport: () => ipcRenderer.invoke('answer-library:import'),
   answerLibraryExport: (library) => ipcRenderer.invoke('answer-library:export', library || {}),
+  liveInterviewLoad: () => ipcRenderer.invoke('live-interview:load'),
+  liveInterviewStart: (details) => ipcRenderer.invoke('live-interview:start', details || {}),
+  liveInterviewEnd: (sessionId) => ipcRenderer.invoke('live-interview:end', sessionId || ''),
+  liveInterviewUpdate: (session) => ipcRenderer.invoke('live-interview:update', session || {}),
+  liveInterviewReset: () => ipcRenderer.invoke('live-interview:reset'),
+  liveInterviewExport: (format, data) => ipcRenderer.invoke('live-interview:export', format || 'md', data || {}),
   interviewTrainingLoad: () => ipcRenderer.invoke('interview-training:load'),
   interviewTrainingSave: (data) => ipcRenderer.invoke('interview-training:save', data || {}),
   interviewTrainingReset: () => ipcRenderer.invoke('interview-training:reset'),
@@ -50,5 +56,10 @@ contextBridge.exposeInMainWorld('lmt', {
     const handler = (_event, state) => cb(state);
     ipcRenderer.on('interview:assistant-state', handler);
     return () => ipcRenderer.removeListener('interview:assistant-state', handler);
+  },
+  onLiveInterviewState: (cb) => {
+    const handler = (_event, state) => cb(state);
+    ipcRenderer.on('interview:session-state', handler);
+    return () => ipcRenderer.removeListener('interview:session-state', handler);
   }
 });

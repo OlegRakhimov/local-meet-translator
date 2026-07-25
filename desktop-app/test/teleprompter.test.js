@@ -58,3 +58,19 @@ test('next and previous controls stay within chunk boundaries', () => {
   for (let i = 0; i < count + 3; i += 1) state.previousChunk();
   assert.equal(state.snapshot().activeChunkIndex, 0);
 });
+
+test('coding solution teleprompter uses speaking notes instead of reading code aloud', () => {
+  const document = buildTeleprompterDocument({
+    responseType: 'coding_solution',
+    question: 'Write a Java method to find duplicates.',
+    firstSentence: 'I will compare the values and collect duplicates.',
+    answer: 'The full answer contains implementation details.',
+    implementationPlan: ['Create the input array', 'Compare each pair', 'Print duplicates'],
+    speakingNotes: ['First, I create the input array.', 'Next, I compare each pair.', 'Finally, I print each duplicate once.'],
+    code: 'public class Main {}'
+  }, { chunkMode: 'short' });
+  assert.equal(document.responseType, 'coding_solution');
+  assert.deepEqual(document.plan, ['Create the input array', 'Compare each pair', 'Print duplicates']);
+  assert.match(document.chunks.join(' '), /First, I create the input array/);
+  assert.doesNotMatch(document.chunks.join(' '), /public class Main/);
+});

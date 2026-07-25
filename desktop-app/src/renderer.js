@@ -79,6 +79,10 @@ let interviewTrainingState = { schemaVersion: 1, sessions: [], updatedAt: '' };
 let interviewTrainingPath = '';
 let activeTrainingSessionId = '';
 let trainerReferenceVisible = false;
+let liveInterviewData = { schemaVersion: 1, activeSessionId: '', sessions: [], updatedAt: '' };
+let liveInterviewPath = '';
+let selectedReviewSessionId = '';
+let postSessionReviewDirty = false;
 
 function stableJson(value) {
   return JSON.stringify(value || {});
@@ -87,7 +91,7 @@ function stableJson(value) {
 function notifyWorkspaceDirtyState() {
   try {
     if (window.lmt && typeof window.lmt.setWorkspaceDirty === 'function') {
-      window.lmt.setWorkspaceDirty({ candidateProfile: candidateProfileDirty, answerLibrary: answerEditorDirty });
+      window.lmt.setWorkspaceDirty({ candidateProfile: candidateProfileDirty, answerLibrary: answerEditorDirty, postSessionReview: postSessionReviewDirty });
     }
   } catch (_) {}
 }
@@ -96,6 +100,12 @@ function setCandidateProfileDirty(dirty) {
   candidateProfileDirty = !!dirty;
   const banner = $('candidateProfileDirtyBanner');
   if (banner) banner.hidden = !candidateProfileDirty;
+  notifyWorkspaceDirtyState();
+}
+
+
+function setPostSessionReviewDirty(dirty) {
+  postSessionReviewDirty = !!dirty;
   notifyWorkspaceDirtyState();
 }
 
@@ -117,6 +127,11 @@ function confirmDiscardCurrentView() {
     const savedEntry = (answerLibraryState.entries || []).find(entry => entry.id === selectedAnswerId);
     applyAnswerEntry(savedEntry || emptyAnswerEntry(), { markClean: true });
     renderAnswerEntryList();
+  }
+  if (currentView === 'post-session-review' && postSessionReviewDirty) {
+    if (!window.confirm(t('discardUnsavedPostSessionChanges'))) return false;
+    setPostSessionReviewDirty(false);
+    renderPostSessionEditor();
   }
   return true;
 }
@@ -586,6 +601,7 @@ function rememberDetectedQuestion(question) {
 
 function renderAssistantSuggestion(suggestion) {
   const value = suggestion || {};
+  const isCoding = value.responseType === 'coding_solution';
   if ($('assistantResultSource')) $('assistantResultSource').textContent = value.source === 'library' ? t('assistantSourceLibrary') : value.answer ? t('assistantSourceAi') : '—';
   if ($('assistantResultConfidence')) $('assistantResultConfidence').textContent = value.confidence ? `${t('assistantConfidence')}: ${String(value.confidence).toUpperCase()}` : '—';
   if ($('assistantResultFirstSentence')) $('assistantResultFirstSentence').value = value.firstSentence || '';
@@ -593,6 +609,15 @@ function renderAssistantSuggestion(suggestion) {
   if ($('assistantResultKeyPoints')) $('assistantResultKeyPoints').value = Array.isArray(value.keyPoints) ? value.keyPoints.join('\n') : '';
   if ($('assistantResultBasis')) $('assistantResultBasis').value = Array.isArray(value.basis) ? value.basis.join('\n') : '';
   if ($('assistantResultFallback')) $('assistantResultFallback').value = value.safeFallback || '';
+  if ($('assistantCodingResult')) $('assistantCodingResult').hidden = !isCoding;
+  if ($('assistantResultCodeLanguage')) $('assistantResultCodeLanguage').textContent = value.codeLanguage || 'Java';
+  if ($('assistantResultApproach')) $('assistantResultApproach').value = value.approachSummary || '';
+  if ($('assistantResultPlan')) $('assistantResultPlan').value = Array.isArray(value.implementationPlan) ? value.implementationPlan.join('\n') : '';
+  if ($('assistantResultComplexity')) $('assistantResultComplexity').value = value.complexity || '';
+  if ($('assistantResultCode')) $('assistantResultCode').value = value.code || '';
+  if ($('assistantResultWalkthrough')) $('assistantResultWalkthrough').value = Array.isArray(value.codeWalkthrough) ? value.codeWalkthrough.join('\n') : '';
+  if ($('assistantResultSpeakingNotes')) $('assistantResultSpeakingNotes').value = Array.isArray(value.speakingNotes) ? value.speakingNotes.join('\n') : '';
+  if ($('assistantResultEdgeCases')) $('assistantResultEdgeCases').value = Array.isArray(value.edgeCases) ? value.edgeCases.join('\n') : '';
 }
 
 function renderTeleprompterState(teleprompter = {}) {
@@ -722,6 +747,13 @@ try {
     renderAssistantState({ ...assistantState, question, status: 'question', suggestion: null, error: '' });
   });
   window.lmt.onInterviewAssistantState(renderAssistantState);
+  if (typeof window.lmt.onLiveInterviewState === 'function') {
+    window.lmt.onLiveInterviewState(result => {
+      liveInterviewData = result?.data || liveInterviewData;
+      liveInterviewPath = result?.path || liveInterviewPath;
+      renderLiveInterviewSummary();
+    });
+  }
 } catch (e) {
   log(`[INIT ERROR] Cannot attach interview assistant events: ${String(e && (e.message || e) || e)}`);
 }
@@ -768,13 +800,295 @@ function bindDirtyTracking() {
       control.addEventListener('change', mark);
     });
   }
+  const postSessionRoot = $('postSessionEditorContent');
+  if (postSessionRoot) {
+    const markPostSessionDirty = event => {
+      if (event.target && event.target.matches('input, textarea, select')) setPostSessionReviewDirty(true);
+    };
+    postSessionRoot.addEventListener('input', markPostSessionDirty);
+    postSessionRoot.addEventListener('change', markPostSessionDirty);
+  }
 }
 
 window.addEventListener('beforeunload', (event) => {
-  if (!candidateProfileDirty && !answerEditorDirty) return;
+  if (!candidateProfileDirty && !answerEditorDirty && !postSessionReviewDirty) return;
   event.preventDefault();
   event.returnValue = '';
 });
+
+
+
+function liveInterviewSummaryLocal() {
+  const completed = (liveInterviewData.sessions || []).filter(session => session.status === 'completed');
+  const questions = completed.flatMap(session => Array.isArray(session.questions) ? session.questions : []);
+  const ratings = questions.map(question => Number(question.rating || 0)).filter(value => value > 0);
+  return {
+    totalSessions: completed.length,
+    totalQuestions: questions.length,
+    analyzedQuestions: questions.filter(question => question.suggestion).length,
+    needsPracticeCount: questions.filter(question => question.needsPractice).length,
+    averageRating: ratings.length ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(2) : '—'
+  };
+}
+
+function activeLiveInterviewSession() {
+  return (liveInterviewData.sessions || []).find(session => session.id === liveInterviewData.activeSessionId && session.status === 'active')
+    || (liveInterviewData.sessions || []).find(session => session.status === 'active')
+    || null;
+}
+
+function selectedReviewSession() {
+  const completed = (liveInterviewData.sessions || []).filter(session => session.status === 'completed');
+  if (selectedReviewSessionId) {
+    const selected = completed.find(session => session.id === selectedReviewSessionId);
+    if (selected) return selected;
+  }
+  return completed[0] || null;
+}
+
+function renderLiveInterviewSummary() {
+  const summary = liveInterviewSummaryLocal();
+  const active = activeLiveInterviewSession();
+  if ($('postSessionReviewDot')) $('postSessionReviewDot').className = `dot ${liveInterviewPath ? 'ok' : ''}`;
+  if ($('postSessionReviewStatusText')) $('postSessionReviewStatusText').textContent = liveInterviewPath ? t('postSessionReviewLoaded') : t('postSessionReviewNotLoaded');
+  if ($('postSessionReviewPath')) $('postSessionReviewPath').textContent = liveInterviewPath;
+  if ($('postSessionReviewSessionCount')) $('postSessionReviewSessionCount').textContent = `${summary.totalSessions} ${t('trainingSessionsMetric').toLowerCase()}`;
+  if ($('postSessionReviewQuestionCount')) $('postSessionReviewQuestionCount').textContent = `${summary.totalQuestions} ${t('postQuestionsMetric').toLowerCase()}`;
+  if ($('postMetricSessions')) $('postMetricSessions').textContent = String(summary.totalSessions);
+  if ($('postMetricQuestions')) $('postMetricQuestions').textContent = String(summary.totalQuestions);
+  if ($('postMetricAnalyzed')) $('postMetricAnalyzed').textContent = String(summary.analyzedQuestions);
+  if ($('postMetricNeedsPractice')) $('postMetricNeedsPractice').textContent = String(summary.needsPracticeCount);
+  if ($('liveSessionStatusChip')) $('liveSessionStatusChip').textContent = active ? `${t('liveSessionActive')}: ${active.title}` : t('liveSessionInactive');
+  if ($('startLiveSession')) $('startLiveSession').disabled = !!active;
+  if ($('endLiveSession')) $('endLiveSession').disabled = !active;
+  if ($('liveSessionMessage')) $('liveSessionMessage').textContent = active
+    ? `${t('liveSessionRecording')} ${active.questions?.length || 0} ${t('postQuestionsMetric').toLowerCase()}.`
+    : t('liveSessionStartHint');
+  renderPostSessionList();
+  renderPostSessionEditor();
+}
+
+function renderPostSessionList() {
+  const root = $('postSessionList');
+  const empty = $('postSessionEmpty');
+  if (!root || !empty) return;
+  root.innerHTML = '';
+  const sessions = (liveInterviewData.sessions || []).filter(session => session.status === 'completed');
+  if (!selectedReviewSessionId && sessions[0]) selectedReviewSessionId = sessions[0].id;
+  if (selectedReviewSessionId && !sessions.some(session => session.id === selectedReviewSessionId)) selectedReviewSessionId = sessions[0]?.id || '';
+  empty.hidden = sessions.length > 0;
+  if ($('postSessionScreenCount')) $('postSessionScreenCount').textContent = String(sessions.length);
+  for (const session of sessions) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `postSessionListItem${session.id === selectedReviewSessionId ? ' selected' : ''}`;
+    const title = document.createElement('strong');
+    title.textContent = session.title || t('postSessionReviewTitle');
+    const meta = document.createElement('span');
+    const parts = [session.role, session.company, `${(session.questions || []).length} ${t('postQuestionsMetric').toLowerCase()}`].filter(Boolean);
+    meta.textContent = parts.join(' · ');
+    const date = document.createElement('span');
+    date.textContent = new Date(session.completedAt || session.startedAt).toLocaleString();
+    button.append(title, meta, date);
+    button.onclick = () => {
+      if (session.id === selectedReviewSessionId) return;
+      if (postSessionReviewDirty && !window.confirm(t('discardUnsavedPostSessionChanges'))) return;
+      setPostSessionReviewDirty(false);
+      selectedReviewSessionId = session.id;
+      renderPostSessionList();
+      renderPostSessionEditor();
+    };
+    root.appendChild(button);
+  }
+}
+
+function createScoreSelect(value, className, label) {
+  const wrapper = document.createElement('label');
+  const span = document.createElement('span');
+  span.textContent = label;
+  const select = document.createElement('select');
+  select.className = className;
+  for (let score = 0; score <= 5; score += 1) {
+    const option = document.createElement('option');
+    option.value = String(score);
+    option.textContent = score ? `${score} / 5` : '—';
+    select.appendChild(option);
+  }
+  select.value = String(Number(value || 0));
+  wrapper.append(span, select);
+  return wrapper;
+}
+
+function renderPostSessionEditor() {
+  const session = selectedReviewSession();
+  const noSelection = $('postSessionNoSelection');
+  const content = $('postSessionEditorContent');
+  if (!noSelection || !content) return;
+  noSelection.hidden = !!session;
+  content.hidden = !session;
+  if (!session) return;
+  selectedReviewSessionId = session.id;
+  if ($('postSessionEditorTitle')) $('postSessionEditorTitle').textContent = session.title || t('postSessionReviewTitle');
+  if ($('postSessionEditorMeta')) $('postSessionEditorMeta').textContent = `${new Date(session.startedAt).toLocaleString()} → ${new Date(session.completedAt || session.startedAt).toLocaleString()}`;
+  if ($('postSessionTitle')) $('postSessionTitle').value = session.title || '';
+  if ($('postSessionRole')) $('postSessionRole').value = session.role || '';
+  if ($('postSessionCompany')) $('postSessionCompany').value = session.company || '';
+  if ($('postSessionNotes')) $('postSessionNotes').value = session.notes || '';
+  const root = $('postSessionQuestionList');
+  if (!root) return;
+  root.innerHTML = '';
+  for (const question of session.questions || []) {
+    const card = document.createElement('article');
+    card.className = 'postQuestionReviewCard';
+    card.dataset.questionId = question.id;
+    const header = document.createElement('div');
+    header.className = 'postQuestionReviewHeader';
+    const title = document.createElement('h4');
+    title.textContent = question.text;
+    const source = document.createElement('span');
+    source.className = 'summaryChip';
+    source.textContent = question.suggestion?.source === 'library' ? t('assistantSourceLibrary') : question.suggestion?.source === 'ai' ? t('assistantSourceAi') : t('postNoSuggestion');
+    header.append(title, source);
+    card.appendChild(header);
+    if (question.suggestion) {
+      const suggestion = document.createElement('div');
+      suggestion.className = 'postQuestionSuggestion';
+      if (question.suggestion.firstSentence) {
+        const firstLabel = document.createElement('strong'); firstLabel.textContent = t('assistantFirstSentence');
+        const first = document.createElement('p'); first.textContent = question.suggestion.firstSentence;
+        suggestion.append(firstLabel, first);
+      }
+      if (question.suggestion.answer) {
+        const answerLabel = document.createElement('strong'); answerLabel.textContent = t('assistantSuggestedAnswer');
+        const answer = document.createElement('p'); answer.textContent = question.suggestion.answer;
+        suggestion.append(answerLabel, answer);
+      }
+      if (question.suggestion.responseType === 'coding_solution') {
+        if (question.suggestion.approachSummary) {
+          const approachLabel = document.createElement('strong'); approachLabel.textContent = t('codingApproach');
+          const approach = document.createElement('p'); approach.textContent = question.suggestion.approachSummary;
+          suggestion.append(approachLabel, approach);
+        }
+        if (question.suggestion.code) {
+          const codeLabel = document.createElement('strong'); codeLabel.textContent = `${t('codingCode')} (${question.suggestion.codeLanguage || 'Java'})`;
+          const pre = document.createElement('pre'); pre.className = 'postQuestionCode';
+          const code = document.createElement('code'); code.textContent = question.suggestion.code;
+          pre.appendChild(code);
+          suggestion.append(codeLabel, pre);
+        }
+        if (question.suggestion.codeWalkthrough?.length) {
+          const walkthroughLabel = document.createElement('strong'); walkthroughLabel.textContent = t('codingLineByLine');
+          const walkthrough = document.createElement('ol'); walkthrough.className = 'postQuestionWalkthrough';
+          for (const line of question.suggestion.codeWalkthrough) { const item = document.createElement('li'); item.textContent = line; walkthrough.appendChild(item); }
+          suggestion.append(walkthroughLabel, walkthrough);
+        }
+        if (question.suggestion.complexity) {
+          const complexityLabel = document.createElement('strong'); complexityLabel.textContent = t('codingComplexity');
+          const complexity = document.createElement('p'); complexity.textContent = question.suggestion.complexity;
+          suggestion.append(complexityLabel, complexity);
+        }
+      }
+      if (question.suggestion.basis?.length) {
+        const basisLabel = document.createElement('strong'); basisLabel.textContent = t('assistantGrounding');
+        const list = document.createElement('ul'); list.className = 'postQuestionBasis';
+        for (const basisItem of question.suggestion.basis) { const item = document.createElement('li'); item.textContent = basisItem; list.appendChild(item); }
+        suggestion.append(basisLabel, list);
+      }
+      card.appendChild(suggestion);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'postQuestionReviewGrid';
+    grid.appendChild(createScoreSelect(question.rating, 'postQuestionRating', t('trainerAnswerRating')));
+    grid.appendChild(createScoreSelect(question.confidence, 'postQuestionConfidence', t('trainerConfidenceRating')));
+    const answeredLabel = document.createElement('label'); answeredLabel.className = 'check';
+    const answered = document.createElement('input'); answered.type = 'checkbox'; answered.className = 'postQuestionAnswered'; answered.checked = question.answered === true;
+    const answeredText = document.createElement('span'); answeredText.textContent = t('postQuestionAnswered'); answeredLabel.append(answered, answeredText);
+    const practiceLabel = document.createElement('label'); practiceLabel.className = 'check';
+    const practice = document.createElement('input'); practice.type = 'checkbox'; practice.className = 'postQuestionNeedsPractice'; practice.checked = question.needsPractice === true;
+    const practiceText = document.createElement('span'); practiceText.textContent = t('trainerNeedsMorePractice'); practiceLabel.append(practice, practiceText);
+    grid.append(answeredLabel, practiceLabel);
+    card.appendChild(grid);
+    const notesLabel = document.createElement('label');
+    const notesTitle = document.createElement('span'); notesTitle.textContent = t('trainerNotes');
+    const notes = document.createElement('textarea'); notes.className = 'postQuestionNotes'; notes.rows = 3; notes.value = question.notes || '';
+    notesLabel.append(notesTitle, notes);
+    card.appendChild(notesLabel);
+    root.appendChild(card);
+  }
+  setPostSessionReviewDirty(false);
+}
+
+async function loadLiveInterviews() {
+  const result = await window.lmt.liveInterviewLoad();
+  liveInterviewData = result.data || { schemaVersion: 1, activeSessionId: '', sessions: [], updatedAt: '' };
+  liveInterviewPath = result.path || '';
+  renderLiveInterviewSummary();
+  if (result.warning) log(`[POST SESSION] ${result.warning}`);
+  return result;
+}
+
+async function startLiveInterviewSession() {
+  const result = await window.lmt.liveInterviewStart({
+    title: val('liveSessionTitle') || `${t('liveSessionDefaultTitle')} ${new Date().toLocaleDateString()}`,
+    role: val('liveSessionRole'),
+    company: val('liveSessionCompany')
+  });
+  if (!result?.ok) throw new Error(result?.message || 'Live interview session could not be started.');
+  liveInterviewData = result.data || liveInterviewData;
+  liveInterviewPath = result.path || liveInterviewPath;
+  renderLiveInterviewSummary();
+  log(`[POST SESSION] ${t('liveSessionStarted')}`);
+  return result;
+}
+
+async function endLiveInterviewSession() {
+  const active = activeLiveInterviewSession();
+  if (!active) return;
+  const result = await window.lmt.liveInterviewEnd(active.id);
+  if (!result?.ok) throw new Error(result?.message || 'Live interview session could not be ended.');
+  liveInterviewData = result.data || liveInterviewData;
+  selectedReviewSessionId = active.id;
+  renderLiveInterviewSummary();
+  log(`[POST SESSION] ${t('liveSessionEnded')}`);
+  return result;
+}
+
+async function savePostSessionReview() {
+  const session = selectedReviewSession();
+  if (!session) return;
+  const updated = JSON.parse(JSON.stringify(session));
+  updated.title = val('postSessionTitle');
+  updated.role = val('postSessionRole');
+  updated.company = val('postSessionCompany');
+  updated.notes = val('postSessionNotes');
+  const cards = Array.from(document.querySelectorAll('#postSessionQuestionList .postQuestionReviewCard'));
+  updated.questions = (updated.questions || []).map(question => {
+    const card = cards.find(item => item.dataset.questionId === question.id);
+    if (!card) return question;
+    return {
+      ...question,
+      rating: Number.parseInt(card.querySelector('.postQuestionRating')?.value || '0', 10) || 0,
+      confidence: Number.parseInt(card.querySelector('.postQuestionConfidence')?.value || '0', 10) || 0,
+      answered: !!card.querySelector('.postQuestionAnswered')?.checked,
+      needsPractice: !!card.querySelector('.postQuestionNeedsPractice')?.checked,
+      notes: String(card.querySelector('.postQuestionNotes')?.value || '').trim()
+    };
+  });
+  const result = await window.lmt.liveInterviewUpdate(updated);
+  if (!result?.ok) throw new Error(result?.message || 'Post-session review could not be saved.');
+  liveInterviewData = result.data || liveInterviewData;
+  setPostSessionReviewDirty(false);
+  renderLiveInterviewSummary();
+  log(`[POST SESSION] ${t('postSessionReviewSaved')}`);
+  return result;
+}
+
+async function exportPostSession(format) {
+  const result = await window.lmt.liveInterviewExport(format, liveInterviewData);
+  if (result && !result.canceled && !result.ok) throw new Error(result.error || 'Post-session review export failed.');
+  if (result?.ok) log(`[POST SESSION] ${t('postSessionReviewExported')}: ${result.filePath || ''}`);
+  return result;
+}
 
 
 function trainingSummaryLocal() {
@@ -1182,6 +1496,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   if ($('openAnswerLibrary')) $('openAnswerLibrary').onclick = () => showView('answer-library');
   if ($('backFromAnswerLibrary')) $('backFromAnswerLibrary').onclick = () => showView('home');
   if ($('openLiveAssistant')) $('openLiveAssistant').onclick = () => showView('live-assistant');
+  if ($('openPostSessionReview')) $('openPostSessionReview').onclick = () => showView('post-session-review');
+  if ($('openPostSessionReviewFromAssistant')) $('openPostSessionReviewFromAssistant').onclick = () => showView('post-session-review');
+  if ($('backFromPostSessionReview')) $('backFromPostSessionReview').onclick = () => showView('home');
   if ($('openInterviewTrainer')) $('openInterviewTrainer').onclick = () => showView('interview-trainer');
   if ($('backFromInterviewTrainer')) $('backFromInterviewTrainer').onclick = () => showView('home');
   if ($('backFromLiveAssistant')) $('backFromLiveAssistant').onclick = () => showView('home');
@@ -1315,6 +1632,26 @@ window.addEventListener('DOMContentLoaded', async () => {
     renderAssistantState(saved.assistant || await window.lmt.interviewAssistantStatus());
   };
 
+  if ($('startLiveSession')) $('startLiveSession').onclick = async () => runUiAction('Start live interview session clicked.', 'startLiveSession', startLiveInterviewSession);
+  if ($('endLiveSession')) $('endLiveSession').onclick = async () => runUiAction('End live interview session clicked.', 'endLiveSession', endLiveInterviewSession);
+  if ($('savePostSessionReview')) $('savePostSessionReview').onclick = async () => runUiAction('Save post-session review clicked.', 'savePostSessionReview', savePostSessionReview);
+  if ($('exportPostSessionMarkdown')) $('exportPostSessionMarkdown').onclick = async () => runUiAction('Export post-session Markdown clicked.', 'exportPostSessionMarkdown', () => exportPostSession('md'));
+  if ($('exportPostSessionMarkdownTop')) $('exportPostSessionMarkdownTop').onclick = async () => runUiAction('Export post-session Markdown clicked.', 'exportPostSessionMarkdownTop', () => exportPostSession('md'));
+  if ($('exportPostSessionJson')) $('exportPostSessionJson').onclick = async () => runUiAction('Export post-session JSON clicked.', 'exportPostSessionJson', () => exportPostSession('json'));
+  if ($('exportPostSessionJsonTop')) $('exportPostSessionJsonTop').onclick = async () => runUiAction('Export post-session JSON clicked.', 'exportPostSessionJsonTop', () => exportPostSession('json'));
+  if ($('resetPostSessionHistory')) $('resetPostSessionHistory').onclick = async () => {
+    if (!window.confirm(t('resetPostSessionHistoryConfirm'))) return;
+    await runUiAction('Reset live interview history clicked.', 'resetPostSessionHistory', async () => {
+      const result = await window.lmt.liveInterviewReset();
+      liveInterviewData = result.data || { schemaVersion: 1, activeSessionId: '', sessions: [], updatedAt: '' };
+      liveInterviewPath = result.path || liveInterviewPath;
+      selectedReviewSessionId = '';
+      setPostSessionReviewDirty(false);
+      renderLiveInterviewSummary();
+      return result;
+    });
+  };
+
   if ($('startTrainingSession')) $('startTrainingSession').onclick = async () => runUiAction('Start interview training session clicked.', 'startTrainingSession', startTrainingSession);
   if ($('resumeTrainingSession')) $('resumeTrainingSession').onclick = () => { const session = activeTrainingSession(); if (session) { activeTrainingSessionId = session.id; clearTrainingAttemptFields(); renderTrainingPractice(); } };
   if ($('showTrainerReference')) $('showTrainerReference').onclick = () => { trainerReferenceVisible = !trainerReferenceVisible; renderTrainingPractice(); };
@@ -1354,8 +1691,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     await loadCandidateProfile();
     await loadAnswerLibrary();
     await loadInterviewTraining();
+    await loadLiveInterviews();
     renderAssistantQuestionHistory();
-    log('[INIT] Settings, candidate profile, Answer Library, Interview Trainer and Live Assistant loaded; controls are ready.');
+    log('[INIT] Settings, candidate profile, Answer Library, Interview Trainer, Live Assistant and Post-session Review loaded; controls are ready.');
   } catch (e) {
     log(`[INIT ERROR] Settings load failed: ${String(e && (e.message || e) || e)}`);
   }

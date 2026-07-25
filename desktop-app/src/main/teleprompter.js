@@ -103,14 +103,22 @@ function uniqueList(values, maxItems = 10, maxLength = 400) {
 }
 
 function buildTeleprompterDocument(suggestion = {}, options = {}) {
-  const answer = cleanText(suggestion.answer, 24_000);
+  const responseType = suggestion.responseType === 'coding_solution' ? 'coding_solution' : 'interview_answer';
+  const speakingNotes = uniqueList(suggestion.speakingNotes, 16, 1000);
+  const answer = responseType === 'coding_solution' && speakingNotes.length
+    ? speakingNotes.join(' ')
+    : cleanText(suggestion.answer, 24_000);
   const firstSentence = cleanText(suggestion.firstSentence, 3000);
   const chunks = splitAnswerIntoChunks(answer, { mode: options.chunkMode || 'medium' });
+  const planSource = responseType === 'coding_solution' && Array.isArray(suggestion.implementationPlan)
+    ? suggestion.implementationPlan
+    : suggestion.keyPoints;
   return {
-    question: cleanText(suggestion.question, 2000),
+    responseType,
+    question: cleanText(suggestion.question, 2400),
     firstSentence,
     chunks,
-    plan: uniqueList(suggestion.keyPoints, 8, 700),
+    plan: uniqueList(planSource, 10, 700),
     keywords: uniqueList(suggestion.keywords || suggestion.keyPoints, 12, 180),
     source: suggestion.source === 'library' ? 'library' : 'ai',
     confidence: ['high', 'medium', 'low'].includes(suggestion.confidence) ? suggestion.confidence : 'low',
@@ -181,8 +189,20 @@ function createTeleprompterState(initialSettings = {}) {
   }
 
   function setFrozen(value) {
+    const wasFrozen = !!settings.frozen;
     settings = { ...settings, frozen: !!value };
-    return snapshot();
+    let loadedPending = false;
+    if (wasFrozen && !settings.frozen && pending) {
+      current = pending;
+      pending = null;
+      pendingQuestion = null;
+      pendingAnalyzing = false;
+      loadedPending = true;
+    } else if (!settings.frozen && !pending) {
+      pendingQuestion = null;
+      pendingAnalyzing = false;
+    }
+    return { loadedPending, ...snapshot() };
   }
 
   function noteQuestion(question) {
@@ -190,8 +210,10 @@ function createTeleprompterState(initialSettings = {}) {
     if (!value) return snapshot();
     if (settings.frozen && current) {
       pendingQuestion = value;
-    } else if (!current) {
+    } else {
+      pending = null;
       pendingQuestion = null;
+      pendingAnalyzing = false;
     }
     return snapshot();
   }

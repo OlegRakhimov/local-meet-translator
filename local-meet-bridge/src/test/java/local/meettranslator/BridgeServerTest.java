@@ -92,6 +92,8 @@ class BridgeServerTest {
         String body = """
                 {
                   "question":"Tell me about a difficult project",
+                  "taskKind":"question",
+                  "codingLanguage":"",
                   "languageLevel":"B1",
                   "answerStyle":"simple",
                   "candidateProfile":{"targetRole":"Android Developer"},
@@ -161,6 +163,15 @@ class BridgeServerTest {
             suggestion.put("confidence", "high");
             suggestion.put("experienceGap", false);
             suggestion.put("safeFallback", "");
+            suggestion.put("responseType", "interview_answer");
+            suggestion.put("approachSummary", "");
+            suggestion.set("implementationPlan", MAPPER.createArrayNode());
+            suggestion.put("codeLanguage", "");
+            suggestion.put("code", "");
+            suggestion.set("codeWalkthrough", MAPPER.createArrayNode());
+            suggestion.put("complexity", "");
+            suggestion.set("edgeCases", MAPPER.createArrayNode());
+            suggestion.set("speakingNotes", MAPPER.createArrayNode());
             return suggestion;
         }
 

@@ -89,3 +89,25 @@ test('move mode temporarily restores mouse interaction and remains movable', () 
   controller.setMoveMode(false);
   assert.equal(ignoreCalls.at(-1), true);
 });
+
+test('sanitizes structured coding guidance for the protected overlay', () => {
+  const { sanitizeSuggestion } = require('../src/main/assistant-overlay');
+  const value = sanitizeSuggestion({
+    responseType: 'coding_solution',
+    question: 'Write a Java method.',
+    firstSentence: 'I will start with a clear plan.',
+    answer: 'I will create a helper method and call it from main.',
+    approachSummary: 'Use nested loops for a simple baseline solution.',
+    implementationPlan: ['Create main', 'Create the array', 'Compare values'],
+    codeLanguage: 'java',
+    code: 'public class Main {}',
+    codeWalkthrough: ['Line 1: declares the class.'],
+    complexity: 'Time O(n^2), space O(1).',
+    edgeCases: ['Empty array'],
+    speakingNotes: ['First, I create main.']
+  });
+  assert.equal(value.responseType, 'coding_solution');
+  assert.equal(value.codeLanguage, 'java');
+  assert.match(value.code, /public class Main/);
+  assert.deepEqual(value.implementationPlan, ['Create main', 'Create the array', 'Compare values']);
+});

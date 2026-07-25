@@ -43,3 +43,21 @@ ul { margin:7px 0 0; padding-left:18px; color:#c7d4e7; } li { margin:5px 0; line
 .emptyState,.errorState { padding:16px; color:#9db0ca; line-height:1.45; }.errorState{color:#ffb4c0;border-color:#713141;}
 .windowActions{display:flex;align-items:center;gap:8px;-webkit-app-region:no-drag}.windowActions button{width:30px;height:30px;border:0;border-radius:9px;background:#1a2942;color:#dce7f7;font-size:20px;line-height:1;cursor:pointer}.windowActions button:hover{background:#2a3e60}
 @media (max-width:560px){.columns,.teleprompterGuidance{grid-template-columns:1fr}.assistantRoot{padding:12px}.teleprompterControls{grid-template-columns:1fr}.pendingBlock{align-items:flex-start;flex-direction:column}}
+.taskTypeBadge { padding:6px 9px; border-radius:999px; font-size:10px; font-weight:900; letter-spacing:.08em; background:#2b1d4a; color:#d8b8ff; }
+.codingSolutionBlock { margin-top:14px; border:1px solid rgba(73,197,154,.34); border-radius:16px; background:linear-gradient(160deg,rgba(10,43,38,.96),rgba(6,23,28,.97)); padding:15px; }
+.codingHeader { display:flex; justify-content:space-between; align-items:center; gap:12px; padding-bottom:12px; border-bottom:1px solid rgba(125,230,193,.16); }
+.codingHeader strong { display:block; margin-top:4px; font-size:18px; color:#ddfff3; text-transform:capitalize; }
+.codeReadyBadge { padding:6px 9px; border-radius:999px; font-size:10px; font-weight:900; letter-spacing:.08em; background:#0d4939; color:#8cf1cc; }
+.approachBlock { margin-top:14px; padding:13px 14px; border-left:4px solid #35c79a; border-radius:10px; background:rgba(7,29,30,.86); }
+.approachBlock p,.codingColumns p { margin:7px 0 0; line-height:1.5; color:#e4fff7; }
+.codingColumns { display:grid; grid-template-columns:1.15fr .85fr; gap:16px; margin-top:15px; }
+.codingColumns ol,.codingColumns ul,.codeWalkthroughPanel ol,.speakingNotesBlock ul { margin:8px 0 0; padding-left:21px; }
+.secondaryLabel { display:block; margin-top:16px; }
+.codeBlock { margin-top:16px; }
+.codeBlock pre { margin:8px 0 0; padding:16px; overflow:auto; max-height:440px; border-radius:12px; border:1px solid rgba(122,222,188,.2); background:#030a0f; color:#dffdf2; tab-size:4; }
+.codeBlock code { font-family:Consolas,"Cascadia Code",monospace; font-size:14px; line-height:1.55; white-space:pre; }
+.codeWalkthroughPanel { margin-top:15px; border-top:1px solid rgba(125,230,193,.16); padding-top:13px; }
+.codeWalkthroughPanel summary { cursor:pointer; color:#9edec8; font-weight:800; }
+.codeWalkthroughPanel li,.speakingNotesBlock li { margin:7px 0; line-height:1.45; color:#d4eee6; }
+.speakingNotesBlock { margin-top:15px; padding:13px; border-radius:11px; background:rgba(10,31,42,.84); border:1px solid rgba(91,171,207,.22); }
+@media (max-width:560px){.codingColumns{grid-template-columns:1fr}.codeBlock pre{max-height:320px}}

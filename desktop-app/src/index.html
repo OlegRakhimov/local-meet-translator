@@ -216,6 +216,28 @@
       </div>
     </section>
 
+
+
+    <section class="card navigationCard postSessionReviewCard">
+      <div class="navigationCardHeader">
+        <div>
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="postSessionReviewTitle">Post-session Review</h2>
+          <p class="hint" data-i18n="postSessionReviewDescription">Review detected questions, suggestions and your notes after a live interview. No raw audio is stored.</p>
+        </div>
+        <button id="openPostSessionReview" type="button" data-i18n="openPostSessionReview">Open review</button>
+      </div>
+      <div class="profileStatus" role="status">
+        <span id="postSessionReviewDot" class="dot"></span>
+        <strong id="postSessionReviewStatusText" data-i18n="postSessionReviewNotLoaded">Live interview history: not loaded</strong>
+        <small id="postSessionReviewPath"></small>
+      </div>
+      <div class="summaryChips">
+        <span id="postSessionReviewSessionCount" class="summaryChip" data-i18n="postSessionReviewNoSessions">No completed live sessions</span>
+        <span id="postSessionReviewQuestionCount" class="summaryChip" data-i18n="postSessionReviewNoQuestions">No reviewed questions</span>
+      </div>
+    </section>
+
     <section class="card">
       <h2 data-i18n="services">3. Services</h2>
       <div class="statusGrid">
@@ -339,6 +361,29 @@
         <button id="showAssistantWindowTop" type="button" data-i18n="showAssistantWindow">Show assistant window</button>
       </div>
 
+
+
+      <section class="card liveSessionLifecycleCard">
+        <div class="navigationCardHeader">
+          <div>
+            <h3 data-i18n="liveSessionLifecycleTitle">Live interview session</h3>
+            <p class="hint" data-i18n="liveSessionLifecycleDescription">Start a session before the call. Detected questions and generated suggestions are saved locally; raw audio is never stored.</p>
+          </div>
+          <span id="liveSessionStatusChip" class="summaryChip" data-i18n="liveSessionInactive">No active session</span>
+        </div>
+        <div class="grid threeColumns">
+          <label><span data-i18n="liveSessionTitle">Session title</span><input id="liveSessionTitle" placeholder="Android interview" /></label>
+          <label><span data-i18n="liveSessionRole">Role</span><input id="liveSessionRole" placeholder="Android Developer" /></label>
+          <label><span data-i18n="liveSessionCompany">Company</span><input id="liveSessionCompany" placeholder="Company name" /></label>
+        </div>
+        <div class="buttons">
+          <button id="startLiveSession" type="button" data-i18n="startLiveSession">Start live session</button>
+          <button id="endLiveSession" type="button" class="danger" data-i18n="endLiveSession">End live session</button>
+          <button id="openPostSessionReviewFromAssistant" type="button" class="secondary" data-i18n="openPostSessionReview">Open review</button>
+        </div>
+        <p id="liveSessionMessage" class="hint"></p>
+      </section>
+
       <div class="assistantWorkspaceGrid">
         <section class="card assistantControlCard">
           <h3 data-i18n="assistantWindowSettings">Assistant window and analysis</h3>
@@ -427,6 +472,23 @@
               </div>
             </div>
             <label><span data-i18n="assistantSuggestedAnswer">Suggested answer</span><textarea id="assistantResultAnswer" rows="10" readonly></textarea></label>
+            <section id="assistantCodingResult" class="assistantCodingResult" hidden>
+              <div class="assistantCodingHeader">
+                <strong data-i18n="codingSolutionTitle">Coding solution</strong>
+                <span id="assistantResultCodeLanguage" class="summaryChip">Java</span>
+              </div>
+              <label><span data-i18n="codingApproach">Brief approach</span><textarea id="assistantResultApproach" rows="4" readonly></textarea></label>
+              <div class="grid">
+                <label><span data-i18n="codingImplementationPlan">Implementation plan</span><textarea id="assistantResultPlan" rows="7" readonly></textarea></label>
+                <label><span data-i18n="codingComplexity">Complexity</span><textarea id="assistantResultComplexity" rows="7" readonly></textarea></label>
+              </div>
+              <label><span data-i18n="codingCode">Code</span><textarea id="assistantResultCode" class="codeTextarea" rows="18" readonly spellcheck="false"></textarea></label>
+              <div class="grid">
+                <label><span data-i18n="codingLineByLine">Line-by-line explanation</span><textarea id="assistantResultWalkthrough" rows="12" readonly></textarea></label>
+                <label><span data-i18n="codingSpeakingNotes">What to say while coding</span><textarea id="assistantResultSpeakingNotes" rows="12" readonly></textarea></label>
+              </div>
+              <label><span data-i18n="codingEdgeCases">Edge cases</span><textarea id="assistantResultEdgeCases" rows="6" readonly></textarea></label>
+            </section>
             <div class="grid">
               <label><span data-i18n="assistantKeyPoints">Key points</span><textarea id="assistantResultKeyPoints" rows="6" readonly></textarea></label>
               <label><span data-i18n="assistantGrounding">Grounding used</span><textarea id="assistantResultBasis" rows="6" readonly></textarea></label>
@@ -532,6 +594,65 @@
         <div id="trainingSessionHistory" class="trainingSessionHistory"></div>
         <p id="trainingHistoryEmpty" class="emptyState" data-i18n="trainingHistoryEmpty">No completed training sessions yet.</p>
       </section>
+    </section>
+
+
+
+    <section id="postSessionReviewScreen" class="appView focusedView" data-view="post-session-review" hidden>
+      <div class="screenToolbar">
+        <button id="backFromPostSessionReview" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="postSessionReviewTitle">Post-session Review</h2>
+          <p data-i18n="postSessionReviewScreenDescription">Review live interview questions and grounded suggestions stored locally. Add self-ratings and notes for future practice.</p>
+        </div>
+        <div class="buttons">
+          <button id="exportPostSessionMarkdownTop" type="button" class="secondary" data-i18n="exportMarkdown">Export Markdown</button>
+          <button id="exportPostSessionJsonTop" type="button" class="secondary" data-i18n="exportJson">Export JSON</button>
+        </div>
+      </div>
+
+      <div class="postSessionWorkspace">
+        <aside class="postSessionSidebar card">
+          <div class="sidebarHeader">
+            <strong data-i18n="liveInterviewSessions">Live interview sessions</strong>
+            <span id="postSessionScreenCount">0</span>
+          </div>
+          <div class="trainingMetricGrid compactMetrics">
+            <div><span data-i18n="trainingSessionsMetric">Sessions</span><strong id="postMetricSessions">0</strong></div>
+            <div><span data-i18n="postQuestionsMetric">Questions</span><strong id="postMetricQuestions">0</strong></div>
+            <div><span data-i18n="postAnalyzedMetric">Analyzed</span><strong id="postMetricAnalyzed">0</strong></div>
+            <div><span data-i18n="trainingNeedsPracticeMetric">Needs practice</span><strong id="postMetricNeedsPractice">0</strong></div>
+          </div>
+          <div id="postSessionList" class="postSessionList"></div>
+          <p id="postSessionEmpty" class="emptyState" data-i18n="postSessionReviewEmpty">No completed live interview sessions yet.</p>
+          <div class="buttons verticalButtons">
+            <button id="exportPostSessionMarkdown" type="button" class="secondary" data-i18n="exportMarkdown">Export Markdown</button>
+            <button id="exportPostSessionJson" type="button" class="secondary" data-i18n="exportJson">Export JSON</button>
+            <button id="resetPostSessionHistory" type="button" class="danger" data-i18n="resetPostSessionHistory">Clear live interview history</button>
+          </div>
+        </aside>
+
+        <section class="card postSessionEditor">
+          <div id="postSessionNoSelection" class="emptyState" data-i18n="selectPostSession">Select a completed session to review.</div>
+          <div id="postSessionEditorContent" hidden>
+            <div class="navigationCardHeader">
+              <div>
+                <h3 id="postSessionEditorTitle">—</h3>
+                <p id="postSessionEditorMeta" class="hint"></p>
+              </div>
+              <button id="savePostSessionReview" type="button" data-i18n="savePostSessionReview">Save review</button>
+            </div>
+            <div class="grid threeColumns">
+              <label><span data-i18n="liveSessionTitle">Session title</span><input id="postSessionTitle" /></label>
+              <label><span data-i18n="liveSessionRole">Role</span><input id="postSessionRole" /></label>
+              <label><span data-i18n="liveSessionCompany">Company</span><input id="postSessionCompany" /></label>
+            </div>
+            <label><span data-i18n="postSessionNotes">Session notes</span><textarea id="postSessionNotes" rows="4"></textarea></label>
+            <div id="postSessionQuestionList" class="postSessionQuestionList"></div>
+          </div>
+        </section>
+      </div>
     </section>
 
     <section id="answerLibraryScreen" class="appView focusedView" data-view="answer-library" hidden>

@@ -12,13 +12,26 @@ class InterviewSuggestionRequestTest {
     @Test
     void acceptsBoundedGroundedRequest() throws Exception {
         var request = InterviewSuggestionRequest.from(mapper.readTree("""
-                {"question":"Tell me about yourself","languageLevel":"B1","answerStyle":"simple",
+                {"question":"Tell me about yourself","taskKind":"question","codingLanguage":"","languageLevel":"B1","answerStyle":"simple",
                  "candidateProfile":{"targetRole":"Android Developer"},
                  "confirmedFacts":["I use Kotlin."],"reviewedAnswers":[]}
                 """));
         assertEquals("Tell me about yourself", request.question());
+        assertEquals("question", request.taskKind());
         assertEquals("B1", request.languageLevel());
         assertEquals(1, request.confirmedFacts().size());
+    }
+
+
+    @Test
+    void acceptsCodingTaskMetadata() throws Exception {
+        var request = InterviewSuggestionRequest.from(mapper.readTree("""
+                {"question":"Write a Java method that finds duplicates in an array.",
+                 "taskKind":"coding-task","codingLanguage":"java",
+                 "languageLevel":"B1","answerStyle":"technical"}
+                """));
+        assertEquals("coding-task", request.taskKind());
+        assertEquals("java", request.codingLanguage());
     }
 
     @Test

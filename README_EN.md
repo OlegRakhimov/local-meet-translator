@@ -493,3 +493,34 @@ The Interview Trainer uses reviewed entries from the local Answer Library. It cr
 The protected Interview Assistant window can now enter Move mode. Use the Move window button or `Ctrl+Shift+M`, drag the title area to another position, then finish Move mode. The selected bounds remain stored in the existing assistant window state file.
 
 Training history is stored at `%APPDATA%\\Local Meet Translator\\interview-training.json`.
+
+## Stage 8: post-session live interview review
+
+The desktop app now has an explicit local lifecycle for a live interview session:
+
+1. Open Live Interview Assistant.
+2. Enter the session title, role and company.
+3. Start the live session before the call.
+4. Detected incoming questions and prepared suggestions are stored locally.
+5. End the live session after the call and open Post-session Review.
+
+The review screen lets you mark whether you answered, add self-ratings and confidence, write notes and flag questions for more practice. Reports can be exported as Markdown or JSON.
+
+History is stored in `%APPDATA%\Local Meet Translator\live-interviews.json`. Raw audio is not stored. Reviewing a session does not create additional OpenAI requests.
+
+## Conversation context and coding tasks (1.0.16)
+
+The assistant now distinguishes between:
+
+- an actionable interview question;
+- a practical coding task;
+- an additional constraint for the active coding task;
+- a normal remark, joke, or conversational comment.
+
+Normal remarks remain visible in local subtitles but do not replace the current answer and do not start a new AI analysis. A distinct new question is analyzed separately. Constraints such as `Use Java`, `without streams`, or `explain the time complexity` are merged into the active coding task.
+
+For coding tasks the protected assistant displays a speaking start, a brief approach, an implementation plan, complete code, an ordered line-by-line walkthrough, complexity, edge cases, and short notes the candidate can say while coding.
+
+Java is used when no language is requested. Explicit requests for Kotlin, Python, JavaScript, TypeScript, or SQL are respected. A standalone algorithm task normally receives a runnable example with a class, `main`, sample data, and a helper method, while method-only or Android-specific requests keep the requested scope.
+
+Coding guidance is shown in the protected Interview Assistant window and in the desktop assistant screen. It is also preserved in the local post-session review. Raw audio is still not stored.

@@ -25,7 +25,9 @@ function render(state = {}) {
   const root = $('assistantRoot');
   root.className = `assistantRoot ${state.status || 'idle'}${state.moveMode ? ' moveMode' : ''}`;
   root.style.setProperty('--assistant-font-size', `${state.settings?.fontSize || 20}px`);
-  text('questionText', state.question?.text || 'Waiting for an interview question…');
+  const questionKind = state.question?.kind || '';
+  text('questionLabel', questionKind === 'coding-task' ? 'Coding task' : 'Question');
+  text('questionText', state.question?.text || 'Waiting for an interview question or coding task…');
 
   const teleprompter = state.teleprompter || {};
   const current = teleprompter.current || null;
@@ -34,6 +36,9 @@ function render(state = {}) {
   const hasSuggestion = !!suggestion;
   $('suggestionBlock').hidden = !hasSuggestion;
   $('emptyState').hidden = hasSuggestion || state.status === 'analyzing' || state.status === 'error';
+  text('emptyState', state.settings?.autoAnalyze
+    ? 'Automatic AI analysis is enabled. Waiting for a stable interview question…'
+    : 'Automatic AI analysis is off. Analyze the detected question from the desktop app.');
   $('errorState').hidden = state.status !== 'error';
   text('errorState', state.error || 'The suggestion could not be prepared.');
 
@@ -47,12 +52,17 @@ function render(state = {}) {
   text('freezeTeleprompter', frozen ? 'Unfreeze' : 'Freeze');
 
   const pendingQuestion = teleprompter.pendingQuestion?.text || teleprompter.pending?.question?.text || '';
-  $('pendingBlock').hidden = !pendingQuestion;
+  $('pendingBlock').hidden = !(pendingQuestion && (teleprompter.frozen || teleprompter.pending));
   text('pendingQuestionText', pendingQuestion);
   text('loadPendingAnswer', teleprompter.pendingAnalyzing ? 'Analyzing pending…' : 'Load pending');
   $('loadPendingAnswer').disabled = !teleprompter.pending;
 
+  $('codingSolutionBlock').hidden = true;
   if (!hasSuggestion) return;
+
+  const isCoding = suggestion.responseType === 'coding_solution';
+  text('taskTypeBadge', isCoding ? 'CODING SOLUTION' : 'INTERVIEW ANSWER');
+  $('codingSolutionBlock').hidden = !isCoding;
 
   text('sourceBadge', suggestion.source === 'library' ? 'ANSWER LIBRARY' : 'AI GROUNDED');
   text('confidenceBadge', `${String(suggestion.confidence || 'low').toUpperCase()} CONFIDENCE`);
@@ -62,6 +72,17 @@ function render(state = {}) {
   $('fallbackBlock').hidden = !suggestion.safeFallback;
   renderList('keyPoints', suggestion.keyPoints);
   renderList('basis', suggestion.basis);
+
+  if (isCoding) {
+    text('codeLanguage', suggestion.codeLanguage || state.question?.codingLanguage || 'Java');
+    text('approachSummary', suggestion.approachSummary);
+    renderList('implementationPlan', suggestion.implementationPlan);
+    text('complexityText', suggestion.complexity);
+    renderList('edgeCases', suggestion.edgeCases);
+    text('codeText', suggestion.code);
+    renderList('codeWalkthrough', suggestion.codeWalkthrough);
+    renderList('speakingNotes', suggestion.speakingNotes);
+  }
 
   const chunks = document?.chunks || [];
   const activeIndex = Math.max(0, Math.min(chunks.length - 1, Number(teleprompter.activeChunkIndex || 0)));
