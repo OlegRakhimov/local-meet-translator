@@ -14,7 +14,7 @@ const html = read('desktop-app/src/index.html');
 const store = read('desktop-app/src/main/live-interview-store.js');
 const pkg = JSON.parse(read('desktop-app/package.json'));
 
-if (!['1.0.14', '1.0.15', '1.0.16', '1.0.17'].includes(pkg.version)) throw new Error(`Expected desktop version 1.0.14, 1.0.15, 1.0.16 or 1.0.17, got ${pkg.version}`);
+if (!['1.0.14', '1.0.15', '1.0.16', '1.0.17', '1.0.18'].includes(pkg.version)) throw new Error(`Expected desktop version 1.0.14, 1.0.15, 1.0.16, 1.0.17 or 1.0.18, got ${pkg.version}`);
 assertIncludes(main, "createLiveInterviewStore", 'Main process live interview store');
 for (const channel of ['live-interview:load','live-interview:start','live-interview:end','live-interview:update','live-interview:reset','live-interview:export']) {
   assertIncludes(main, channel, 'Main process IPC');

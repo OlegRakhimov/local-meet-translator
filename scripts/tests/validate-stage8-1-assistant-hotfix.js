@@ -27,6 +27,6 @@ assert(teleprompter.includes('loadedPending'), 'Unfreezing must explicitly handl
 assert(overlay.includes('result.loadedPending'), 'Assistant overlay must synchronize after pending answer promotion.');
 assert(renderer.includes('Automatic AI analysis is enabled.'), 'Overlay guidance must reflect enabled automatic analysis.');
 assert(renderer.includes('teleprompter.frozen || teleprompter.pending'), 'Pending block must not show stale state while unfrozen.');
-assert(['1.0.15', '1.0.16', '1.0.17'].includes(pkg.version), 'Desktop version must be 1.0.15, 1.0.16 or 1.0.17.');
+assert(['1.0.15', '1.0.16', '1.0.17', '1.0.18'].includes(pkg.version), 'Desktop version must be 1.0.15, 1.0.16, 1.0.17 or 1.0.18.');
 
 console.log('Stage 8.1 automatic assistant analysis hotfix validation: OK');

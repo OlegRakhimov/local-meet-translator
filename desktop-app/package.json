@@ -1,6 +1,6 @@
 {
   "name": "local-meet-translator-desktop",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "private": true,
   "description": "Desktop controller for Local Meet Translator bridge, voice conversion service, settings and extension bootstrap.",
   "author": "Oleg",
@@ -9,7 +9,7 @@
     "start": "electron .",
     "test": "npm run test:unit && npm run test:architecture",
     "test:unit": "node --test test/*.test.js",
-    "test:architecture": "node ../scripts/tests/verify-electron-pins.js && node ../scripts/tests/validate-desktop-controls.js && node ../scripts/tests/validate-feedback-guard.js && node ../scripts/tests/validate-chromium-extension.js && node ../scripts/tests/validate-firefox-extension.js && node ../scripts/tests/validate-voice-mode-switch.js && node ../scripts/tests/validate-stage1-architecture.js && node ../scripts/tests/validate-stage2-subtitle-overlay.js && node ../scripts/tests/validate-stage3-profile-dedupe.js && node ../scripts/tests/validate-stage4-workspace-navigation.js && node ../scripts/tests/validate-stage5-live-assistant.js && node ../scripts/tests/validate-stage6-teleprompter.js && node ../scripts/tests/validate-stage7-interview-trainer.js && node ../scripts/tests/validate-stage8-post-session-review.js && node ../scripts/tests/validate-stage8-1-assistant-hotfix.js && node ../scripts/tests/validate-stage9-dialogue-coding.js && node ../scripts/tests/validate-stage10-release-readiness.js",
+    "test:architecture": "node ../scripts/tests/verify-electron-pins.js && node ../scripts/tests/validate-desktop-controls.js && node ../scripts/tests/validate-feedback-guard.js && node ../scripts/tests/validate-chromium-extension.js && node ../scripts/tests/validate-firefox-extension.js && node ../scripts/tests/validate-voice-mode-switch.js && node ../scripts/tests/validate-stage1-architecture.js && node ../scripts/tests/validate-stage2-subtitle-overlay.js && node ../scripts/tests/validate-stage3-profile-dedupe.js && node ../scripts/tests/validate-stage4-workspace-navigation.js && node ../scripts/tests/validate-stage5-live-assistant.js && node ../scripts/tests/validate-stage6-teleprompter.js && node ../scripts/tests/validate-stage7-interview-trainer.js && node ../scripts/tests/validate-stage8-post-session-review.js && node ../scripts/tests/validate-stage8-1-assistant-hotfix.js && node ../scripts/tests/validate-stage9-dialogue-coding.js && node ../scripts/tests/validate-stage10-release-readiness.js && node ../scripts/tests/validate-stage11-modern-workspace.js",
     "package:win": "electron-builder --win nsis --x64",
     "package:dir": "electron-builder --dir",
     "dist:win": "electron-builder --win nsis --x64 --publish never"

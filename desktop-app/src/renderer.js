@@ -137,6 +137,126 @@ function confirmDiscardCurrentView() {
   return true;
 }
 
+
+const VIEW_META = {
+  home: ['homeEyebrow', 'navHome', 'homeTopbarSubtitle'],
+  'translation-control': ['navTranslation', 'translationWorkspaceTitle', 'translationWorkspaceDescription'],
+  settings: ['navSettings', 'settingsTitleModern', 'settingsDescriptionModern'],
+  'candidate-profile': ['interviewWorkspace', 'candidateProfileScreenTitle', 'candidateProfileDescription'],
+  'answer-library': ['interviewWorkspace', 'answerLibraryTitle', 'answerLibraryScreenDescription'],
+  'interview-trainer': ['interviewWorkspace', 'interviewTrainerTitle', 'interviewTrainerScreenDescription'],
+  'live-assistant': ['interviewWorkspace', 'liveAssistantTitle', 'liveAssistantScreenDescription'],
+  'post-session-review': ['interviewWorkspace', 'postSessionReviewTitle', 'postSessionReviewDescription'],
+  system: ['navSystem', 'systemCenterTitle', 'systemCenterDescription'],
+  diagnostics: ['systemWorkspace', 'diagnosticsTitle', 'diagnosticsDescription'],
+  instructions: ['navInstructions', 'instructionsTitle', 'instructionsDescription']
+};
+
+function setStatusOrb(id, state = '') {
+  const element = $(id);
+  if (!element) return;
+  element.className = `statusOrb ${state}`.trim();
+}
+
+function updateViewChrome(view) {
+  const meta = VIEW_META[view] || VIEW_META.home;
+  if ($('viewEyebrow')) $('viewEyebrow').textContent = t(meta[0]);
+  if ($('viewTitle')) $('viewTitle').textContent = t(meta[1]);
+  if ($('viewSubtitle')) $('viewSubtitle').textContent = t(meta[2]);
+  document.querySelectorAll('.navItem[data-target-view]').forEach(item => {
+    item.classList.toggle('active', item.dataset.targetView === view);
+  });
+  if (window.innerWidth <= 980) document.body.classList.remove('sidebarOpen');
+}
+
+function mirrorDot(sourceId, targetId) {
+  const source = $(sourceId);
+  const target = $(targetId);
+  if (!source || !target) return;
+  target.className = `navStateDot ${source.classList.contains('run') ? 'run' : source.classList.contains('ok') ? 'ok' : source.classList.contains('err') ? 'err' : ''}`.trim();
+}
+
+function syncNavigationStatus() {
+  mirrorDot('candidateProfileDot', 'navCandidateDot');
+  mirrorDot('answerLibraryDot', 'navLibraryDot');
+  mirrorDot('interviewTrainerDot', 'navTrainerDot');
+  mirrorDot('liveAssistantDot', 'navAssistantDot');
+  mirrorDot('postSessionReviewDot', 'navReviewDot');
+  mirrorDot('diagnosticsDot', 'navDiagnosticsDot');
+}
+
+function updateHomeReadiness() {
+  const states = ['homeBridgeDot', 'homeMeetingDot', 'homeSubtitleDot', 'homeAssistantDot']
+    .map(id => $(id))
+    .filter(Boolean);
+  const ready = states.filter(item => item.classList.contains('ok') || item.classList.contains('run')).length;
+  if ($('homeReadinessScore')) {
+    $('homeReadinessScore').textContent = ready === states.length && states.length
+      ? t('allSystemsReady')
+      : `${ready} / ${states.length || 4} ${t('ready').toLowerCase()}`;
+  }
+}
+
+function syncHomeControlsFromSettings() {
+  if ($('homeSourceLang') && $('extSourceLang')) $('homeSourceLang').value = $('extSourceLang').value || 'auto';
+  if ($('homeTargetLang') && $('extTargetLang')) $('homeTargetLang').value = $('extTargetLang').value || systemLanguageCode();
+  if ($('homeChunkSeconds') && $('extChunkSeconds')) $('homeChunkSeconds').value = $('extChunkSeconds').value || '3';
+  if ($('homePairingCode') && $('pairingCode')) $('homePairingCode').textContent = $('pairingCode').value || '—';
+  if ($('homeSubtitleProtection') && $('subtitleContentProtection')) $('homeSubtitleProtection').checked = $('subtitleContentProtection').checked;
+  if ($('homeSubtitleAlwaysOnTop') && $('subtitleAlwaysOnTop')) $('homeSubtitleAlwaysOnTop').checked = $('subtitleAlwaysOnTop').checked;
+  if ($('homeSubtitleShowOriginal') && $('subtitleShowOriginal')) $('homeSubtitleShowOriginal').checked = $('subtitleShowOriginal').checked;
+  if ($('homeSubtitleShowTranslation') && $('subtitleShowTranslation')) $('homeSubtitleShowTranslation').checked = $('subtitleShowTranslation').checked;
+  if ($('homeAssistantAutoAnalyze') && $('assistantAutoAnalyze')) $('homeAssistantAutoAnalyze').checked = $('assistantAutoAnalyze').checked;
+  if ($('homeAssistantEnabled') && $('assistantEnabled')) $('homeAssistantEnabled').checked = $('assistantEnabled').checked;
+}
+
+function applyHomeLanguageControls() {
+  if ($('homeSourceLang') && $('extSourceLang')) $('extSourceLang').value = val('homeSourceLang') || 'auto';
+  if ($('homeTargetLang') && $('extTargetLang')) $('extTargetLang').value = val('homeTargetLang') || systemLanguageCode();
+  if ($('homeChunkSeconds') && $('extChunkSeconds')) $('extChunkSeconds').value = val('homeChunkSeconds') || '3';
+}
+
+function applyHomePreferenceControls() {
+  if ($('homeSubtitleProtection') && $('subtitleContentProtection')) $('subtitleContentProtection').checked = checked('homeSubtitleProtection');
+  if ($('homeSubtitleAlwaysOnTop') && $('subtitleAlwaysOnTop')) $('subtitleAlwaysOnTop').checked = checked('homeSubtitleAlwaysOnTop');
+  if ($('homeSubtitleShowOriginal') && $('subtitleShowOriginal')) $('subtitleShowOriginal').checked = checked('homeSubtitleShowOriginal');
+  if ($('homeSubtitleShowTranslation') && $('subtitleShowTranslation')) $('subtitleShowTranslation').checked = checked('homeSubtitleShowTranslation');
+  if ($('homeAssistantAutoAnalyze') && $('assistantAutoAnalyze')) $('assistantAutoAnalyze').checked = checked('homeAssistantAutoAnalyze');
+  if ($('homeAssistantEnabled') && $('assistantEnabled')) $('assistantEnabled').checked = checked('homeAssistantEnabled');
+}
+
+async function persistHomePreferences() {
+  applyHomeLanguageControls();
+  applyHomePreferenceControls();
+  const saved = await window.lmt.save(readSettings());
+  apply(saved.settings || {});
+  renderSubtitleStatus(saved.subtitle || await window.lmt.subtitleStatus());
+  renderAssistantState(saved.assistant || await window.lmt.interviewAssistantStatus());
+  syncHomeControlsFromSettings();
+  return saved;
+}
+
+async function quickStartSubtitles(buttonId = 'quickStartSubtitles') {
+  return runUiAction('Quick start subtitles clicked.', buttonId, async () => {
+    applyHomeLanguageControls();
+    applyHomePreferenceControls();
+    $('extMicTxEnabled').checked = false;
+    const saved = await window.lmt.save(readSettings());
+    apply(saved.settings || {});
+    const health = await window.lmt.health();
+    if (!health?.bridge?.ok) {
+      const bridgeResult = await window.lmt.startBridge();
+      if (bridgeResult?.message) log(bridgeResult.message);
+      await delay(900);
+    }
+    const result = await window.lmt.startTranslation({ mode: 'subtitles', micTxEnabled: false });
+    if (result?.message) log(result.message);
+    try { renderSubtitleStatus(await window.lmt.subtitleControl('show')); } catch (_) {}
+    await refreshHealth();
+    return result;
+  });
+}
+
 function showView(view, options = {}) {
   const targetView = String(view || 'home');
   if (!options.force && targetView !== currentView && !confirmDiscardCurrentView()) return false;
@@ -147,6 +267,7 @@ function showView(view, options = {}) {
   });
   currentView = targetView;
   document.body.classList.toggle('focusedMode', targetView !== 'home');
+  updateViewChrome(targetView);
   window.scrollTo({ top: 0, behavior: 'auto' });
   return true;
 }
@@ -223,6 +344,7 @@ function apply(s) {
   if ($('assistantTeleprompterPreviousHotkey')) $('assistantTeleprompterPreviousHotkey').value = s.INTERVIEW_TELEPROMPTER_PREVIOUS_HOTKEY || 'CommandOrControl+Shift+Left';
   if ($('assistantTeleprompterFreezeHotkey')) $('assistantTeleprompterFreezeHotkey').value = s.INTERVIEW_TELEPROMPTER_FREEZE_HOTKEY || 'CommandOrControl+Shift+F';
   if ($('assistantTeleprompterPendingHotkey')) $('assistantTeleprompterPendingHotkey').value = s.INTERVIEW_TELEPROMPTER_LOAD_PENDING_HOTKEY || 'CommandOrControl+Shift+Enter';
+  syncHomeControlsFromSettings();
 }
 function readSettings() {
   return {
@@ -663,6 +785,11 @@ function renderAssistantState(state = {}) {
       ? (assistantState.suggestion.source === 'library' ? t('assistantSourceLibrary') : t('assistantSourceAi'))
       : (assistantState.settings?.autoAnalyze ? t('automaticAnalysisOn') : t('manualAnalysisDefault'));
   }
+  const assistantReady = assistantState.settings?.enabled !== false && status !== 'error';
+  setStatusOrb('homeAssistantDot', visible || status === 'analyzing' ? 'run' : assistantReady ? 'ok' : '');
+  if ($('homeAssistantText')) $('homeAssistantText').textContent = statusLabels[status] || status;
+  syncNavigationStatus();
+  updateHomeReadiness();
   if ($('assistantAnalysisMessage')) {
     $('assistantAnalysisMessage').textContent = status === 'analyzing'
       ? t('liveAssistantAnalyzing')
@@ -713,6 +840,12 @@ async function refreshHealth() {
   const h = await window.lmt.health();
   dot('bridgeDot', h.bridge.ok); $('bridgeText').textContent = h.bridge.text;
   dot('voiceDot', h.voice.ok); $('voiceText').textContent = h.voice.text;
+  setStatusOrb('homeBridgeDot', h.bridge.ok ? 'ok' : 'err');
+  setStatusOrb('topbarBridgeDot', h.bridge.ok ? 'ok' : 'err');
+  if ($('homeBridgeText')) $('homeBridgeText').textContent = h.bridge.text || (h.bridge.ok ? t('ready') : t('diagnosticsOffline'));
+  if ($('topbarBridgeText')) $('topbarBridgeText').textContent = h.bridge.ok ? t('ready') : t('diagnosticsOffline');
+  updateHomeReadiness();
+  return h;
 }
 function protectionSummary(protection) {
   if (!protection) return t('subtitleProtectionUnknown');
@@ -731,6 +864,15 @@ function renderSubtitleStatus(status) {
   }
   if ($('subtitleProtectionText')) $('subtitleProtectionText').textContent = protectionSummary(protection);
   if ($('subtitleClickThrough') && status.settings) $('subtitleClickThrough').checked = !!status.settings.clickThrough;
+  setStatusOrb('homeSubtitleDot', visible ? 'run' : (status.settings?.enabled === false ? '' : 'ok'));
+  if ($('homeSubtitleText')) $('homeSubtitleText').textContent = visible ? t('subtitleWindowVisible') : t('subtitleWindowHidden');
+  if ($('homeSubtitleStatePill')) {
+    $('homeSubtitleStatePill').className = `statePill ${visible ? 'run' : 'ok'}`;
+    const label = $('homeSubtitleStatePill').querySelector('strong');
+    if (label) label.textContent = visible ? t('subtitleWindowVisible') : t('subtitleWindowHidden');
+  }
+  syncHomeControlsFromSettings();
+  updateHomeReadiness();
 }
 async function refreshSubtitleStatus() {
   const status = await window.lmt.subtitleStatus();
@@ -768,6 +910,7 @@ async function loadAppInfo() {
     const version = String(info?.version || '').trim();
     const versionElement = $('appVersion');
     if (versionElement) versionElement.textContent = version ? `v${version}` : '';
+    if ($('sidebarVersion')) $('sidebarVersion').textContent = version || '—';
     if (version) document.title = `Local Meet Translator ${version}`;
   } catch (error) {
     console.warn('Could not load application version.', error);
@@ -1382,6 +1525,11 @@ function renderDiagnostics(report) {
     }
   }
   if ($('diagnosticsReportPreview')) $('diagnosticsReportPreview').value = JSON.stringify(report, null, 2);
+  const meetingConnected = Number(extension.recentClientCount || 0) > 0;
+  setStatusOrb('homeMeetingDot', meetingConnected ? 'ok' : '');
+  if ($('homeMeetingText')) $('homeMeetingText').textContent = meetingConnected ? (extension.activeMeetingHost || t('ready')) : t('connectInExtension');
+  syncNavigationStatus();
+  updateHomeReadiness();
 }
 
 async function loadDiagnostics(run = false) {
@@ -1404,6 +1552,63 @@ window.addEventListener('DOMContentLoaded', async () => {
   initVoices();
   resetOutgoingSteps();
   bindDirtyTracking();
+  updateViewChrome('home');
+  const sidebarOpen = enabled => document.body.classList.toggle('sidebarOpen', !!enabled);
+  if ($('toggleSidebar')) $('toggleSidebar').onclick = () => sidebarOpen(!document.body.classList.contains('sidebarOpen'));
+  if ($('sidebarScrim')) $('sidebarScrim').onclick = () => sidebarOpen(false);
+  if ($('collapseSidebar')) $('collapseSidebar').onclick = () => document.body.classList.toggle('sidebarCollapsed');
+  if ($('openHome')) $('openHome').onclick = () => showView('home');
+  if ($('openSettings')) $('openSettings').onclick = () => showView('settings');
+  if ($('openTranslationControl')) $('openTranslationControl').onclick = () => showView('translation-control');
+  if ($('openSystem')) $('openSystem').onclick = () => showView('system');
+  if ($('openInstructions')) $('openInstructions').onclick = () => showView('instructions');
+  if ($('backFromSettings')) $('backFromSettings').onclick = () => showView('home');
+  if ($('backFromTranslationControl')) $('backFromTranslationControl').onclick = () => showView('home');
+  if ($('backFromSystem')) $('backFromSystem').onclick = () => showView('home');
+  if ($('backFromInstructions')) $('backFromInstructions').onclick = () => showView('home');
+  if ($('openTranslationFromHome')) $('openTranslationFromHome').onclick = () => showView('translation-control');
+  if ($('openSystemGuide')) $('openSystemGuide').onclick = () => showView('system');
+  if ($('openDiagnosticsFromSystem')) $('openDiagnosticsFromSystem').onclick = async () => { showView('diagnostics'); await loadDiagnostics(false); };
+  if ($('quickStartSubtitles')) $('quickStartSubtitles').onclick = () => quickStartSubtitles('quickStartSubtitles');
+  if ($('topbarQuickStart')) $('topbarQuickStart').onclick = () => quickStartSubtitles('topbarQuickStart');
+  if ($('quickStopTranslation')) $('quickStopTranslation').onclick = async () => runUiAction('Quick stop all clicked.', 'quickStopTranslation', async () => {
+    const result = await window.lmt.stopTranslation();
+    if (result?.message) log(result.message);
+    resetOutgoingSteps();
+    setOutgoingState('idle', t('voiceOff'), t('voiceStoppedDetail'));
+    return result;
+  });
+  if ($('quickShowSubtitleWindow')) $('quickShowSubtitleWindow').onclick = async () => renderSubtitleStatus(await window.lmt.subtitleControl('show'));
+  if ($('openExtensionFromHome')) $('openExtensionFromHome').onclick = async () => log((await window.lmt.openExtension()).message);
+  if ($('copyPairingCode')) $('copyPairingCode').onclick = async () => {
+    const code = $('homePairingCode')?.textContent?.trim() || '';
+    if (!code || code === '—') return;
+    try { await navigator.clipboard.writeText(code); log(`[EXTENSION] ${t('pairingCodeCopied')}`); }
+    catch (_) { log(`[EXTENSION] ${t('pairingCodeCopyFailed')}: ${code}`); }
+  };
+  if ($('homeRefreshStatus')) $('homeRefreshStatus').onclick = async () => {
+    await refreshHealth();
+    await refreshSubtitleStatus();
+    await refreshAssistantStatus();
+    try { await loadDiagnostics(false); } catch (_) {}
+  };
+  for (const id of ['homeSubtitleProtection','homeSubtitleAlwaysOnTop','homeSubtitleShowOriginal','homeSubtitleShowTranslation','homeAssistantAutoAnalyze','homeAssistantEnabled']) {
+    if ($(id)) $(id).onchange = async () => runUiAction(`Quick preference changed: ${id}`, $(id), persistHomePreferences);
+  }
+  const saveFromSecondaryScreen = async buttonId => runUiAction('Save settings from focused screen.', buttonId, async () => {
+    const result = await window.lmt.save(readSettings());
+    apply(result.settings || {});
+    renderSubtitleStatus(result.subtitle || await window.lmt.subtitleStatus());
+    renderAssistantState(result.assistant || await window.lmt.interviewAssistantStatus());
+    if (result?.message) log(result.message);
+    return result;
+  });
+  if ($('saveSettingsTop')) $('saveSettingsTop').onclick = () => saveFromSecondaryScreen('saveSettingsTop');
+  if ($('saveTranslationTop')) $('saveTranslationTop').onclick = () => saveFromSecondaryScreen('saveTranslationTop');
+  const navRegistry = $('candidateProfileDot')?.closest('.stateRegistry');
+  if (navRegistry && window.MutationObserver) {
+    new MutationObserver(syncNavigationStatus).observe(navRegistry, { attributes: true, childList: true, subtree: true, characterData: true });
+  }
   $('save').onclick = async () => {
     const r = await window.lmt.save(readSettings());
     apply(r.settings || {});
@@ -1796,6 +2001,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     apply(settings || {});
     await refreshSubtitleStatus();
     await refreshAssistantStatus();
+  syncHomeControlsFromSettings();
+  syncNavigationStatus();
+  updateHomeReadiness();
     await loadCandidateProfile();
     await loadAnswerLibrary();
     await loadInterviewTraining();

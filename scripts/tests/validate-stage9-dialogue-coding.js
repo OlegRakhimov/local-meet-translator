@@ -18,7 +18,7 @@ const request = read('local-meet-bridge/src/main/java/local/meettranslator/model
 const openai = read('local-meet-bridge/src/main/java/local/meettranslator/openai/OpenAiClient.java');
 const pkg = JSON.parse(read('desktop-app/package.json'));
 
-if (!['1.0.16', '1.0.17'].includes(pkg.version)) throw new Error(`Expected desktop version 1.0.16 or 1.0.17, got ${pkg.version}`);
+if (!['1.0.16', '1.0.17', '1.0.18'].includes(pkg.version)) throw new Error(`Expected desktop version 1.0.16, 1.0.17 or 1.0.18, got ${pkg.version}`);
 for (const symbol of ['classifyInterviewUtterance', 'looksLikeCodingTask', 'looksLikeCodingContinuation', "kind: 'remark'", "kind: 'coding-task'"]) {
   mustInclude(detector, symbol, 'Dialogue classifier');
 }

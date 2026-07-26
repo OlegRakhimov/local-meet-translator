@@ -11,7 +11,7 @@ const requireText = (relative, patterns) => {
 };
 
 const pkg = JSON.parse(read('desktop-app/package.json'));
-if (pkg.version !== '1.0.17') throw new Error(`Expected desktop version 1.0.17, found ${pkg.version}`);
+if (!['1.0.17', '1.0.18'].includes(pkg.version)) throw new Error(`Expected desktop version 1.0.17 or 1.0.18, found ${pkg.version}`);
 if (!String(pkg.scripts?.['test:architecture'] || '').includes('validate-stage10-release-readiness.js')) {
   throw new Error('Stage 10 architecture validator is not wired into npm test.');
 }
