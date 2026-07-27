@@ -8,6 +8,17 @@ const mustInclude = (text, value, label) => {
   if (!text.includes(value)) throw new Error(`${label} is missing: ${value}`);
 };
 
+function isVersionAtLeast(actual, minimum) {
+  const actualParts = String(actual || '').split('.').map(Number);
+  const minimumParts = String(minimum || '').split('.').map(Number);
+  if (actualParts.length !== 3 || minimumParts.length !== 3) return false;
+  if (actualParts.some(value => !Number.isInteger(value)) || minimumParts.some(value => !Number.isInteger(value))) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (actualParts[index] !== minimumParts[index]) return actualParts[index] > minimumParts[index];
+  }
+  return true;
+}
+
 const detector = read('desktop-app/src/main/question-detector.js');
 const main = read('desktop-app/src/main.js');
 const overlay = read('desktop-app/src/main/assistant-overlay.js');
@@ -18,7 +29,7 @@ const request = read('local-meet-bridge/src/main/java/local/meettranslator/model
 const openai = read('local-meet-bridge/src/main/java/local/meettranslator/openai/OpenAiClient.java');
 const pkg = JSON.parse(read('desktop-app/package.json'));
 
-if (!['1.0.16', '1.0.17', '1.0.18'].includes(pkg.version)) throw new Error(`Expected desktop version 1.0.16, 1.0.17 or 1.0.18, got ${pkg.version}`);
+if (!isVersionAtLeast(pkg.version, '1.0.16')) throw new Error(`Expected desktop version 1.0.16 or newer, got ${pkg.version}`);
 for (const symbol of ['classifyInterviewUtterance', 'looksLikeCodingTask', 'looksLikeCodingContinuation', "kind: 'remark'", "kind: 'coding-task'"]) {
   mustInclude(detector, symbol, 'Dialogue classifier');
 }

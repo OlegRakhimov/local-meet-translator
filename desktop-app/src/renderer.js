@@ -31,6 +31,16 @@ async function runUiAction(name, button, action) {
     if (btn) btn.disabled = false;
   }
 }
+
+function reportTranslationStartResult(result) {
+  if (result && result.ok) return result;
+  const message = String(result && result.message || 'Translation did not start.');
+  log(`[START FAILED] ${message}`);
+  if ($('homeMeetingText')) $('homeMeetingText').textContent = t('meetingWorkerNotReady');
+  if ($('homeMeetingDot')) $('homeMeetingDot').className = 'dot err';
+  try { window.alert(message); } catch (_) {}
+  return result;
+}
 function systemLanguageCode() {
   const supported = new Set(['ru','pl','de','es','it']);
   const code = String(navigator.language || 'en').toLowerCase().split('-')[0];
@@ -249,9 +259,11 @@ async function quickStartSubtitles(buttonId = 'quickStartSubtitles') {
       if (bridgeResult?.message) log(bridgeResult.message);
       await delay(900);
     }
-    const result = await window.lmt.startTranslation({ mode: 'subtitles', micTxEnabled: false });
+    const result = reportTranslationStartResult(await window.lmt.startTranslation({ mode: 'subtitles', micTxEnabled: false }));
     if (result?.message) log(result.message);
-    try { renderSubtitleStatus(await window.lmt.subtitleControl('show')); } catch (_) {}
+    if (result?.ok) {
+      try { renderSubtitleStatus(await window.lmt.subtitleControl('show')); } catch (_) {}
+    }
     await refreshHealth();
     return result;
   });
@@ -317,6 +329,7 @@ function apply(s) {
   if ($('subtitleContentProtection')) $('subtitleContentProtection').checked = String(s.SUBTITLE_WINDOW_CONTENT_PROTECTION || 'true') === 'true';
   if ($('subtitleAlwaysOnTop')) $('subtitleAlwaysOnTop').checked = String(s.SUBTITLE_WINDOW_ALWAYS_ON_TOP || 'true') === 'true';
   if ($('subtitleClickThrough')) $('subtitleClickThrough').checked = String(s.SUBTITLE_WINDOW_CLICK_THROUGH || 'false') === 'true';
+  if ($('subtitleMinimalMode')) $('subtitleMinimalMode').checked = String(s.SUBTITLE_WINDOW_MINIMAL_MODE || 'true') === 'true';
   if ($('subtitleShowOriginal')) $('subtitleShowOriginal').checked = String(s.SUBTITLE_WINDOW_SHOW_ORIGINAL || 'true') === 'true';
   if ($('subtitleShowTranslation')) $('subtitleShowTranslation').checked = String(s.SUBTITLE_WINDOW_SHOW_TRANSLATION || 'true') === 'true';
   if ($('subtitleFontSize')) $('subtitleFontSize').value = s.SUBTITLE_WINDOW_FONT_SIZE || '28';
@@ -328,6 +341,7 @@ function apply(s) {
   if ($('assistantContentProtection')) $('assistantContentProtection').checked = String(s.INTERVIEW_ASSISTANT_CONTENT_PROTECTION || 'true') === 'true';
   if ($('assistantAlwaysOnTop')) $('assistantAlwaysOnTop').checked = String(s.INTERVIEW_ASSISTANT_ALWAYS_ON_TOP || 'true') === 'true';
   if ($('assistantClickThrough')) $('assistantClickThrough').checked = String(s.INTERVIEW_ASSISTANT_CLICK_THROUGH || 'false') === 'true';
+  if ($('assistantCompactOverlay')) $('assistantCompactOverlay').checked = String(s.INTERVIEW_ASSISTANT_COMPACT_OVERLAY || 'true') === 'true';
   if ($('assistantLanguageLevel')) $('assistantLanguageLevel').value = s.INTERVIEW_ASSISTANT_LANGUAGE_LEVEL || 'B1';
   if ($('assistantAnswerStyle')) $('assistantAnswerStyle').value = s.INTERVIEW_ASSISTANT_ANSWER_STYLE || 'simple';
   if ($('assistantFontSize')) $('assistantFontSize').value = s.INTERVIEW_ASSISTANT_FONT_SIZE || '20';
@@ -380,6 +394,7 @@ function readSettings() {
     SUBTITLE_WINDOW_CONTENT_PROTECTION: checked('subtitleContentProtection') ? 'true' : 'false',
     SUBTITLE_WINDOW_ALWAYS_ON_TOP: checked('subtitleAlwaysOnTop') ? 'true' : 'false',
     SUBTITLE_WINDOW_CLICK_THROUGH: checked('subtitleClickThrough') ? 'true' : 'false',
+    SUBTITLE_WINDOW_MINIMAL_MODE: checked('subtitleMinimalMode') ? 'true' : 'false',
     SUBTITLE_WINDOW_SHOW_ORIGINAL: checked('subtitleShowOriginal') ? 'true' : 'false',
     SUBTITLE_WINDOW_SHOW_TRANSLATION: checked('subtitleShowTranslation') ? 'true' : 'false',
     SUBTITLE_WINDOW_FONT_SIZE: val('subtitleFontSize') || '28',
@@ -391,6 +406,7 @@ function readSettings() {
     INTERVIEW_ASSISTANT_CONTENT_PROTECTION: $('assistantContentProtection') && checked('assistantContentProtection') ? 'true' : 'false',
     INTERVIEW_ASSISTANT_ALWAYS_ON_TOP: $('assistantAlwaysOnTop') && checked('assistantAlwaysOnTop') ? 'true' : 'false',
     INTERVIEW_ASSISTANT_CLICK_THROUGH: $('assistantClickThrough') && checked('assistantClickThrough') ? 'true' : 'false',
+    INTERVIEW_ASSISTANT_COMPACT_OVERLAY: $('assistantCompactOverlay') && checked('assistantCompactOverlay') ? 'true' : 'false',
     INTERVIEW_ASSISTANT_LANGUAGE_LEVEL: $('assistantLanguageLevel') ? val('assistantLanguageLevel') || 'B1' : 'B1',
     INTERVIEW_ASSISTANT_ANSWER_STYLE: $('assistantAnswerStyle') ? val('assistantAnswerStyle') || 'simple' : 'simple',
     INTERVIEW_ASSISTANT_FONT_SIZE: $('assistantFontSize') ? val('assistantFontSize') || '20' : '20',
@@ -803,6 +819,7 @@ function renderAssistantState(state = {}) {
   }
   if (assistantState.settings) {
     if ($('assistantClickThrough')) $('assistantClickThrough').checked = !!assistantState.settings.clickThrough;
+    if ($('assistantCompactOverlay')) $('assistantCompactOverlay').checked = assistantState.settings.compactOverlay !== false;
   }
   if ($('moveAssistantWindow')) $('moveAssistantWindow').textContent = assistantState.moveMode ? t('finishMovingAssistantWindow') : t('moveAssistantWindow');
   if (assistantState.question) rememberDetectedQuestion(assistantState.question);
@@ -864,6 +881,7 @@ function renderSubtitleStatus(status) {
   }
   if ($('subtitleProtectionText')) $('subtitleProtectionText').textContent = protectionSummary(protection);
   if ($('subtitleClickThrough') && status.settings) $('subtitleClickThrough').checked = !!status.settings.clickThrough;
+  if ($('subtitleMinimalMode') && status.settings) $('subtitleMinimalMode').checked = status.settings.minimalMode !== false;
   setStatusOrb('homeSubtitleDot', visible ? 'run' : (status.settings?.enabled === false ? '' : 'ok'));
   if ($('homeSubtitleText')) $('homeSubtitleText').textContent = visible ? t('subtitleWindowVisible') : t('subtitleWindowHidden');
   if ($('homeSubtitleStatePill')) {
@@ -1642,6 +1660,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     apply(saved.settings || {});
     renderSubtitleStatus(saved.subtitle || await window.lmt.subtitleStatus());
   };
+  if ($('subtitleMinimalMode')) $('subtitleMinimalMode').onchange = async () => {
+    const saved = await window.lmt.save(readSettings());
+    apply(saved.settings || {});
+    renderSubtitleStatus(saved.subtitle || await window.lmt.subtitleStatus());
+  };
   if ($('enableOutgoingVoice')) $('enableOutgoingVoice').onclick = async () => {
     const button = $('enableOutgoingVoice');
     log('[UI] Start voice translation clicked.');
@@ -1768,7 +1791,7 @@ window.addEventListener('DOMContentLoaded', async () => {
       $('extMicTxEnabled').checked = false;
       const saved = await window.lmt.save(readSettings());
       if (saved && saved.message) log(saved.message);
-      const result = await window.lmt.startTranslation({ mode: 'subtitles', micTxEnabled: false });
+      const result = reportTranslationStartResult(await window.lmt.startTranslation({ mode: 'subtitles', micTxEnabled: false }));
       log(result && result.message ? result.message : JSON.stringify(result || {}));
       return result;
     });
@@ -1941,6 +1964,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     renderAssistantState(await window.lmt.interviewAssistantControl('freezeTeleprompter', { enabled: checked('assistantTeleprompterFrozen') }));
   };
   if ($('assistantClickThrough')) $('assistantClickThrough').onchange = async () => {
+    const saved = await saveAssistantSettings();
+    renderAssistantState(saved.assistant || await window.lmt.interviewAssistantStatus());
+  };
+  if ($('assistantCompactOverlay')) $('assistantCompactOverlay').onchange = async () => {
     const saved = await saveAssistantSettings();
     renderAssistantState(saved.assistant || await window.lmt.interviewAssistantStatus());
   };

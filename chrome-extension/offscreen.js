@@ -55,6 +55,9 @@ let tabId = null;
 let tabStopTimer = null;
 let micStopTimer = null;
 let running = false;
+let armed = false;
+let armedTabId = null;
+let armedReleaseTimer = null;
 
 // Outgoing voice endpointing: collect speech until a short silence, then translate/TTS once.
 // This avoids sending half-sentences every fixed 5 seconds.
@@ -689,6 +692,9 @@ async function transcribeAndTranslate(blob, sourceLang, targetLang) {
       status("err", "Bridge/API error", `HTTP ${resp.status}: ${JSON.stringify(data)}`);
       return null;
     }
+    if (data.transcriptionRetried) {
+      status("run", "English expected", "Automatic strict-English retry was used for this audio chunk.");
+    }
     if ((data.transcript || "").trim() && !(data.translation || "").trim()) {
       const fallbackTranslation = await translateTextFallback(data.transcript, sourceLang, targetLang);
       if (fallbackTranslation) data.translation = fallbackTranslation;
@@ -716,11 +722,24 @@ function pickMimeType() {
   return "";
 }
 
-async function startTabCapture(streamId) {
+async function startTabStream(streamId) {
   const constraints = { audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } }, video: false };
   tabStream = await navigator.mediaDevices.getUserMedia(constraints);
+  const audioTrack = tabStream && tabStream.getAudioTracks ? tabStream.getAudioTracks()[0] : null;
+  if (audioTrack) {
+    audioTrack.addEventListener("ended", () => {
+      running = false;
+      armed = false;
+      armedTabId = null;
+      status("err", "Browser audio ended", "The meeting-tab audio stream ended. The next desktop start will try to re-arm it automatically.");
+    }, { once: true });
+  }
   tabAudioMonitor = createTabAudioMonitor(tabStream);
   tabMeter = createLevelMeter(tabStream);
+}
+
+async function startTabCapture(streamId) {
+  await startTabStream(streamId);
   await startTabRecorder();
 }
 
@@ -1116,7 +1135,7 @@ async function updateRunningMode(msg) {
   }
 }
 
-async function stopAll() {
+async function stopAll({ keepTabStream = false } = {}) {
   running = false;
   try { if (tabStopTimer) clearTimeout(tabStopTimer); } catch (_) {}
   try { if (micStopTimer) clearInterval(micStopTimer); } catch (_) {}
@@ -1133,26 +1152,180 @@ async function stopAll() {
 
   try { if (tabRecorder && tabRecorder.state !== "inactive") tabRecorder.stop(); } catch (_) {}
   try { if (micRecorder && micRecorder.state !== "inactive") micRecorder.stop(); } catch (_) {}
+  tabRecorder = null;
+  micRecorder = null;
 
-  try { if (tabStream) for (const t of tabStream.getTracks()) t.stop(); } catch (_) {}
   try { if (micStream) for (const t of micStream.getTracks()) t.stop(); } catch (_) {}
-
-  try { if (tabAudioMonitor) tabAudioMonitor.stop(); } catch (_) {}
-  try { if (tabMeter) tabMeter.stop(); } catch (_) {}
+  micStream = null;
   try { if (micMeter) micMeter.stop(); } catch (_) {}
-  tabAudioMonitor = null;
-  tabMeter = null;
   micMeter = null;
 
-  tabStream = null; tabRecorder = null;
-  micStream = null; micRecorder = null;
+  if (!keepTabStream) {
+    try { if (tabStream) for (const t of tabStream.getTracks()) t.stop(); } catch (_) {}
+    try { if (tabAudioMonitor) tabAudioMonitor.stop(); } catch (_) {}
+    try { if (tabMeter) tabMeter.stop(); } catch (_) {}
+    tabStream = null;
+    tabAudioMonitor = null;
+    tabMeter = null;
+    armed = false;
+    armedTabId = null;
+    try { if (armedReleaseTimer) clearTimeout(armedReleaseTimer); } catch (_) {}
+    armedReleaseTimer = null;
+  } else {
+    const liveTrack = tabStream && tabStream.getAudioTracks && tabStream.getAudioTracks().some(track => track.readyState === "live");
+    armed = !!liveTrack;
+    armedTabId = armed ? tabId : null;
+  }
 
   try { if (audioEl) { audioEl.pause(); audioEl.src = ""; audioEl = null; } } catch (_) {}
 }
 
+function scheduleArmedAutoRelease() {
+  try { if (armedReleaseTimer) clearTimeout(armedReleaseTimer); } catch (_) {}
+  armedReleaseTimer = setTimeout(() => {
+    if (!running && armed) {
+      stopAll().then(() => status("ok", "Audio released", "Idle armed audio capture was released after 10 minutes.")).catch(() => {});
+    }
+  }, 10 * 60 * 1000);
+}
+
+function applyCaptureConfig(msg) {
+  audioIsolationMode = msg.audioIsolationMode !== false;
+  tabId = msg.tabId;
+  serverUrl = msg.serverUrl;
+  authToken = msg.authToken;
+  tabSourceLang = msg.sourceLang || "auto";
+  tabTargetLang = msg.targetLang || "en";
+  tabChunkSeconds = msg.chunkSeconds || 3;
+  ttsEnabled = audioIsolationMode ? false : !!msg.ttsEnabled;
+  ttsVoice = msg.ttsVoice || "onyx";
+  ttsSpeed = typeof msg.ttsSpeed === "number" ? msg.ttsSpeed : 1.0;
+  micTxEnabled = !!msg.micTxEnabled;
+  micTxSourceLang = msg.micTxSourceLang || "en";
+  micTxTargetLang = msg.micTxTargetLang || "en";
+  micDeviceId = msg.micDeviceId || "";
+  micDeviceName = msg.micDeviceName || "";
+  ttsSinkDeviceId = msg.ttsSinkDeviceId || "";
+  ttsSinkDeviceName = msg.ttsSinkDeviceName || (audioIsolationMode && !!msg.micTxEnabled ? "CABLE Input" : "");
+  micTxChunkSeconds = msg.micTxChunkSeconds || 5;
+  outVoiceStyle = msg.outVoiceStyle || "openai";
+  rvcModelTag = msg.rvcModelTag || "";
+  showOutgoingSubtitles = !!msg.showOutgoingSubtitles;
+  lastTabNorm = ""; lastTabAt = 0;
+  lastMicNorm = ""; lastMicAt = 0;
+  lastSpokenNorm = ""; lastSpokenAt = 0;
+  lastIncomingTranscriptNorm = "";
+  lastIncomingTranslationNorm = "";
+  lastIncomingAt = 0;
+  outgoingTtsNorm = "";
+  outgoingTtsAt = 0;
+  outgoingTtsActive = false;
+  micSuppressedUntil = 0;
+  recentMicHistory = [];
+  recentSpokenHistory = [];
+}
+
+async function activateConfiguredCapture(msg, useArmedStream) {
+  applyCaptureConfig(msg);
+  if (!serverUrl || !authToken) throw new Error("Missing config");
+  if (useArmedStream) {
+    const liveTrack = tabStream && tabStream.getAudioTracks && tabStream.getAudioTracks().some(track => track.readyState === "live");
+    if (!armed || !liveTrack || Number(armedTabId) !== Number(msg.tabId)) {
+      throw new Error("Armed tab audio stream is unavailable for this meeting tab.");
+    }
+  }
+  try { if (armedReleaseTimer) clearTimeout(armedReleaseTimer); } catch (_) {}
+  armedReleaseTimer = null;
+  running = true;
+  let incomingReady = false;
+  let microphoneLabel = "";
+  let outputLabel = "";
+  if (useArmedStream) {
+    status("run", "Starting...", "Activating the already armed tab audio stream...");
+    await startTabRecorder();
+    incomingReady = true;
+  } else if (msg.streamId) {
+    status("run", "Starting...", "Capturing tab audio...");
+    await startTabCapture(msg.streamId);
+    armed = true;
+    armedTabId = Number(msg.tabId);
+    incomingReady = true;
+  } else {
+    throw new Error("No tab audio streamId.");
+  }
+
+  if (micTxEnabled) {
+    status("run", "Starting...", "Capturing microphone for outgoing translation...");
+    microphoneLabel = await startMicCapture();
+    const sinkProbe = new Audio();
+    const sinkReady = await setSinkIfSupported(sinkProbe, ttsSinkDeviceId, ttsSinkDeviceName);
+    if (!sinkReady) throw new Error("Translated voice output CABLE Input is unavailable.");
+    outputLabel = ttsSinkDeviceName || "CABLE Input";
+  }
+
+  const details = {
+    incomingReady,
+    armed: true,
+    tabId: Number(msg.tabId),
+    micTxEnabled,
+    micTxReady: micTxEnabled ? !!microphoneLabel : false,
+    microphoneLabel,
+    sinkReady: micTxEnabled ? !!outputLabel : false,
+    outputLabel
+  };
+  const message = micTxEnabled
+    ? `Voice translation is ready. Microphone: ${microphoneLabel}; output: ${outputLabel}.`
+    : "Incoming translation is ready.";
+  return { ok: true, message, details };
+}
+
+const OFFSCREEN_MESSAGE_TYPES = new Set([
+  "OFFSCREEN_STATUS",
+  "OFFSCREEN_ARM",
+  "OFFSCREEN_UPDATE_MODE",
+  "OFFSCREEN_ACTIVATE",
+  "OFFSCREEN_START",
+  "OFFSCREEN_PAUSE",
+  "OFFSCREEN_RELEASE",
+  "OFFSCREEN_STOP"
+]);
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // The offscreen document shares chrome.runtime messaging with the service
+  // worker. It must ignore desktop/control messages completely; otherwise it
+  // can answer DESKTOP_COMMAND or DESKTOP_COMMAND_ACK before background.js,
+  // leaving the desktop command without a real acknowledgement.
+  if (!msg || !OFFSCREEN_MESSAGE_TYPES.has(String(msg.type || ""))) {
+    return false;
+  }
+
   (async () => {
     try {
+      if (msg?.type === "OFFSCREEN_STATUS") {
+        const liveTrack = tabStream && tabStream.getAudioTracks && tabStream.getAudioTracks().some(track => track.readyState === "live");
+        if (!liveTrack) { armed = false; armedTabId = null; }
+        sendResponse({ ok: true, armed: !!armed, running: !!running, tabId: armedTabId });
+        return;
+      }
+
+      if (msg?.type === "OFFSCREEN_ARM") {
+        await stopAll();
+        if (!msg.streamId || !msg.tabId) {
+          sendResponse({ ok: false, error: "Missing streamId or tabId for audio arming." });
+          return;
+        }
+        tabId = Number(msg.tabId);
+        status("run", "Arming audio...", "Opening the meeting tab audio stream from the popup user action...");
+        await startTabStream(msg.streamId);
+        armed = true;
+        armedTabId = Number(msg.tabId);
+        running = false;
+        scheduleArmedAutoRelease();
+        status("ok", "Audio armed", "Meeting tab audio is armed locally. Start subtitles from the desktop app.");
+        sendResponse({ ok: true, armed: true, running: false, tabId: armedTabId });
+        return;
+      }
+
       if (msg?.type === "OFFSCREEN_UPDATE_MODE") {
         if (!running) {
           sendResponse({ ok: false, error: "Translation capture is not running yet." });
@@ -1163,115 +1336,60 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
+      if (msg?.type === "OFFSCREEN_ACTIVATE") {
+        try {
+          const result = await activateConfiguredCapture(msg, true);
+          status("run", micTxEnabled ? "Voice ready" : "Running", result.message);
+          sendResponse(result);
+        } catch (error) {
+          const text = formatErr(error);
+          await stopAll({ keepTabStream: true });
+          scheduleArmedAutoRelease();
+          const details = { incomingReady: false, armed: !!armed, tabId: armedTabId, micTxReady: false, sinkReady: false };
+          status("err", "Activation failed", text);
+          sendResponse({ ok: false, error: text, details });
+        }
+        return;
+      }
+
       if (msg?.type === "OFFSCREEN_START") {
         await stopAll();
-
-        audioIsolationMode = msg.audioIsolationMode !== false;
-        tabId = msg.tabId;
-        serverUrl = msg.serverUrl;
-        authToken = msg.authToken;
-
-        tabSourceLang = msg.sourceLang || "auto";
-        tabTargetLang = msg.targetLang || "en";
-        tabChunkSeconds = msg.chunkSeconds || 3;
-
-        ttsEnabled = audioIsolationMode ? false : !!msg.ttsEnabled;
-        ttsVoice = msg.ttsVoice || "onyx";
-        ttsSpeed = typeof msg.ttsSpeed === "number" ? msg.ttsSpeed : 1.0;
-
-        micTxEnabled = !!msg.micTxEnabled;
-        micTxSourceLang = msg.micTxSourceLang || "en";
-        micTxTargetLang = msg.micTxTargetLang || "en";
-        micDeviceId = msg.micDeviceId || "";
-        micDeviceName = msg.micDeviceName || "";
-        ttsSinkDeviceId = msg.ttsSinkDeviceId || "";
-        ttsSinkDeviceName = msg.ttsSinkDeviceName || (audioIsolationMode && !!msg.micTxEnabled ? "CABLE Input" : "");
-        micTxChunkSeconds = msg.micTxChunkSeconds || 5;
-
-        outVoiceStyle = msg.outVoiceStyle || "openai";
-        rvcModelTag = msg.rvcModelTag || "";
-
-        showOutgoingSubtitles = !!msg.showOutgoingSubtitles;
-
-        lastTabNorm = ""; lastTabAt = 0;
-        lastMicNorm = ""; lastMicAt = 0;
-        lastSpokenNorm = ""; lastSpokenAt = 0;
-        lastIncomingTranscriptNorm = "";
-        lastIncomingTranslationNorm = "";
-        lastIncomingAt = 0;
-        outgoingTtsNorm = "";
-        outgoingTtsAt = 0;
-        outgoingTtsActive = false;
-        micSuppressedUntil = 0;
-              recentMicHistory = [];
-        recentSpokenHistory = [];
-
-        if (!serverUrl || !authToken) {
-          status("err", "Missing config", "serverUrl/authToken is missing.");
-          sendResponse({ ok: false, error: "Missing config" });
-          return;
+        try {
+          const result = await activateConfiguredCapture(msg, false);
+          status("run", micTxEnabled ? "Voice ready" : "Running", result.message);
+          sendResponse(result);
+        } catch (error) {
+          const text = formatErr(error);
+          await stopAll();
+          status("err", "Offscreen error", text);
+          sendResponse({ ok: false, error: text });
         }
-
-        running = true;
-        let incomingReady = false;
-        let microphoneLabel = "";
-        let outputLabel = "";
-        if (msg.streamId) {
-          status("run", "Starting...", "Capturing tab audio...");
-          await startTabCapture(msg.streamId);
-          incomingReady = true;
-        } else {
-          status("err", "Incoming subtitles unavailable", "No tab audio streamId. Browser did not allow tab capture for this page/start action. Outgoing voice will still run if enabled.");
-        }
-
-        if (micTxEnabled) {
-          status("run", "Starting...", "Capturing microphone for outgoing translation...");
-          try {
-            microphoneLabel = await startMicCapture();
-            const sinkProbe = new Audio();
-            const sinkReady = await setSinkIfSupported(sinkProbe, ttsSinkDeviceId, ttsSinkDeviceName);
-            if (!sinkReady) throw new Error("Translated voice output CABLE Input is unavailable.");
-            outputLabel = ttsSinkDeviceName || "CABLE Input";
-          } catch (e) {
-            const error = "Outgoing voice is not ready: " + formatErr(e) + ". Open the extension audio-access page, grant microphone/output access, and try again.";
-            status("err", "Outgoing voice unavailable", error);
-            const details = { incomingReady, micTxReady: false, sinkReady: false };
-            await stopAll();
-            sendResponse({ ok: false, error, details });
-            return;
-          }
-        }
-
-        const details = {
-          incomingReady,
-          micTxEnabled,
-          micTxReady: micTxEnabled ? !!microphoneLabel : false,
-          microphoneLabel,
-          sinkReady: micTxEnabled ? !!outputLabel : false,
-          outputLabel
-        };
-        const message = micTxEnabled
-          ? `Voice translation is ready. Microphone: ${microphoneLabel}; output: ${outputLabel}.`
-          : "Incoming translation is ready.";
-        status("run", micTxEnabled ? "Voice ready" : "Running", message);
-        sendResponse({ ok: true, message, details });
         return;
       }
 
-      if (msg?.type === "OFFSCREEN_STOP") {
+      if (msg?.type === "OFFSCREEN_PAUSE") {
+        await stopAll({ keepTabStream: true });
+        if (armed) scheduleArmedAutoRelease();
+        status("ok", "Paused", armed
+          ? "Translation processing stopped; meeting tab audio stays armed locally for restart."
+          : "Translation stopped.");
+        sendResponse({ ok: true, armed: !!armed, running: false, tabId: armedTabId });
+        return;
+      }
+
+      if (msg?.type === "OFFSCREEN_RELEASE" || msg?.type === "OFFSCREEN_STOP") {
         await stopAll();
-        status("ok", "Stopped", "Stopped.");
-        sendResponse({ ok: true });
+        status("ok", "Stopped", "Stopped and released meeting tab audio.");
+        sendResponse({ ok: true, armed: false, running: false });
         return;
       }
 
-      sendResponse({ ok: true });
+      sendResponse({ ok: false, error: "Unsupported offscreen message." });
     } catch (e) {
       await stopAll();
       status("err", "Offscreen error", String(e));
       sendResponse({ ok: false, error: String(e) });
     }
   })();
-
   return true;
 });

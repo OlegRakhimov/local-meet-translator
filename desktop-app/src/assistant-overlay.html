@@ -28,6 +28,65 @@
       <p id="questionText">Waiting for an interview question…</p>
     </section>
 
+    <section id="codingFocusPanel" class="codingFocusPanel" hidden>
+      <div class="codingFocusHeader">
+        <div>
+          <span class="eyebrow">CODING FOCUS</span>
+          <strong>Current solution stays pinned</strong>
+          <p>New remarks and follow-up questions appear here without replacing the task or code below.</p>
+        </div>
+        <div class="codingFocusActions">
+          <button id="clearCodingContext" type="button">Clear remarks</button>
+          <button id="endCodingFocus" type="button">Finish task</button>
+        </div>
+      </div>
+      <div class="codingFocusLegend">
+        <span><b>COMMENT / QUESTION</b> — preserve the current solution</span>
+        <span><b>RECOMMENDATION</b> — offer a choice</span>
+        <span><b>REQUEST / CONDITION / INPUT</b> — revise when appropriate</span>
+        <span><b>NEW TASK</b> — open only when you are ready</span>
+      </div>
+      <div id="liveContextEmpty" class="liveContextEmpty">Waiting for the interviewer's next remark…</div>
+      <div id="liveContextFeed" class="liveContextFeed"></div>
+
+      <section id="activeCodingInputsBlock" class="activeCodingInputsBlock" hidden>
+        <span id="activeCodingInputsLabel" class="label">Active interviewer inputs</span>
+        <div id="activeCodingInputs" class="activeCodingInputs"></div>
+      </section>
+
+      <section id="pendingCodingChangeBlock" class="pendingCodingChangeBlock" hidden>
+        <div class="pendingChangeCopy">
+          <span id="pendingCodingChangeLabel" class="label">Interviewer input</span>
+          <strong id="pendingCodingChangeType"></strong>
+          <p id="pendingCodingChangeText"></p>
+          <p id="pendingCodingChangeReason" class="pendingCodingChangeReason"></p>
+          <p id="pendingCodingChangeError" class="pendingCodingChangeError" hidden></p>
+        </div>
+        <div class="pendingChangeActions">
+          <button id="applyCodingChange" type="button">Apply to solution</button>
+          <button id="dismissCodingChange" type="button" class="secondaryButton">Keep current solution</button>
+        </div>
+      </section>
+
+      <section id="codingFollowUpBlock" class="codingFollowUpBlock" hidden>
+        <div class="followUpHeader">
+          <div><span class="label">Follow-up question</span><p id="codingFollowUpQuestion"></p></div>
+          <button id="analyzeCodingFollowUp" type="button">Analyze follow-up</button>
+        </div>
+        <div id="codingFollowUpStatus" class="codingFollowUpStatus"></div>
+        <div id="codingFollowUpAnswerBlock" class="codingFollowUpAnswerBlock" hidden>
+          <span class="label">Short answer</span>
+          <p id="codingFollowUpFirstSentence"></p>
+          <p id="codingFollowUpAnswer"></p>
+        </div>
+      </section>
+
+      <section id="pendingCodingTaskBlock" class="pendingCodingTaskBlock" hidden>
+        <div><span id="pendingCodingTaskLabel" class="label">New coding task detected</span><p id="pendingCodingTaskText"></p></div>
+        <button id="openPendingCodingTask" type="button">Open new task</button>
+      </section>
+    </section>
+
     <section id="pendingBlock" class="pendingBlock" hidden>
       <div>
         <span class="label">Pending question</span>

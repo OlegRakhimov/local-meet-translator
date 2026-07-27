@@ -261,7 +261,7 @@ function createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPat
     result.VOICE_CONVERSION_TIMEOUT_MS ||= '180000';
     result.RVC_INFER_CMD ||= '';
     result.RVC_INFER_TIMEOUT_SEC ||= '180';
-    result.EXT_SOURCE_LANG ||= 'auto';
+    result.EXT_SOURCE_LANG ||= 'en-expected';
     result.EXT_TARGET_LANG ||= getSystemLanguageCode();
     if (!result.EXT_CHUNK_SECONDS || result.EXT_CHUNK_SECONDS === '5') result.EXT_CHUNK_SECONDS = '3';
     result.EXT_AUDIO_ISOLATION_MODE ||= 'true';

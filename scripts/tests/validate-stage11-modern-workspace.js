@@ -10,8 +10,19 @@ const requireText = (relative, values) => {
   return text;
 };
 
+function isVersionAtLeast(actual, minimum) {
+  const actualParts = String(actual || '').split('.').map(Number);
+  const minimumParts = String(minimum || '').split('.').map(Number);
+  if (actualParts.length !== 3 || minimumParts.length !== 3) return false;
+  if (actualParts.some(value => !Number.isInteger(value)) || minimumParts.some(value => !Number.isInteger(value))) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (actualParts[index] !== minimumParts[index]) return actualParts[index] > minimumParts[index];
+  }
+  return true;
+}
+
 const pkg = JSON.parse(read('desktop-app/package.json'));
-assert(pkg.version === '1.0.18', `Expected desktop version 1.0.18, got ${pkg.version}`);
+assert(isVersionAtLeast(pkg.version, '1.0.18'), `Expected desktop version 1.0.18 or newer, got ${pkg.version}`);
 assert(String(pkg.scripts?.['test:architecture'] || '').includes('validate-stage11-modern-workspace.js'), 'Stage 11 validator is not wired into npm test.');
 
 const html = requireText('desktop-app/src/index.html', [

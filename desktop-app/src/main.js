@@ -18,6 +18,7 @@ const { createQuestionDetector, cleanQuestionText, classifyInterviewUtterance, d
 const { matchAnswerLibrary } = require('./main/answer-matcher');
 const { createAssistantOverlayController, normalizeAssistantSettings } = require('./main/assistant-overlay');
 const { createAutomaticAnalysisCoordinator } = require('./main/assistant-auto-analysis');
+const { normalizeClassification, fallbackClassifyUtterance, isAutomaticChange, previewActiveInputs } = require('./main/utterance-classifier');
 const { constantTimeEqual, createSlidingWindowRateLimiter, isJsonRequest, applyLocalSecurityHeaders } = require('./main/security-guard');
 const { createDiagnosticsTracker, buildDiagnosticsReport, diagnosticsToMarkdown } = require('./main/diagnostics');
 
@@ -59,6 +60,9 @@ let windowManager;
 let subtitleOverlay;
 let assistantOverlay;
 let assistantAnalysisGeneration = 0;
+let codingFollowUpGeneration = 0;
+let codingClassificationGeneration = 0;
+let codingClassificationChain = Promise.resolve();
 let lastDetectedQuestion = null;
 let assistantAutoAnalysis = null;
 let bridgeProc = null;
@@ -71,6 +75,7 @@ const desktopSessionId = crypto.randomBytes(12).toString('hex');
 const extensionCommandCoordinator = new ExtensionCommandCoordinator({ sessionId: desktopSessionId });
 const extensionClientRegistry = new ExtensionClientRegistry();
 const extensionClientLogState = new Map();
+const extensionPollHeartbeat = new Map();
 const deliveredCommandLogKeys = new Set();
 const ALLOWED_EXTENSION_ORIGIN_RE = /^(moz-extension|chrome-extension|edge-extension):\/\/[a-z0-9-]+$/i;
 
@@ -375,6 +380,346 @@ async function analyzeInterviewQuestion(questionInput, options = {}) {
   emitAssistantState();
   return { ok:true, source:'ai', suggestion, requestId:response.requestId };
 }
+
+async function analyzeCodingFollowUp(questionInput) {
+  const question = questionInput && typeof questionInput === 'object'
+    ? { ...questionInput, text: cleanQuestionText(questionInput.text) }
+    : { text: cleanQuestionText(questionInput), kind: 'question' };
+  if (!question.text) return { ok: false, message: 'Coding follow-up question is empty.' };
+  if (!assistantOverlay) return { ok: false, message: 'Interview assistant window is not initialized.' };
+
+  const overlayState = assistantOverlay.snapshot();
+  const focus = overlayState.codingFocus || {};
+  if (!focus.active || !focus.task?.text) {
+    return { ok: false, message: 'Coding Focus is not active.' };
+  }
+
+  const generation = ++codingFollowUpGeneration;
+  assistantOverlay.setCodingFollowUp(question);
+  assistantOverlay.setCodingFollowUpAnalyzing(true);
+  emitAssistantState();
+
+  const bridge = await ensureBridgeForAssistant();
+  if (!bridge.ok) {
+    if (generation === codingFollowUpGeneration) assistantOverlay.setCodingFollowUpError(bridge.message);
+    emitAssistantState();
+    return { ok: false, message: bridge.message };
+  }
+
+  const profile = candidateProfileStore.load().profile || {};
+  const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
+  const currentSuggestion = overlayState.suggestion || {};
+  const prompt = [
+    'You are answering a follow-up about a coding task that is already visible to the candidate.',
+    `Original coding task: ${cleanQuestionText(focus.task.text)}`,
+    currentSuggestion.approachSummary ? `Current approach: ${String(currentSuggestion.approachSummary).slice(0, 4000)}` : '',
+    currentSuggestion.code ? `Current code (do not rewrite unless the question explicitly asks for a change):\n${String(currentSuggestion.code).slice(0, 9000)}` : '',
+    `Interviewer follow-up: ${question.text}`,
+    'Prepare a concise spoken English answer to this follow-up. Preserve the existing coding solution. If a code change is requested, explain the exact change and where it belongs instead of replacing the whole solution.'
+  ].filter(Boolean).join('\n\n');
+
+  const response = await requestJsonPost(
+    `http://127.0.0.1:${bridge.settings.LOCAL_MEET_TRANSLATOR_PORT}/interview/suggest-answer`,
+    bridge.settings.LOCAL_MEET_TRANSLATOR_TOKEN,
+    {
+      question: prompt,
+      taskKind: 'question',
+      codingLanguage: cleanQuestionText(focus.task.codingLanguage || currentSuggestion.codeLanguage).toLowerCase(),
+      languageLevel: assistantSettings.languageLevel,
+      answerStyle: assistantSettings.answerStyle,
+      candidateProfile: buildInterviewGrounding(profile),
+      confirmedFacts: confirmedCandidateFacts(profile),
+      reviewedAnswers: []
+    }
+  );
+
+  if (generation !== codingFollowUpGeneration) return { ok: false, stale: true, message: 'A newer coding follow-up replaced this request.' };
+  if (!response.ok || !response.json) {
+    const message = response.json?.message || response.json?.error || response.body || 'Coding follow-up analysis failed.';
+    assistantOverlay.setCodingFollowUpError(message);
+    emitAssistantState();
+    return { ok: false, message, status: response.status, requestId: response.requestId };
+  }
+
+  const suggestion = { ...(response.json.suggestion || response.json), source: 'ai', question: question.text };
+  assistantOverlay.setCodingFollowUpSuggestion(suggestion);
+  const recorded = liveInterviewStore.recordSuggestion(question.text, suggestion);
+  if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+  emitAssistantState();
+  return { ok: true, suggestion, requestId: response.requestId };
+}
+
+
+function buildCodingRevisionPrompt({ focus, currentSuggestion, classification, utterance, proposedInputs }) {
+  const activeLines = (Array.isArray(proposedInputs) ? proposedInputs : [])
+    .map((item, index) => `${index + 1}. [${item.type || 'input'} / ${item.target || 'other'}] ${item.normalizedInput}`)
+    .join('\n');
+  const criteria = Array.isArray(classification.verificationCriteria)
+    ? classification.verificationCriteria.map((item, index) => `${index + 1}. ${item}`).join('\n')
+    : '';
+  return [
+    'Revise the coding solution currently shown to the candidate.',
+    `Original coding task: ${cleanQuestionText(focus.task?.text)}`,
+    currentSuggestion.approachSummary ? `Current approach:\n${String(currentSuggestion.approachSummary).slice(0, 5000)}` : '',
+    currentSuggestion.code ? `Current code:\n${String(currentSuggestion.code).slice(0, 30_000)}` : '',
+    `Latest interviewer utterance: ${cleanQuestionText(utterance.text)}`,
+    `Interpreted intent: ${classification.type}; action: ${classification.action}; target: ${classification.target}.`,
+    classification.normalizedInput ? `Normalized input: ${classification.normalizedInput}` : '',
+    activeLines ? `Active interviewer inputs after this update:\n${activeLines}` : 'Active interviewer inputs after this update: none.',
+    criteria ? `Semantic verification criteria:\n${criteria}` : '',
+    'Return a complete revised coding solution, not merely an acknowledgement.',
+    'Preserve parts of the current solution that are still valid, but change the approach, code, explanation, complexity, edge cases, and speaking notes wherever the active inputs require it.',
+    'Do not describe the classifier or mention that an utterance was classified.'
+  ].filter(Boolean).join('\n\n');
+}
+
+async function applyCodingChange(changeInput = null) {
+  if (!assistantOverlay) return { ok: false, message: 'Interview assistant window is not initialized.' };
+  const focus = assistantOverlay.codingContextSnapshot();
+  if (!focus?.active || !focus.task?.text) return { ok: false, message: 'Coding Focus is not active.' };
+  const change = changeInput || focus.pendingChange;
+  if (!change?.classification || !change?.utterance?.text) return { ok: false, message: 'No contextual coding change is waiting.' };
+
+  const normalizedClassification = normalizeClassification(change.classification);
+  const classification = normalizedClassification.changesCurrentSolution && normalizedClassification.inputOperation === 'none'
+    ? { ...normalizedClassification, inputOperation: 'add' }
+    : normalizedClassification;
+  const proposedInputs = previewActiveInputs(focus.activeInputs, classification, change.utterance);
+  assistantOverlay.setPendingCodingChange({ ...change, classification, proposedInputs, status: 'applying', error: '' });
+  emitAssistantState();
+
+  const bridge = await ensureBridgeForAssistant();
+  if (!bridge.ok) {
+    assistantOverlay.setPendingCodingChangeStatus('error', bridge.message);
+    emitAssistantState();
+    return { ok: false, message: bridge.message };
+  }
+
+  const overlayState = assistantOverlay.snapshot();
+  const currentSuggestion = overlayState.suggestion || {};
+  const profile = candidateProfileStore.load().profile || {};
+  const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
+  const prompt = buildCodingRevisionPrompt({
+    focus,
+    currentSuggestion,
+    classification,
+    utterance: change.utterance,
+    proposedInputs
+  });
+  const generation = ++assistantAnalysisGeneration;
+  const response = await requestJsonPost(
+    `http://127.0.0.1:${bridge.settings.LOCAL_MEET_TRANSLATOR_PORT}/interview/suggest-answer`,
+    bridge.settings.LOCAL_MEET_TRANSLATOR_TOKEN,
+    {
+      question: prompt,
+      taskKind: 'coding-task',
+      codingLanguage: cleanQuestionText(focus.task.codingLanguage || currentSuggestion.codeLanguage).toLowerCase(),
+      languageLevel: assistantSettings.languageLevel,
+      answerStyle: assistantSettings.answerStyle,
+      candidateProfile: buildInterviewGrounding(profile),
+      confirmedFacts: confirmedCandidateFacts(profile),
+      reviewedAnswers: []
+    },
+    95_000
+  );
+  if (generation !== assistantAnalysisGeneration) return { ok: false, stale: true, message: 'A newer assistant request replaced this revision.' };
+  if (!response.ok || !response.json) {
+    const message = response.json?.message || response.json?.error || response.body || 'Coding revision failed.';
+    assistantOverlay.setPendingCodingChangeStatus('error', message);
+    emitAssistantState();
+    return { ok: false, message, status: response.status, requestId: response.requestId };
+  }
+
+  const suggestion = {
+    ...(response.json.suggestion || response.json),
+    source: 'ai',
+    question: focus.task.text
+  };
+  assistantOverlay.setSuggestion(suggestion);
+  assistantOverlay.commitCodingInputs(proposedInputs);
+  assistantOverlay.updateCodingContext(change.id, {
+    kind: classification.type,
+    status: 'applied',
+    reason: classification.reason,
+    normalizedInput: classification.normalizedInput,
+    classification
+  });
+  const recorded = liveInterviewStore.recordSuggestion(focus.task.text, suggestion);
+  if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+  emitAssistantState();
+  return { ok: true, suggestion, classification, activeInputs: proposedInputs, requestId: response.requestId };
+}
+
+function dismissCodingChange() {
+  if (!assistantOverlay) return { ok: false, message: 'Interview assistant window is not initialized.' };
+  const pending = assistantOverlay.codingContextSnapshot()?.pendingChange;
+  if (pending?.id) {
+    assistantOverlay.updateCodingContext(pending.id, {
+      status: 'dismissed',
+      reason: pending.classification?.reason || ''
+    });
+  }
+  return assistantOverlay.clearPendingCodingChange();
+}
+
+async function classifyAndDispatchCodingUtterance(deliveredEvent) {
+  if (!assistantOverlay) return;
+  const initialFocus = assistantOverlay.codingContextSnapshot();
+  if (!initialFocus?.active || !initialFocus.task?.text) return;
+  const utteranceText = cleanQuestionText(deliveredEvent.transcript || deliveredEvent.translation);
+  if (!utteranceText) return;
+  const entryId = `utterance-${String(deliveredEvent.id || Date.now()).slice(0, 120)}`;
+  assistantOverlay.addCodingContext({
+    id: entryId,
+    text: utteranceText,
+    translation: deliveredEvent.translation,
+    kind: 'analyzing',
+    status: 'analyzing',
+    ts: deliveredEvent.ts
+  });
+  emitAssistantState();
+
+  const generation = ++codingClassificationGeneration;
+  const overlayState = assistantOverlay.snapshot();
+  const focus = overlayState.codingFocus || {};
+  const currentSuggestion = overlayState.suggestion || {};
+  const recentUtterances = (Array.isArray(focus.liveContext) ? focus.liveContext : [])
+    .filter(item => item.id !== entryId)
+    .slice(-6)
+    .map(item => ({ id: item.id, text: item.text, kind: item.kind, ts: item.ts }));
+  let classification;
+  const bridge = await ensureBridgeForAssistant();
+  if (bridge.ok) {
+    const response = await requestJsonPost(
+      `http://127.0.0.1:${bridge.settings.LOCAL_MEET_TRANSLATOR_PORT}/interview/classify-utterance`,
+      bridge.settings.LOCAL_MEET_TRANSLATOR_TOKEN,
+      {
+        utterance: utteranceText,
+        originalTask: focus.task.text,
+        codingLanguage: cleanQuestionText(focus.task.codingLanguage || currentSuggestion.codeLanguage).toLowerCase(),
+        currentSolution: {
+          approachSummary: String(currentSuggestion.approachSummary || '').slice(0, 5000),
+          code: String(currentSuggestion.code || '').slice(0, 30_000),
+          complexity: String(currentSuggestion.complexity || '').slice(0, 3000),
+          edgeCases: Array.isArray(currentSuggestion.edgeCases) ? currentSuggestion.edgeCases.slice(0, 12) : []
+        },
+        activeInputs: Array.isArray(focus.activeInputs) ? focus.activeInputs.slice(-20) : [],
+        recentUtterances
+      },
+      65_000
+    );
+    if (generation !== codingClassificationGeneration) return;
+    if (response.ok && response.json?.classification) {
+      classification = normalizeClassification(response.json.classification);
+    } else {
+      classification = fallbackClassifyUtterance({ utterance: utteranceText, recentUtterances });
+      sendLog(`[ASSISTANT] Semantic utterance classification fell back locally: ${response.json?.message || response.json?.error || response.body || 'unknown error'}`);
+    }
+  } else {
+    classification = fallbackClassifyUtterance({ utterance: utteranceText, recentUtterances });
+  }
+  if (generation !== codingClassificationGeneration) return;
+
+  const effectiveText = classification.mergeWithPrevious && classification.combinedUtterance
+    ? classification.combinedUtterance
+    : utteranceText;
+  assistantOverlay.updateCodingContext(entryId, {
+    text: effectiveText,
+    kind: classification.type,
+    status: 'classified',
+    reason: classification.reason,
+    normalizedInput: classification.normalizedInput,
+    classification
+  });
+
+  if (classification.type === 'remark' || classification.action === 'ignore') {
+    diagnosticsTracker.record('remarkIgnored', { reason: 'semantic-classifier' });
+    emitAssistantState();
+    return;
+  }
+
+  if (classification.type === 'follow-up' || classification.action === 'answer-separately') {
+    const question = {
+      id: entryId,
+      text: effectiveText,
+      utterance: utteranceText,
+      kind: 'question',
+      relation: 'coding-follow-up',
+      codingLanguage: focus.task.codingLanguage || '',
+      baseTaskText: focus.task.text,
+      detectedAt: Number(deliveredEvent.ts || Date.now())
+    };
+    assistantOverlay.setCodingFollowUp(question);
+    const recorded = liveInterviewStore.recordQuestion(question);
+    if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+    const settings = normalizeAssistantSettings(loadSettings(), process.platform);
+    if (settings.enabled && settings.autoAnalyze) void analyzeCodingFollowUp(question);
+    emitAssistantState();
+    return;
+  }
+
+  if (classification.type === 'new-task' || classification.action === 'queue-new-task') {
+    assistantOverlay.setPendingCodingTask({
+      id: entryId,
+      text: effectiveText,
+      utterance: utteranceText,
+      kind: 'coding-task',
+      relation: 'new-coding-task',
+      codingLanguage: detectCodingLanguage(effectiveText),
+      detectedAt: Number(deliveredEvent.ts || Date.now())
+    });
+    emitAssistantState();
+    return;
+  }
+
+  if (!classification.changesCurrentSolution) {
+    emitAssistantState();
+    return;
+  }
+
+  const proposedInputs = previewActiveInputs(focus.activeInputs, classification, {
+    id: entryId,
+    text: effectiveText,
+    ts: deliveredEvent.ts
+  });
+  const pendingChange = {
+    id: entryId,
+    utterance: { id: entryId, text: effectiveText, ts: Number(deliveredEvent.ts || Date.now()) },
+    classification,
+    proposedInputs,
+    status: 'waiting',
+    error: ''
+  };
+  assistantOverlay.setPendingCodingChange(pendingChange);
+  const settings = normalizeAssistantSettings(loadSettings(), process.platform);
+  if (isAutomaticChange(classification, settings.autoAnalyze)) {
+    await applyCodingChange(pendingChange);
+  } else {
+    emitAssistantState();
+  }
+}
+
+function queueCodingUtterance(deliveredEvent) {
+  codingClassificationChain = codingClassificationChain
+    .then(() => classifyAndDispatchCodingUtterance(deliveredEvent))
+    .catch(cause => {
+      sendLog(`[ASSISTANT] Contextual utterance classification failed: ${cause.message}`);
+      try {
+        if (assistantOverlay) {
+          assistantOverlay.addCodingContext({
+            id: `classification-error-${Date.now()}`,
+            text: cleanQuestionText(deliveredEvent.transcript || deliveredEvent.translation),
+            kind: 'ambiguous',
+            status: 'error',
+            reason: cause.message,
+            ts: deliveredEvent.ts
+          });
+          emitAssistantState();
+        }
+      } catch (_) {}
+    });
+}
+
 function findBridgeJar() {
   const target = path.join(repoRoot, 'local-meet-bridge', 'target');
   if (!fs.existsSync(target)) return null;
@@ -588,6 +933,42 @@ function waitForExtensionAck(seq, timeoutMs = 22000) {
 }
 function rememberExtensionClient(client) { return extensionClientRegistry.remember(client); }
 function getRecentExtensionClients(maxAgeMs = 120000) { return extensionClientRegistry.recent(maxAgeMs); }
+function extensionPollKey(clientId, url = '') {
+  const id = String(clientId || '').trim();
+  const cleanUrl = String(url || '').trim();
+  return id || cleanUrl;
+}
+function recordExtensionPoll(clientId, url = '') {
+  const key = extensionPollKey(clientId, url);
+  if (!key) return;
+  extensionPollHeartbeat.set(key, { at: Date.now(), url: String(url || ''), clientId: String(clientId || '') });
+  if (extensionPollHeartbeat.size > 100) {
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    for (const [entryKey, value] of extensionPollHeartbeat) {
+      if (!value || value.at < cutoff) extensionPollHeartbeat.delete(entryKey);
+    }
+  }
+}
+function hasRecentExtensionPoll(client, maxAgeMs = 6000) {
+  if (!client) return false;
+  const now = Date.now();
+  const direct = extensionPollHeartbeat.get(extensionPollKey(client.id, client.url));
+  if (direct && now - direct.at <= maxAgeMs) return true;
+  for (const value of extensionPollHeartbeat.values()) {
+    if (!value || now - value.at > maxAgeMs) continue;
+    if (client.url && value.url === client.url) return true;
+    if (client.id && value.clientId === client.id) return true;
+  }
+  return false;
+}
+async function waitForExtensionPoll(client, timeoutMs = 5000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (hasRecentExtensionPoll(client)) return true;
+    await new Promise(resolve => setTimeout(resolve, 150));
+  }
+  return hasRecentExtensionPoll(client);
+}
 function startConfigServer() {
   if (configServer) return;
   configServer = http.createServer((req, res) => {
@@ -704,16 +1085,32 @@ function startConfigServer() {
             : event;
           subtitleOverlay.pushSubtitle(deliveredEvent);
           diagnosticsTracker.record('subtitleAccepted', { reason: decision.reason });
-          const questionDecision = questionDetector.consume(deliveredEvent, deliveredEvent.ts || Date.now());
-          if (questionDecision.accepted && questionDecision.question) {
-            diagnosticsTracker.record(questionDecision.question.kind === 'coding-task' ? 'codingTaskDetected' : 'questionDetected', { reason: questionDecision.reason });
-            recordDetectedQuestion(questionDecision.question);
+          const codingFocusWasActive = !!assistantOverlay?.snapshot()?.codingFocus?.active;
+          const contextText = cleanQuestionText(deliveredEvent.transcript || deliveredEvent.translation);
+          if (codingFocusWasActive && contextText) {
+            queueCodingUtterance(deliveredEvent);
+          } else {
+            const questionDecision = questionDetector.consume(deliveredEvent, deliveredEvent.ts || Date.now());
             const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
-            if (assistantSettings.enabled && assistantSettings.autoAnalyze) {
-              initializeAssistantAutoAnalysis().queue(questionDecision.question);
+            if (questionDecision.accepted && questionDecision.question) {
+              const relation = questionDecision.reason || questionDecision.question.relation || '';
+              diagnosticsTracker.record(questionDecision.question.kind === 'coding-task' ? 'codingTaskDetected' : 'questionDetected', { reason: relation });
+              recordDetectedQuestion(questionDecision.question);
+              if (questionDecision.question.kind === 'coding-task') {
+                assistantOverlay.addCodingContext({
+                  id: deliveredEvent.id,
+                  text: questionDecision.question.utterance || contextText,
+                  translation: deliveredEvent.translation,
+                  kind: 'task',
+                  ts: deliveredEvent.ts
+                });
+              }
+              if (assistantSettings.enabled && assistantSettings.autoAnalyze) {
+                initializeAssistantAutoAnalysis().queue(questionDecision.question);
+              }
+            } else if (questionDecision.reason === 'remark') {
+              diagnosticsTracker.record('remarkIgnored', { reason: 'remark' });
             }
-          } else if (questionDecision.reason === 'remark') {
-            diagnosticsTracker.record('remarkIgnored', { reason: 'remark' });
           }
           writeJsonResponse(res, 200, {
             ok: true,
@@ -762,11 +1159,13 @@ function startConfigServer() {
       if (!requireExtensionToken(req, res, extensionToken)) return;
       if (!rateLimitOrReject(controlRateLimiter, `command:${origin || 'local'}`, res)) return;
       const clientId = String(url.searchParams.get('clientId') || '');
+      const clientUrlForPoll = String(url.searchParams.get('url') || '');
       rememberExtensionClient({
         clientId,
-        url: url.searchParams.get('url') || '',
+        url: clientUrlForPoll,
         visible: url.searchParams.get('visible') === 'true'
       });
+      recordExtensionPoll(clientId, clientUrlForPoll);
       const lastSeqRaw = Number(url.searchParams.get('lastSeq') || '0');
       const clientSessionId = String(url.searchParams.get('sessionId') || '');
       const lastSeq = clientSessionId === desktopSessionId ? lastSeqRaw : 0;
@@ -774,7 +1173,7 @@ function startConfigServer() {
       const ageMs = Date.now() - (currentCommand.issuedAt || 0);
       const targetClientId = String(currentCommand.targetClientId || '');
       const targetUrl = String(currentCommand.targetUrl || '');
-      const clientUrl = String(url.searchParams.get('url') || '');
+      const clientUrl = clientUrlForPoll;
       const sameUrl = !!targetUrl && !!clientUrl && targetUrl === clientUrl;
       // Be tolerant here. Some browsers/content scripts can re-create client IDs after
       // reloads, while the visible meeting tab is still the correct target. If a command
@@ -875,7 +1274,18 @@ function initializeWindowManager() {
           if (result.response !== 0) return;
         }
         appClosing = true;
-        issueExtensionCommand('stop');
+        try {
+          const stopTarget = extensionClientRegistry.getActive() || chooseExtensionClient();
+          if (stopTarget && hasRecentExtensionPoll(stopTarget, 10000)) {
+            const stopCommand = issueExtensionCommand('release', stopTarget);
+            const stopAck = await waitForExtensionAck(stopCommand.seq, 6000);
+            sendLog(stopAck && stopAck.ok
+              ? 'Browser audio capture confirmed released before desktop shutdown.'
+              : 'Browser audio capture did not confirm release before desktop shutdown.');
+          }
+        } catch (error) {
+          sendLog(`Browser stop during shutdown failed: ${error.message || error}`);
+        }
         translationSession.stop();
         killProcessTree(bridgeProc, 'bridge');
         killProcessTree(voiceProc, 'voice');
@@ -886,7 +1296,7 @@ function initializeWindowManager() {
           try { if (assistantOverlay) assistantOverlay.destroy(); } catch (_) {}
           try { windowManager.destroyMainWindow(); } catch (_) {}
           app.quit();
-        }, 800);
+        }, 150);
       }).catch(error => {
         sendLog(`Close confirmation failed: ${error.message || error}`);
       }).finally(() => {
@@ -946,7 +1356,6 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('before-quit', () => {
   appClosing = true;
-  try { if (windowManager && windowManager.getMainWindow()) issueExtensionCommand('stop'); } catch (_) {}
   translationSession.stop();
   killProcessTree(bridgeProc, 'bridge');
   killProcessTree(voiceProc, 'voice');
@@ -1018,7 +1427,7 @@ ipcMain.handle('subtitle-overlay:control', async (_event, action, payload = {}) 
 });
 ipcMain.on('assistant-overlay:hide', () => { if (assistantOverlay) assistantOverlay.hide(); emitAssistantState(); });
 ipcMain.handle('interview-assistant:status', () => assistantOverlay ? assistantOverlay.snapshot() : { visible:false, status:'unavailable' });
-ipcMain.handle('interview-assistant:control', (_event, action, payload = {}) => {
+ipcMain.handle('interview-assistant:control', async (_event, action, payload = {}) => {
   if (!assistantOverlay) return { ok:false, message:'Interview assistant window is not initialized.' };
   switch (String(action || '')) {
     case 'show': return assistantOverlay.show();
@@ -1028,6 +1437,7 @@ ipcMain.handle('interview-assistant:control', (_event, action, payload = {}) => 
       questionDetector.clear();
       lastDetectedQuestion = null;
       assistantAnalysisGeneration += 1;
+      codingClassificationGeneration += 1;
       if (assistantAutoAnalysis) assistantAutoAnalysis.clear();
       return assistantOverlay.clear();
     case 'clickThrough': return assistantOverlay.setClickThrough(!!payload.enabled);
@@ -1037,6 +1447,29 @@ ipcMain.handle('interview-assistant:control', (_event, action, payload = {}) => 
     case 'previousChunk': return assistantOverlay.previousChunk();
     case 'firstChunk': return assistantOverlay.firstChunk();
     case 'loadPending': return assistantOverlay.loadPending();
+    case 'clearCodingContext': return assistantOverlay.clearCodingContext();
+    case 'endCodingFocus':
+      codingFollowUpGeneration += 1;
+      codingClassificationGeneration += 1;
+      questionDetector.clearActiveCodingTask();
+      return assistantOverlay.endCodingFocus();
+    case 'analyzeCodingFollowUp': {
+      const followUp = assistantOverlay.codingContextSnapshot()?.followUp?.question;
+      return followUp ? await analyzeCodingFollowUp(followUp) : { ok:false, message:'No coding follow-up is waiting.' };
+    }
+    case 'applyCodingChange':
+      return await applyCodingChange();
+    case 'dismissCodingChange':
+      return dismissCodingChange();
+    case 'openPendingCodingTask': {
+      const pending = assistantOverlay.takePendingCodingTask();
+      if (!pending.question) return { ok:false, message:'No new coding task is waiting.' };
+      codingFollowUpGeneration += 1;
+      assistantOverlay.endCodingFocus();
+      questionDetector.activateCodingTask(pending.question);
+      recordDetectedQuestion(pending.question);
+      return await analyzeInterviewQuestion(pending.question, { source:'coding-focus-new-task' });
+    }
     case 'rehome': return assistantOverlay.rehome();
     default: return { ok:false, message:`Unknown interview assistant action: ${String(action || '')}` };
   }
@@ -1291,29 +1724,68 @@ ipcMain.handle('extension:startTranslation', async (_event, options = {}) => {
     commandOverrides.ttsEnabled = false;
   }
   const target = chooseExtensionClient();
+  if (!target) {
+    const message = 'No meeting tab is available for translation.';
+    translationSession.markError(message);
+    return { ok:false, state:'tab-missing', message };
+  }
   sendLog(`Selected meeting tab: ${target.url}`);
-  const cmd = issueExtensionCommand('start', target, commandOverrides);
-  const ack = await waitForExtensionAck(cmd.seq);
+  if (!hasRecentExtensionPoll(target)) {
+    sendLog('The meeting tab is registered, but its content script is not polling desktop commands yet. Waiting for the tab worker to recover...');
+    const pollRecovered = await waitForExtensionPoll(target, 5000);
+    if (!pollRecovered) {
+      const message = 'The meeting tab is connected in the popup, but its command worker is not active. Open the extension popup on this Meet tab and press Connect this meeting tab, or reload the meeting tab once.';
+      sendLog(`[error] ${message}`);
+      translationSession.markError(message);
+      if (subtitleOverlay) { subtitleOverlay.setStatus('error'); subtitleOverlay.show(); }
+      return { ok:false, state:'tab-not-polling', message, meetingUrl:target.url };
+    }
+  }
+
+  let cmd = issueExtensionCommand('start', target, commandOverrides);
+  let ack = await waitForExtensionAck(cmd.seq, 32000);
+  if (!ack && hasRecentExtensionPoll(target, 8000)) {
+    sendLog(`[warn] Start command #${cmd.seq} was not acknowledged. Retrying once with a new command sequence.`);
+    cmd = issueExtensionCommand('start', target, commandOverrides);
+    ack = await waitForExtensionAck(cmd.seq, 32000);
+  }
   if (!ack) {
+    const message = voiceMode
+      ? 'The meeting tab did not confirm microphone/TTS readiness. Translation was not started.'
+      : 'The meeting tab did not confirm audio capture. Subtitles were not started. Reconnect the extension on the active meeting tab and try again.';
+    sendLog(`[error] ${message}`);
+    translationSession.markError(message);
+    if (subtitleOverlay) { subtitleOverlay.setStatus('error'); subtitleOverlay.show(); }
+    const details = {
+      ackMissing:true,
+      micTxEnabled:voiceMode,
+      incomingReady:false,
+      micTxReady:false,
+      sinkReady:false
+    };
     if (voiceMode) {
-      const msg = 'The meeting tab did not confirm microphone/TTS readiness. Voice translation was not marked as running. Reopen the extension popup and check its log for a microphone or CABLE Input error.';
-      sendLog(`[error] ${msg}`);
-      translationSession.markError(msg);
       return {
         ok:false,
         state:'voice-timeout',
-        message:msg,
-        details:{ ackMissing:true, micTxEnabled:true, micTxReady:false, sinkReady:false },
+        message,
+        details,
         meetingUrl:target.url
       };
     }
-    const msg = 'Subtitle command was delivered to the meeting tab, but ACK did not return. Treating it as started because the tab is connected and polling commands.';
-    sendLog(`[warn] ${msg}`);
-    translationSession.transition(SESSION_STATES.LISTENING);
-    if (subtitleOverlay) { subtitleOverlay.setStatus('listening'); subtitleOverlay.show(); }
-    return { ok:true, state:'running-unconfirmed', message:msg, details:{ ackMissing:true, incomingReady:true }, meetingUrl:target.url };
+    return {
+      ok:false,
+      state:'subtitle-timeout',
+      message,
+      details,
+      meetingUrl:target.url
+    };
   }
-  if (!ack.ok) { translationSession.markError(ack.text || 'The browser extension could not start translation.'); return { ok:false, state:'extension-error', message:ack.text || 'The browser extension could not start translation.', details:ack.details || {} }; }
+  if (!ack.ok) {
+    const message = ack.text || 'The browser extension could not start translation.';
+    translationSession.markError(message);
+    if (subtitleOverlay) { subtitleOverlay.setStatus('error'); subtitleOverlay.show(); }
+    return { ok:false, state:'extension-error', message, details:ack.details || {}, meetingUrl:target.url };
+  }
   translationSession.transition(SESSION_STATES.LISTENING);
   if (subtitleOverlay) { subtitleOverlay.setStatus('listening'); subtitleOverlay.show(); }
   return { ok:true, state:'running', message:ack.text || 'Translation is running.', details:ack.details || {}, meetingUrl:target.url };
@@ -1327,18 +1799,20 @@ ipcMain.handle('extension:stopTranslation', async () => {
   if (![SESSION_STATES.IDLE, SESSION_STATES.COMPLETED, SESSION_STATES.STOPPING].includes(translationSession.state)) {
     translationSession.transition(SESSION_STATES.STOPPING);
   }
-  const cmd = issueExtensionCommand('stop');
-  const ack = await waitForExtensionAck(cmd.seq, 5000);
+  const target = extensionClientRegistry.getActive() || chooseExtensionClient();
+  const cmd = issueExtensionCommand('stop', target);
+  const ack = await waitForExtensionAck(cmd.seq, 10000);
+  translationSession.stop();
+  if (subtitleOverlay) subtitleOverlay.setStatus('idle');
   if (!ack) {
-    translationSession.markError('The meeting tab did not confirm stop.');
-    return { ok:false, state:'timeout', message:'The meeting tab did not confirm stop.' };
+    const message = 'Desktop stopped the local session, but the meeting tab did not confirm the pause. Reconnect the tab before the next start.';
+    sendLog(`[warn] ${message}`);
+    return { ok:false, state:'stopped-unconfirmed', message };
   }
-  if (ack.ok) {
-    translationSession.stop();
-    if (subtitleOverlay) subtitleOverlay.setStatus('idle');
-  } else {
-    translationSession.markError(ack.text || 'Could not stop translation.');
-    if (subtitleOverlay) subtitleOverlay.setStatus('error');
+  if (!ack.ok) {
+    const message = ack.text || 'The browser extension could not stop audio capture.';
+    sendLog(`[warn] ${message}`);
+    return { ok:false, state:'extension-error', message };
   }
-  return { ok:ack.ok, state:ack.ok ? 'stopped' : 'extension-error', message:ack.text || (ack.ok ? 'Translation stopped.' : 'Could not stop translation.') };
+  return { ok:true, state:'stopped', message:ack.text || 'Translation stopped.' };
 });

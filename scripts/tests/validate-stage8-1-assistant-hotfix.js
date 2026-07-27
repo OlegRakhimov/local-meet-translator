@@ -11,6 +11,17 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function isVersionAtLeast(actual, minimum) {
+  const actualParts = String(actual || '').split('.').map(Number);
+  const minimumParts = String(minimum || '').split('.').map(Number);
+  if (actualParts.length !== 3 || minimumParts.length !== 3) return false;
+  if (actualParts.some(value => !Number.isInteger(value)) || minimumParts.some(value => !Number.isInteger(value))) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (actualParts[index] !== minimumParts[index]) return actualParts[index] > minimumParts[index];
+  }
+  return true;
+}
+
 const main = read('desktop-app/src/main.js');
 const coordinator = read('desktop-app/src/main/assistant-auto-analysis.js');
 const teleprompter = read('desktop-app/src/main/teleprompter.js');
@@ -27,6 +38,6 @@ assert(teleprompter.includes('loadedPending'), 'Unfreezing must explicitly handl
 assert(overlay.includes('result.loadedPending'), 'Assistant overlay must synchronize after pending answer promotion.');
 assert(renderer.includes('Automatic AI analysis is enabled.'), 'Overlay guidance must reflect enabled automatic analysis.');
 assert(renderer.includes('teleprompter.frozen || teleprompter.pending'), 'Pending block must not show stale state while unfrozen.');
-assert(['1.0.15', '1.0.16', '1.0.17', '1.0.18'].includes(pkg.version), 'Desktop version must be 1.0.15, 1.0.16, 1.0.17 or 1.0.18.');
+assert(isVersionAtLeast(pkg.version, '1.0.15'), 'Desktop version must be 1.0.15 or newer.');
 
 console.log('Stage 8.1 automatic assistant analysis hotfix validation: OK');

@@ -75,7 +75,7 @@
             <h1 data-i18n="homeTitle">Translate, understand and answer with confidence.</h1>
             <p data-i18n="homeDescription">Everything needed during a call is visible here. Detailed configuration stays out of the way.</p>
             <div class="quickLanguageBar">
-              <label><span data-i18n="homeFrom">Speaker</span><input id="homeSourceLang" value="en" placeholder="en" /></label>
+              <label><span data-i18n="homeFrom">Speaker</span><input id="homeSourceLang" list="sourceLanguageModes" value="en-expected" placeholder="auto / en-expected / en" /></label>
               <span class="languageArrow">→</span>
               <label><span data-i18n="homeTo">Subtitles</span><input id="homeTargetLang" value="ru" placeholder="ru" /></label>
               <label><span data-i18n="homeChunk">Chunk</span><input id="homeChunkSeconds" type="number" min="2" max="15" value="3" /></label>
@@ -116,6 +116,7 @@
 <label class="check"><input id="subtitleContentProtection" type="checkbox"/> <span data-i18n="subtitleContentProtection">Protect subtitle window from screen capture</span></label>
 <label class="check"><input id="subtitleAlwaysOnTop" type="checkbox"/> <span data-i18n="subtitleAlwaysOnTop">Always on top</span></label>
 <label class="check"><input id="subtitleClickThrough" type="checkbox"/> <span data-i18n="subtitleClickThrough">Click-through mode</span></label>
+<label class="check"><input id="subtitleMinimalMode" type="checkbox"/> <span data-i18n="subtitleMinimalMode">Minimal text-only subtitle mode</span></label>
 <label class="check"><input id="subtitleShowTranslation" type="checkbox"/> <span data-i18n="subtitleShowTranslation">Show translation</span></label>
 <label class="check"><input id="subtitleShowOriginal" type="checkbox"/> <span data-i18n="subtitleShowOriginal">Show original speech</span></label>
 </div>
@@ -191,9 +192,10 @@
         <div class="screenToolbar modernToolbar"><button id="backFromTranslationControl" class="secondary backButton" type="button" data-i18n="backToMain">← Back</button><div class="screenToolbarTitle"><p class="eyebrow" data-i18n="navTranslation">Translation control</p><h2 data-i18n="translationWorkspaceTitle">Translation workspace</h2><p data-i18n="translationWorkspaceDescription">Incoming subtitles, outgoing translated voice and meeting-tab connection in one focused screen.</p></div><button id="saveTranslationTop" type="button" data-i18n="saveSettings">Save settings</button></div>
         <div class="translationWorkspaceGrid">
           <section class="panel incomingPanel"><div class="sectionTitle"><span class="sectionIcon"><svg><use href="#icon-translate"></use></svg></span><div><h3 data-i18n="incomingTranslationTitle">Incoming speech</h3><p data-i18n="incomingTranslationHint">What the interviewer says and how it appears for you.</p></div></div><div class="grid">
-<label><span data-i18n="incomingSource">Incoming source language</span> <input id="extSourceLang" placeholder="auto / en / pl / ..." value="auto"/></label>
+<label><span data-i18n="incomingSource">Incoming source language</span> <input id="extSourceLang" list="sourceLanguageModes" placeholder="auto / en-expected / en / pl / ..." value="en-expected"/></label>
 <label><span data-i18n="incomingTarget">Incoming target language</span> <input id="extTargetLang" placeholder="en" value="en"/></label>
 </div>
+<p class="hint" data-i18n="englishExpectedHint">Use en-expected for interviews: automatic detection runs first, and suspicious non-English text is retried as strict English.</p>
 <div class="grid">
 <label><span data-i18n="chunk">Incoming chunk seconds</span> <input id="extChunkSeconds" max="15" min="2" step="1" type="number" value="3"/></label>
 <label><span data-i18n="ttsVoice">TTS voice</span> <select id="extTtsVoice"></select></label>
@@ -420,6 +422,7 @@
             <label class="check"><input id="assistantContentProtection" type="checkbox" /> <span data-i18n="assistantContentProtection">Protect assistant window from screen capture</span></label>
             <label class="check"><input id="assistantAlwaysOnTop" type="checkbox" /> <span data-i18n="assistantAlwaysOnTop">Keep assistant window on top</span></label>
             <label class="check"><input id="assistantClickThrough" type="checkbox" /> <span data-i18n="assistantClickThrough">Click-through mode</span></label>
+            <label class="check"><input id="assistantCompactOverlay" type="checkbox" /> <span data-i18n="assistantCompactOverlay">Compact transparent overlay</span></label>
           </div>
           <div class="grid threeColumns">
             <label><span data-i18n="assistantLanguageLevel">Answer English level</span>
@@ -431,7 +434,7 @@
             <label><span data-i18n="assistantFontSize">Assistant font size</span><input id="assistantFontSize" type="number" min="14" max="36" step="1" value="20" /></label>
           </div>
           <div class="grid">
-            <label><span data-i18n="assistantBackgroundOpacity">Window opacity</span><input id="assistantBackgroundOpacity" type="number" min="0.5" max="1" step="0.05" value="0.94" /></label>
+            <label><span data-i18n="assistantBackgroundOpacity">Panel background opacity</span><input id="assistantBackgroundOpacity" type="number" min="0.15" max="1" step="0.05" value="0.94" /></label>
             <label><span data-i18n="assistantHotkey">Show/hide hotkey</span><input id="assistantHotkey" value="CommandOrControl+Shift+A" /></label>
             <label><span data-i18n="assistantMoveHotkey">Move window hotkey</span><input id="assistantMoveHotkey" value="CommandOrControl+Shift+M" /></label>
           </div>
@@ -814,6 +817,15 @@
     </main>
   </div>
   <script src="i18n.js"></script>
+  <datalist id="sourceLanguageModes">
+    <option value="en-expected">English expected — auto + retry</option>
+    <option value="auto">Auto detect</option>
+    <option value="en">English strict</option>
+    <option value="pl">Polish</option>
+    <option value="ru">Russian</option>
+    <option value="de">German</option>
+    <option value="es">Spanish</option>
+  </datalist>
   <script src="renderer.js"></script>
 </body>
 </html>

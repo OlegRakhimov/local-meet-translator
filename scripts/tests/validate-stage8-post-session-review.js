@@ -7,6 +7,17 @@ const assertIncludes = (text, value, label) => {
   if (!text.includes(value)) throw new Error(`${label} is missing: ${value}`);
 };
 
+function isVersionAtLeast(actual, minimum) {
+  const actualParts = String(actual || '').split('.').map(Number);
+  const minimumParts = String(minimum || '').split('.').map(Number);
+  if (actualParts.length !== 3 || minimumParts.length !== 3) return false;
+  if (actualParts.some(value => !Number.isInteger(value)) || minimumParts.some(value => !Number.isInteger(value))) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (actualParts[index] !== minimumParts[index]) return actualParts[index] > minimumParts[index];
+  }
+  return true;
+}
+
 const main = read('desktop-app/src/main.js');
 const preload = read('desktop-app/src/preload.js');
 const renderer = read('desktop-app/src/renderer.js');
@@ -14,7 +25,7 @@ const html = read('desktop-app/src/index.html');
 const store = read('desktop-app/src/main/live-interview-store.js');
 const pkg = JSON.parse(read('desktop-app/package.json'));
 
-if (!['1.0.14', '1.0.15', '1.0.16', '1.0.17', '1.0.18'].includes(pkg.version)) throw new Error(`Expected desktop version 1.0.14, 1.0.15, 1.0.16, 1.0.17 or 1.0.18, got ${pkg.version}`);
+if (!isVersionAtLeast(pkg.version, '1.0.14')) throw new Error(`Expected desktop version 1.0.14 or newer, got ${pkg.version}`);
 assertIncludes(main, "createLiveInterviewStore", 'Main process live interview store');
 for (const channel of ['live-interview:load','live-interview:start','live-interview:end','live-interview:update','live-interview:reset','live-interview:export']) {
   assertIncludes(main, channel, 'Main process IPC');

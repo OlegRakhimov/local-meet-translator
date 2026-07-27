@@ -7,9 +7,11 @@ import local.meettranslator.http.HttpSupport;
 import local.meettranslator.http.RequestRegistry;
 import local.meettranslator.model.TranscribeAndTranslateRequest;
 import local.meettranslator.model.InterviewSuggestionRequest;
+import local.meettranslator.model.InterviewUtteranceClassificationRequest;
 import local.meettranslator.model.TranslateTextRequest;
 import local.meettranslator.model.TtsRequest;
 import local.meettranslator.openai.AiClient;
+import local.meettranslator.openai.EnglishExpectedRecognition;
 import local.meettranslator.openai.OpenAiClient;
 import local.meettranslator.voice.VoiceConversionClient;
 
@@ -124,16 +126,29 @@ public final class BridgeServer implements AutoCloseable {
 
         server.createContext("/transcribe-and-translate", exchange -> HttpSupport.handle(exchange, "POST", config.authToken(), requestRegistry, (ex, context) -> {
             TranscribeAndTranslateRequest request = TranscribeAndTranslateRequest.from(HttpSupport.readJsonBody(ex, 12_000_000));
+            boolean englishExpected = EnglishExpectedRecognition.isExpectedMode(request.sourceLang());
+            boolean transcriptionRetried = false;
             String transcript;
             try {
-                transcript = aiClient.transcribe(context, request.audio(), request.audioMime(), request.sourceLang());
+                String firstPassLanguage = englishExpected ? "auto" : request.sourceLang();
+                transcript = aiClient.transcribe(context, request.audio(), request.audioMime(), firstPassLanguage);
+                if (englishExpected && EnglishExpectedRecognition.shouldRetry(transcript)) {
+                    transcriptionRetried = true;
+                    try {
+                        String strictEnglish = aiClient.transcribe(context, request.audio(), request.audioMime(), EnglishExpectedRecognition.RETRY_MODE);
+                        transcript = EnglishExpectedRecognition.chooseBetterCandidate(transcript, strictEnglish);
+                    } catch (IOException retryFailure) {
+                        if (transcript == null || transcript.isBlank()) throw retryFailure;
+                    }
+                }
             } catch (IOException cause) {
                 throw HttpSupport.upstream("openai_transcription_failed", cause);
             }
             String translation = "";
+            String translationSourceLanguage = EnglishExpectedRecognition.translationSourceLanguage(request.sourceLang());
             if (transcript != null && !transcript.isBlank()) {
                 try {
-                    translation = aiClient.translateText(context, request.sourceLang(), request.targetLang(), transcript);
+                    translation = aiClient.translateText(context, translationSourceLanguage, request.targetLang(), transcript);
                 } catch (IOException cause) {
                     throw HttpSupport.upstream("openai_translation_failed", cause);
                 }
@@ -141,6 +156,9 @@ public final class BridgeServer implements AutoCloseable {
             HttpSupport.writeJson(ex, 200, HttpSupport.MAPPER.createObjectNode()
                     .put("audioMime", request.audioMime())
                     .put("sourceLang", request.sourceLang())
+                    .put("effectiveSourceLang", translationSourceLanguage)
+                    .put("recognitionMode", englishExpected ? EnglishExpectedRecognition.MODE : request.sourceLang())
+                    .put("transcriptionRetried", transcriptionRetried)
                     .put("targetLang", request.targetLang())
                     .put("transcript", Objects.requireNonNullElse(transcript, ""))
                     .put("translation", translation), context.requestId());
@@ -157,6 +175,19 @@ public final class BridgeServer implements AutoCloseable {
             HttpSupport.writeJson(ex, 200, HttpSupport.MAPPER.createObjectNode()
                     .put("ok", true)
                     .set("suggestion", suggestion), context.requestId());
+        }));
+
+        server.createContext("/interview/classify-utterance", exchange -> HttpSupport.handle(exchange, "POST", config.authToken(), requestRegistry, (ex, context) -> {
+            InterviewUtteranceClassificationRequest request = InterviewUtteranceClassificationRequest.from(HttpSupport.readJsonBody(ex, 1_500_000));
+            com.fasterxml.jackson.databind.JsonNode classification;
+            try {
+                classification = aiClient.classifyInterviewUtterance(context, request);
+            } catch (IOException cause) {
+                throw HttpSupport.upstream("openai_interview_utterance_classification_failed", cause);
+            }
+            HttpSupport.writeJson(ex, 200, HttpSupport.MAPPER.createObjectNode()
+                    .put("ok", true)
+                    .set("classification", classification), context.requestId());
         }));
 
         server.createContext("/tts", exchange -> HttpSupport.handle(exchange, "POST", config.authToken(), requestRegistry, (ex, context) -> {

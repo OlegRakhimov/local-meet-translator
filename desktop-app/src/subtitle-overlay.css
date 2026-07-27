@@ -89,3 +89,54 @@ body { padding: 8px; }
 }
 body.clickThrough .controls { visibility: hidden; }
 body.clickThrough .titlebar { opacity: .72; }
+
+/* Minimal strip mode: only the subtitle text remains visible over the call. */
+body.minimalMode { padding: 0; }
+body.minimalMode .overlay {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+body.minimalMode .footer { display: none; }
+body.minimalMode .titlebar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 3;
+  min-height: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+}
+body.minimalMode:not(.clickThrough) .titlebar:hover { opacity: .28; }
+body.minimalMode .titlebar .controls,
+body.minimalMode .titlebar .statusDot,
+body.minimalMode .titlebar strong,
+body.minimalMode .titlebar .statusText { display: none; }
+body.minimalMode .dragArea { width: 100%; height: 18px; }
+body.minimalMode .lines {
+  padding: 18px 18px 12px;
+  gap: 4px;
+}
+body.minimalMode .subtitleLine {
+  border-left: 0;
+  padding: 0;
+}
+body.minimalMode .translation,
+body.minimalMode .original {
+  text-shadow:
+    0 2px 3px rgba(0,0,0,.98),
+    0 0 8px rgba(0,0,0,.92),
+    0 0 18px rgba(0,0,0,.8);
+}
+body.minimalMode .translation {
+  font-weight: 760;
+}
+body.minimalMode .original {
+  color: rgba(236, 242, 250, .82);
+}
+body.minimalMode .placeholder { display: none; }

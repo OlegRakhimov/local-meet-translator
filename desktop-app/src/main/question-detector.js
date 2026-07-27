@@ -1,6 +1,6 @@
 const MAX_QUESTION_LENGTH = 2400;
 const DEFAULT_DEDUPE_WINDOW_MS = 45_000;
-const DEFAULT_CONTEXT_WINDOW_MS = 90_000;
+const DEFAULT_CONTEXT_WINDOW_MS = 30 * 60_000;
 
 const QUESTION_OPENERS = [
   /^(what|why|how|when|where|who|whom|whose|which)\b/i,
@@ -24,6 +24,7 @@ const CODING_CONTINUATION = /^(use|using|without|with|and then|then|also|it shou
 const RELATIVE_CODING_CONTINUATION = /^(that|which|where|который|которая|которые|где|który|która|które|gdzie)\b/i;
 const CODING_CONSTRAINT_TERMS = /\b(return|accept|take|receive|handle|ignore|print|throw|null|empty|duplicate|unique|sorted|complexity|memory|time|space|input|output|method|function|array|list|map|set|вернуть|принимать|обработать|игнорировать|вывести|пустой|дубликат|уникальный|отсортированный|сложность|память|метод|функция|массив|список)\b/i;
 const SHORT_SOCIAL_QUESTION = /^(right|okay|ok|correct|really|seriously|isn't it|don't you think|you know|да|правда|верно|понятно|окей|серьезно)[?!. ]*$/i;
+const NEW_CODING_TASK_OPENERS = /^(now|next|another|let's move|let us move|moving on|new task|next task|теперь|следующая|другая задача|перейд[её]м|następnie|kolejne|nowe zadanie)\b/i;
 
 function cleanQuestionText(value) {
   return String(value ?? '')
@@ -83,6 +84,15 @@ function looksLikeCodingTask(value) {
   return /\b(write|implement|create|code|solve|find|reverse|sort|debug|fix|refactor)\b/i.test(text) && CODING_TERMS.test(text);
 }
 
+function looksLikeNewCodingTask(value) {
+  const text = cleanQuestionText(value);
+  if (!text || !NEW_CODING_TASK_OPENERS.test(text)) return false;
+  const withoutTransition = cleanQuestionText(
+    text.replace(NEW_CODING_TASK_OPENERS, '').replace(/^[,.:;\-\s]+/, '')
+  );
+  return looksLikeCodingTask(withoutTransition) || CODING_TERMS.test(withoutTransition);
+}
+
 function looksLikeQuestion(value) {
   const text = cleanQuestionText(value);
   if (text.length < 7 || SHORT_SOCIAL_QUESTION.test(text)) return false;
@@ -96,23 +106,59 @@ function looksLikeQuestion(value) {
 function classifyInterviewUtterance(value, context = {}) {
   const text = cleanQuestionText(value);
   if (!text) return { kind: 'empty', actionable: false, text };
+  const activeCodingTask = cleanQuestionText(context.activeCodingTask);
+  const activeAt = Number(context.activeAt || 0);
+  const now = Number(context.now || Date.now());
+  const hasActiveCodingTask = !!(activeCodingTask && now - activeAt <= DEFAULT_CONTEXT_WINDOW_MS);
+
+  if (hasActiveCodingTask) {
+    if (looksLikeNewCodingTask(text)) {
+      return {
+        kind: 'new-coding-task',
+        actionable: true,
+        text,
+        utterance: text,
+        codingLanguage: detectCodingLanguage(text),
+        baseTaskText: activeCodingTask
+      };
+    }
+    if (looksLikeCodingContinuation(text)) {
+      const mergedText = cleanQuestionText(`${activeCodingTask} Additional constraint: ${text}`);
+      return {
+        kind: 'coding-context',
+        actionable: true,
+        text: mergedText,
+        utterance: text,
+        codingLanguage: detectCodingLanguage(text) || detectCodingLanguage(activeCodingTask),
+        baseTaskText: activeCodingTask
+      };
+    }
+    if (looksLikeQuestion(text)) {
+      return {
+        kind: 'coding-follow-up',
+        actionable: true,
+        text,
+        utterance: text,
+        codingLanguage: detectCodingLanguage(activeCodingTask),
+        baseTaskText: activeCodingTask
+      };
+    }
+    if (looksLikeCodingTask(text)) {
+      return {
+        kind: 'new-coding-task',
+        actionable: true,
+        text,
+        utterance: text,
+        codingLanguage: detectCodingLanguage(text),
+        baseTaskText: activeCodingTask
+      };
+    }
+  }
+
   if (looksLikeCodingTask(text)) {
     return { kind: 'coding-task', actionable: true, text, codingLanguage: detectCodingLanguage(text) };
   }
   if (looksLikeQuestion(text)) return { kind: 'question', actionable: true, text, codingLanguage: '' };
-  const activeCodingTask = cleanQuestionText(context.activeCodingTask);
-  const activeAt = Number(context.activeAt || 0);
-  const now = Number(context.now || Date.now());
-  if (activeCodingTask && now - activeAt <= DEFAULT_CONTEXT_WINDOW_MS && looksLikeCodingContinuation(text)) {
-    const mergedText = cleanQuestionText(`${activeCodingTask} Additional constraint: ${text}`);
-    return {
-      kind: 'coding-context',
-      actionable: true,
-      text: mergedText,
-      utterance: text,
-      codingLanguage: detectCodingLanguage(text) || detectCodingLanguage(activeCodingTask)
-    };
-  }
   return { kind: 'remark', actionable: false, text };
 }
 
@@ -155,17 +201,23 @@ function createQuestionDetector({
       text,
       utterance: classification.utterance || rawText,
       normalized,
-      kind: classification.kind === 'question' ? 'question' : 'coding-task',
+      kind: ['question', 'coding-follow-up'].includes(classification.kind) ? 'question' : 'coding-task',
       codingLanguage: classification.codingLanguage || '',
       detectedAt: now,
       eventId: cleanQuestionText(subtitleEvent.id).slice(0, 128),
       clientId: cleanQuestionText(subtitleEvent.clientId).slice(0, 256),
       tabId: cleanQuestionText(subtitleEvent.tabId).slice(0, 128),
-      url: cleanQuestionText(subtitleEvent.url).slice(0, 2048)
+      url: cleanQuestionText(subtitleEvent.url).slice(0, 2048),
+      relation: classification.kind,
+      baseTaskText: cleanQuestionText(classification.baseTaskText).slice(0, MAX_QUESTION_LENGTH)
     };
     history.push(question);
-    if (question.kind === 'coding-task') activeCodingTask = { ...question };
-    else activeCodingTask = null;
+    if (classification.kind === 'coding-task') activeCodingTask = { ...question };
+    else if (classification.kind === 'coding-context' && activeCodingTask) {
+      activeCodingTask = { ...activeCodingTask, text: classification.text, detectedAt: now };
+    } else if (!activeCodingTask && question.kind !== 'coding-task') {
+      activeCodingTask = null;
+    }
     prune(now);
     return { accepted: true, reason: classification.kind, question, classification };
   }
@@ -182,7 +234,18 @@ function createQuestionDetector({
     activeCodingTask = null;
   }
 
-  return { consume, snapshot, clear };
+  function clearActiveCodingTask() {
+    activeCodingTask = null;
+    return snapshot();
+  }
+
+  function activateCodingTask(question, now = Date.now()) {
+    const text = cleanQuestionText(question?.text || question);
+    activeCodingTask = text ? { ...(question && typeof question === 'object' ? question : {}), text, kind: 'coding-task', detectedAt: now } : null;
+    return snapshot();
+  }
+
+  return { consume, snapshot, clear, clearActiveCodingTask, activateCodingTask };
 }
 
 module.exports = {
@@ -195,7 +258,9 @@ module.exports = {
   tokenSimilarity,
   detectCodingLanguage,
   looksLikeCodingContinuation,
+  NEW_CODING_TASK_OPENERS,
   looksLikeCodingTask,
+  looksLikeNewCodingTask,
   looksLikeQuestion,
   classifyInterviewUtterance,
   createQuestionDetector

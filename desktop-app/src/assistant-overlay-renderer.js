@@ -1,6 +1,69 @@
 const $ = id => document.getElementById(id);
 let latestState = {};
 
+const overlayLanguage = String(navigator.language || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+const codingUi = overlayLanguage === 'ru'
+  ? {
+      task: 'ЗАДАЧА',
+      remark: 'КОММЕНТАРИЙ',
+      followUp: 'ВОПРОС ПО РЕШЕНИЮ',
+      recommendation: 'РЕКОМЕНДАЦИЯ',
+      request: 'ПРОСЬБА',
+      constraint: 'ОБЯЗАТЕЛЬНОЕ УСЛОВИЕ',
+      correction: 'ИСПРАВЛЕНИЕ',
+      newInput: 'НОВАЯ ВВОДНАЯ',
+      newTask: 'НОВАЯ ЗАДАЧА',
+      ambiguous: 'НУЖНО УТОЧНЕНИЕ',
+      analyzingType: 'АНАЛИЗИРУЮ',
+      clearFeed: 'Очистить реплики',
+      endFocus: 'Завершить задачу',
+      analyzeFollowUp: 'Подготовить ответ',
+      analyzing: 'Анализирую…',
+      followUpReady: 'Короткий ответ готов.',
+      followUpWaiting: 'Новый вопрос готов к анализу. Решение задачи остаётся закреплённым.',
+      followUpAnalyzing: 'Готовлю короткий ответ, не заменяя решение задачи…',
+      pendingTask: 'Обнаружена новая задача',
+      openTask: 'Открыть новую задачу',
+      activeInputs: 'Учитываемые вводные',
+      pendingChange: 'Как обработать новую реплику',
+      applyChange: 'Применить к решению',
+      applyingChange: 'Обновляю решение…',
+      keepCurrent: 'Оставить текущее решение',
+      applied: 'Применено',
+      dismissed: 'Оставлено без изменений',
+      classifierReason: 'Почему так распознано'
+    }
+  : {
+      task: 'TASK',
+      remark: 'COMMENT',
+      followUp: 'QUESTION ABOUT SOLUTION',
+      recommendation: 'RECOMMENDATION',
+      request: 'REQUEST',
+      constraint: 'MANDATORY CONDITION',
+      correction: 'CORRECTION',
+      newInput: 'NEW INPUT',
+      newTask: 'NEW TASK',
+      ambiguous: 'NEEDS CONFIRMATION',
+      analyzingType: 'ANALYZING',
+      clearFeed: 'Clear utterances',
+      endFocus: 'Finish task',
+      analyzeFollowUp: 'Prepare answer',
+      analyzing: 'Analyzing…',
+      followUpReady: 'Short answer ready.',
+      followUpWaiting: 'A new question is ready for analysis. The coding solution remains pinned.',
+      followUpAnalyzing: 'Preparing a short answer without replacing the coding solution…',
+      pendingTask: 'New coding task detected',
+      openTask: 'Open new task',
+      activeInputs: 'Active interviewer inputs',
+      pendingChange: 'How to handle the new utterance',
+      applyChange: 'Apply to solution',
+      applyingChange: 'Updating solution…',
+      keepCurrent: 'Keep current solution',
+      applied: 'Applied',
+      dismissed: 'Kept without changes',
+      classifierReason: 'Why it was classified this way'
+    };
+
 function text(id, value) { const el = $(id); if (el) el.textContent = value || ''; }
 function renderList(id, items) {
   const el = $(id); if (!el) return;
@@ -20,14 +83,143 @@ function renderKeywords(items) {
     el.appendChild(span);
   }
 }
+
+function renderCodingContext(state = {}) {
+  const focus = state.codingFocus || {};
+  const active = !!focus.active;
+  $('codingFocusPanel').hidden = !active;
+  if (!active) return;
+
+  const feed = $('liveContextFeed');
+  feed.innerHTML = '';
+  const entries = Array.isArray(focus.liveContext) ? focus.liveContext : [];
+  $('liveContextEmpty').hidden = entries.length > 0;
+  const kindLabels = {
+    task: codingUi.task,
+    remark: codingUi.remark,
+    'follow-up': codingUi.followUp,
+    recommendation: codingUi.recommendation,
+    request: codingUi.request,
+    constraint: codingUi.constraint,
+    correction: codingUi.correction,
+    'new-input': codingUi.newInput,
+    'new-task': codingUi.newTask,
+    ambiguous: codingUi.ambiguous,
+    analyzing: codingUi.analyzingType
+  };
+  for (const entry of entries) {
+    const item = document.createElement('div');
+    item.className = `liveContextItem ${entry.status || ''}`;
+    const meta = document.createElement('div');
+    meta.className = 'liveContextMeta';
+    const badge = document.createElement('span');
+    badge.className = `contextKind ${entry.kind || 'remark'}`;
+    badge.textContent = kindLabels[entry.kind] || String(entry.kind || 'remark').toUpperCase();
+    const time = document.createElement('span');
+    time.className = 'liveContextTime';
+    const date = new Date(Number(entry.ts || Date.now()));
+    time.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    meta.append(badge, time);
+    if (entry.status === 'applied' || entry.status === 'dismissed') {
+      const stateBadge = document.createElement('span');
+      stateBadge.className = `contextResolution ${entry.status}`;
+      stateBadge.textContent = entry.status === 'applied' ? codingUi.applied : codingUi.dismissed;
+      meta.appendChild(stateBadge);
+    }
+    const content = document.createElement('div');
+    content.className = 'liveContextContent';
+    const body = document.createElement('p');
+    body.className = 'liveContextText';
+    body.textContent = entry.text || entry.translation || '';
+    content.appendChild(body);
+    const original = String(entry.text || '').trim().toLocaleLowerCase();
+    const translated = String(entry.translation || '').trim();
+    if (translated && translated.toLocaleLowerCase() !== original) {
+      const translation = document.createElement('p');
+      translation.className = 'liveContextTranslation';
+      translation.textContent = translated;
+      content.appendChild(translation);
+    }
+    if (entry.reason) {
+      const reason = document.createElement('p');
+      reason.className = 'liveContextReason';
+      reason.textContent = `${codingUi.classifierReason}: ${entry.reason}`;
+      content.appendChild(reason);
+    }
+    item.append(meta, content);
+    feed.appendChild(item);
+  }
+  feed.scrollTop = feed.scrollHeight;
+
+  const activeInputs = Array.isArray(focus.activeInputs) ? focus.activeInputs : [];
+  $('activeCodingInputsBlock').hidden = activeInputs.length === 0;
+  text('activeCodingInputsLabel', codingUi.activeInputs);
+  const inputHost = $('activeCodingInputs');
+  inputHost.innerHTML = '';
+  for (const item of activeInputs) {
+    const chip = document.createElement('span');
+    chip.className = 'activeCodingInput';
+    chip.textContent = item.normalizedInput || item.sourceText || '';
+    inputHost.appendChild(chip);
+  }
+
+  const pendingChange = focus.pendingChange || null;
+  $('pendingCodingChangeBlock').hidden = !pendingChange?.classification;
+  if (pendingChange?.classification) {
+    const type = pendingChange.classification.type || 'ambiguous';
+    text('pendingCodingChangeLabel', codingUi.pendingChange);
+    text('pendingCodingChangeType', kindLabels[type] || String(type).toUpperCase());
+    text('pendingCodingChangeText', pendingChange.utterance?.text || pendingChange.classification.normalizedInput || '');
+    text('pendingCodingChangeReason', pendingChange.classification.reason || '');
+    const error = pendingChange.error || '';
+    $('pendingCodingChangeError').hidden = !error;
+    text('pendingCodingChangeError', error);
+    const applying = pendingChange.status === 'applying';
+    $('applyCodingChange').disabled = applying;
+    $('dismissCodingChange').disabled = applying;
+    text('applyCodingChange', applying ? codingUi.applyingChange : codingUi.applyChange);
+    text('dismissCodingChange', codingUi.keepCurrent);
+  }
+
+  const followUp = focus.followUp || null;
+  $('codingFollowUpBlock').hidden = !followUp?.question?.text;
+  text('codingFollowUpQuestion', followUp?.question?.text || '');
+  const followUpStatuses = {
+    question: codingUi.followUpWaiting,
+    analyzing: codingUi.followUpAnalyzing,
+    ready: codingUi.followUpReady,
+    error: followUp?.error || 'Follow-up analysis failed.'
+  };
+  text('codingFollowUpStatus', followUpStatuses[followUp?.status] || '');
+  $('codingFollowUpStatus').className = `codingFollowUpStatus ${followUp?.status === 'error' ? 'error' : ''}`;
+  $('analyzeCodingFollowUp').disabled = followUp?.status === 'analyzing';
+  $('analyzeCodingFollowUp').textContent = followUp?.status === 'analyzing' ? codingUi.analyzing : codingUi.analyzeFollowUp;
+  const followSuggestion = followUp?.suggestion || null;
+  $('codingFollowUpAnswerBlock').hidden = !followSuggestion;
+  text('codingFollowUpFirstSentence', followSuggestion?.firstSentence || '');
+  text('codingFollowUpAnswer', followSuggestion?.answer || '');
+
+  $('pendingCodingTaskBlock').hidden = !focus.pendingTask?.text;
+  text('pendingCodingTaskText', focus.pendingTask?.text || '');
+}
+
 function render(state = {}) {
   latestState = state || {};
   const root = $('assistantRoot');
-  root.className = `assistantRoot ${state.status || 'idle'}${state.moveMode ? ' moveMode' : ''}`;
+  const compactOverlay = state.settings?.compactOverlay !== false;
+  root.className = `assistantRoot ${state.status || 'idle'}${state.moveMode ? ' moveMode' : ''}${compactOverlay ? ' compactOverlay' : ''}`;
   root.style.setProperty('--assistant-font-size', `${state.settings?.fontSize || 20}px`);
+  const configuredOpacity = Number(state.settings?.backgroundOpacity || 0.94);
+  const panelOpacity = compactOverlay ? Math.min(configuredOpacity, 0.56) : configuredOpacity;
+  root.style.setProperty('--assistant-panel-opacity', String(Math.max(0.15, Math.min(1, panelOpacity))));
+  text('clearCodingContext', codingUi.clearFeed);
+  text('endCodingFocus', codingUi.endFocus);
+  text('pendingCodingTaskLabel', codingUi.pendingTask);
+  text('openPendingCodingTask', codingUi.openTask);
   const questionKind = state.question?.kind || '';
   text('questionLabel', questionKind === 'coding-task' ? 'Coding task' : 'Question');
   text('questionText', state.question?.text || 'Waiting for an interview question or coding task…');
+  renderCodingContext(state);
 
   const teleprompter = state.teleprompter || {};
   const current = teleprompter.current || null;
@@ -108,3 +300,10 @@ $('previousChunk').onclick = () => window.lmtAssistantOverlay.control('previousC
 $('nextChunk').onclick = () => window.lmtAssistantOverlay.control('nextChunk');
 $('freezeTeleprompter').onclick = () => window.lmtAssistantOverlay.control('freezeTeleprompter', { enabled: !(latestState.teleprompter?.frozen) });
 $('loadPendingAnswer').onclick = () => window.lmtAssistantOverlay.control('loadPending');
+
+$('clearCodingContext').onclick = () => window.lmtAssistantOverlay.control('clearCodingContext');
+$('endCodingFocus').onclick = () => window.lmtAssistantOverlay.control('endCodingFocus');
+$('analyzeCodingFollowUp').onclick = () => window.lmtAssistantOverlay.control('analyzeCodingFollowUp');
+$('openPendingCodingTask').onclick = () => window.lmtAssistantOverlay.control('openPendingCodingTask');
+$('applyCodingChange').onclick = () => window.lmtAssistantOverlay.control('applyCodingChange');
+$('dismissCodingChange').onclick = () => window.lmtAssistantOverlay.control('dismissCodingChange');

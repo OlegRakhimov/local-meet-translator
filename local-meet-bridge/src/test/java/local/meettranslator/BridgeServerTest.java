@@ -8,6 +8,7 @@ import local.meettranslator.http.RequestContext;
 import local.meettranslator.http.RequestRegistry;
 import local.meettranslator.openai.AiClient;
 import local.meettranslator.model.InterviewSuggestionRequest;
+import local.meettranslator.model.InterviewUtteranceClassificationRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -115,6 +116,30 @@ class BridgeServerTest {
     }
 
     @Test
+    void classifiesContextualCodingUtteranceWithTypedRequest() throws Exception {
+        String body = """
+                {
+                  "utterance":"Maybe use a different lookup strategy.",
+                  "originalTask":"Write Two Sum in Java.",
+                  "codingLanguage":"java",
+                  "currentSolution":{"approachSummary":"Nested loops","code":"class Main {}"},
+                  "activeInputs":[],
+                  "recentUtterances":[]
+                }
+                """;
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/interview/classify-utterance"))
+                .header("X-Auth-Token", "test-token")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+        JsonNode json = MAPPER.readTree(response.body());
+        assertEquals("recommendation", json.path("classification").path("type").asText());
+        assertEquals("offer-change", json.path("classification").path("action").asText());
+    }
+
+    @Test
     void rejectsMalformedJsonWithoutStackTrace() throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/translate-text"))
                 .header("X-Auth-Token", "test-token")
@@ -173,6 +198,24 @@ class BridgeServerTest {
             suggestion.set("edgeCases", MAPPER.createArrayNode());
             suggestion.set("speakingNotes", MAPPER.createArrayNode());
             return suggestion;
+        }
+
+        @Override
+        public JsonNode classifyInterviewUtterance(RequestContext context, InterviewUtteranceClassificationRequest request) {
+            ObjectNode classification = MAPPER.createObjectNode();
+            classification.put("type", "recommendation");
+            classification.put("target", "algorithm");
+            classification.put("action", "offer-change");
+            classification.put("normalizedInput", "Consider a different lookup strategy");
+            classification.put("changesCurrentSolution", true);
+            classification.put("confidence", "high");
+            classification.put("reason", "Optional suggestion");
+            classification.put("inputOperation", "none");
+            classification.set("affectedInputIds", MAPPER.createArrayNode());
+            classification.put("mergeWithPrevious", false);
+            classification.put("combinedUtterance", "");
+            classification.set("verificationCriteria", MAPPER.createArrayNode().add("Avoid nested scanning"));
+            return classification;
         }
 
         @Override

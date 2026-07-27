@@ -30,7 +30,7 @@ let state = {
   visible: true,
   paused: false,
   status: 'idle',
-  settings: { showOriginal: true, showTranslation: true, fontSize: 28, backgroundOpacity: .82, maxLines: 3, clickThrough: false },
+  settings: { showOriginal: true, showTranslation: true, fontSize: 28, backgroundOpacity: .82, maxLines: 3, clickThrough: false, minimalMode: true },
   protection: { supported: false, applied: false },
   history: []
 };
@@ -52,6 +52,7 @@ function renderState() {
   document.documentElement.style.setProperty('--subtitle-font-size', `${Number(settings.fontSize || 28)}px`);
   document.documentElement.style.setProperty('--subtitle-background-opacity', String(Number(settings.backgroundOpacity || .82)));
   document.body.classList.toggle('clickThrough', !!settings.clickThrough);
+  document.body.classList.toggle('minimalMode', settings.minimalMode !== false);
   elements.titleText.textContent = text.title;
   elements.statusText.textContent = statusLabel(state.paused ? 'paused' : state.status);
   elements.statusDot.className = `statusDot ${state.paused ? 'paused' : (state.status || 'idle')}`;
@@ -110,13 +111,25 @@ function applySnapshot(next) {
 
 window.lmtSubtitle.onState(applySnapshot);
 window.lmtSubtitle.onEvent((item) => {
-  if (item && item.replaceEventId) {
-    const index = history.findIndex(existing => existing && existing.id === item.replaceEventId);
-    if (index >= 0) history.splice(index, 1, item);
+  if (!item) return;
+
+  // The first event can arrive both inside the initial state snapshot and through
+  // the live event channel while the transparent window is still loading.
+  // Upsert by the stable event id so the same phrase is never rendered twice.
+  const sameIdIndex = item.id
+    ? history.findIndex(existing => existing && existing.id === item.id)
+    : -1;
+
+  if (sameIdIndex >= 0) {
+    history.splice(sameIdIndex, 1, item);
+  } else if (item.replaceEventId) {
+    const replaceIndex = history.findIndex(existing => existing && existing.id === item.replaceEventId);
+    if (replaceIndex >= 0) history.splice(replaceIndex, 1, item);
     else history.push(item);
   } else {
     history.push(item);
   }
+
   if (history.length > 50) history = history.slice(-50);
   renderHistory();
 });

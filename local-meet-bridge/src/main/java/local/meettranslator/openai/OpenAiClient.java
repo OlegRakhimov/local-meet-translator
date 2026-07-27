@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import local.meettranslator.config.BridgeConfig;
 import local.meettranslator.http.RequestContext;
 import local.meettranslator.model.InterviewSuggestionRequest;
+import local.meettranslator.model.InterviewUtteranceClassificationRequest;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -110,6 +111,124 @@ public final class OpenAiClient implements AiClient {
             throw new IOException("OpenAI interview guidance returned invalid structured JSON", cause);
         }
         return validateInterviewSuggestion(suggestion);
+    }
+
+    @Override
+    public JsonNode classifyInterviewUtterance(RequestContext context, InterviewUtteranceClassificationRequest request) throws IOException {
+        var body = MAPPER.createObjectNode()
+                .put("model", config.textModel())
+                .put("instructions", "Classify one interviewer utterance in the context of an active coding task. Judge communicative intent from wording and context, not from technology keywords. The same phrase can be a recommendation, direct request, hard constraint, correction, follow-up question, new input, or new task. Return no prose outside the required JSON schema.")
+                .put("input", buildUtteranceClassificationPrompt(request))
+                .put("store", false)
+                .put("temperature", 0);
+        body.set("text", MAPPER.createObjectNode().set("format", MAPPER.createObjectNode()
+                .put("type", "json_schema")
+                .put("name", "interview_utterance_classification")
+                .put("strict", true)
+                .set("schema", buildUtteranceClassificationSchema())));
+        HttpRequest httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create(config.baseUrl() + "/v1/responses"))
+                .timeout(Duration.ofSeconds(60))
+                .header("Authorization", "Bearer " + config.apiKey())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(MAPPER.writeValueAsBytes(body)))
+                .build();
+        HttpResponse<byte[]> response = context.await(http.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray()));
+        ensureSuccess("OpenAI utterance classification", response);
+        String output = extractOutputText(MAPPER.readTree(response.body()));
+        if (output.isBlank()) throw new IOException("OpenAI utterance classification returned no output text");
+        JsonNode classification;
+        try {
+            classification = MAPPER.readTree(output);
+        } catch (Exception cause) {
+            throw new IOException("OpenAI utterance classification returned invalid structured JSON", cause);
+        }
+        return validateUtteranceClassification(classification);
+    }
+
+    private static String buildUtteranceClassificationPrompt(InterviewUtteranceClassificationRequest request) throws IOException {
+        var context = MAPPER.createObjectNode();
+        context.put("currentUtterance", request.utterance());
+        context.put("originalCodingTask", request.originalTask());
+        context.put("codingLanguage", request.codingLanguage());
+        context.set("currentSolution", request.currentSolution());
+        context.set("activeInterviewerInputs", request.activeInputs());
+        context.set("recentUtterances", request.recentUtterances());
+
+        String instructions = """
+                Classify the current interviewer utterance before any code is changed.
+                Use the original task, current solution, active inputs, and recent utterances.
+
+                Types and actions:
+                - remark: social or non-actionable comment; ignore.
+                - follow-up: asks about the current solution; answer separately and preserve code.
+                - recommendation: optional suggestion; offer change, never auto-apply.
+                - request: direct polite or imperative request to change the solution; apply change.
+                - constraint: mandatory rule, prohibition, complexity/memory/input/output requirement; apply change.
+                - correction: replaces or removes an earlier input; revise inputs.
+                - new-input: new factual assumption or edge case; decide whether it changes the solution.
+                - new-task: separate coding task; queue it without replacing the current task.
+                - ambiguous: meaning or scope is uncertain; ask for confirmation.
+
+                Important examples:
+                - 'Why did you not use a HashMap?' is usually follow-up.
+                - 'Maybe use a HashMap' is recommendation.
+                - 'Could you use a HashMap?' is request.
+                - 'You must use a HashMap' is constraint.
+                - 'Do not use a HashMap' is constraint/prohibition.
+                - 'Actually, HashMap is no longer allowed' is correction.
+                These examples illustrate intent only; classify any technology or requirement the same way.
+
+                If the current utterance completes a recent fragment, set mergeWithPrevious=true and put the full meaning in combinedUtterance.
+                For corrections, affectedInputIds must contain exact ids from activeInterviewerInputs when identifiable.
+                verificationCriteria should state semantic checks for a revised solution, not simple keyword checks.
+                """;
+
+        return instructions + "\nContext JSON:\n" + MAPPER.writeValueAsString(context);
+    }
+
+    private static JsonNode enumSchema(String... values) {
+        var schema = MAPPER.createObjectNode().put("type", "string");
+        var array = MAPPER.createArrayNode();
+        for (String value : values) array.add(value);
+        schema.set("enum", array);
+        return schema;
+    }
+
+    private static JsonNode buildUtteranceClassificationSchema() {
+        var properties = MAPPER.createObjectNode();
+        properties.set("type", enumSchema("remark", "follow-up", "recommendation", "request", "constraint", "correction", "new-input", "new-task", "ambiguous"));
+        properties.set("target", enumSchema("algorithm", "data-structure", "complexity", "memory", "input", "output", "edge-case", "language", "api", "implementation", "explanation", "other"));
+        properties.set("action", enumSchema("ignore", "answer-separately", "offer-change", "apply-change", "revise-inputs", "queue-new-task", "ask-confirmation"));
+        properties.set("normalizedInput", MAPPER.createObjectNode().put("type", "string"));
+        properties.set("changesCurrentSolution", MAPPER.createObjectNode().put("type", "boolean"));
+        properties.set("confidence", enumSchema("high", "medium", "low"));
+        properties.set("reason", MAPPER.createObjectNode().put("type", "string"));
+        properties.set("inputOperation", enumSchema("none", "add", "replace", "remove"));
+        properties.set("affectedInputIds", stringArraySchema(8));
+        properties.set("mergeWithPrevious", MAPPER.createObjectNode().put("type", "boolean"));
+        properties.set("combinedUtterance", MAPPER.createObjectNode().put("type", "string"));
+        properties.set("verificationCriteria", stringArraySchema(8));
+        var root = MAPPER.createObjectNode().put("type", "object").put("additionalProperties", false);
+        root.set("properties", properties);
+        root.set("required", MAPPER.createArrayNode()
+                .add("type").add("target").add("action").add("normalizedInput")
+                .add("changesCurrentSolution").add("confidence").add("reason")
+                .add("inputOperation").add("affectedInputIds").add("mergeWithPrevious")
+                .add("combinedUtterance").add("verificationCriteria"));
+        return root;
+    }
+
+    private static JsonNode validateUtteranceClassification(JsonNode classification) throws IOException {
+        if (classification == null || !classification.isObject()) throw new IOException("Utterance classification must be a JSON object");
+        for (String field : new String[]{"type", "target", "action", "normalizedInput", "confidence", "reason", "inputOperation", "combinedUtterance"}) {
+            if (!classification.path(field).isTextual()) throw new IOException("Utterance classification field is invalid: " + field);
+        }
+        if (!classification.path("changesCurrentSolution").isBoolean()) throw new IOException("Utterance classification changesCurrentSolution is invalid");
+        if (!classification.path("mergeWithPrevious").isBoolean()) throw new IOException("Utterance classification mergeWithPrevious is invalid");
+        if (!classification.path("affectedInputIds").isArray()) throw new IOException("Utterance classification affectedInputIds is invalid");
+        if (!classification.path("verificationCriteria").isArray()) throw new IOException("Utterance classification verificationCriteria is invalid");
+        return classification;
     }
 
     private static String buildInterviewPrompt(InterviewSuggestionRequest request) throws IOException {
@@ -248,6 +367,7 @@ public final class OpenAiClient implements AiClient {
 
     private static String buildTranslatePrompt(String sourceLang, String targetLang, String text) {
         String source = sourceLang == null || sourceLang.isBlank() ? "auto" : sourceLang.trim();
+        if (EnglishExpectedRecognition.isExpectedMode(source) || EnglishExpectedRecognition.isRetryMode(source)) source = "en";
         String target = targetLang == null || targetLang.isBlank() ? "en" : targetLang.trim();
         return "Task: Translate.\n"
                 + "Source language: " + source + "\n"
@@ -284,6 +404,9 @@ public final class OpenAiClient implements AiClient {
         writePart(output, boundary, "model", model);
         String language = normalizeLanguageForTranscription(sourceLang);
         if (!language.isBlank()) writePart(output, boundary, "language", language);
+        if (EnglishExpectedRecognition.isRetryMode(sourceLang)) {
+            writePart(output, boundary, "prompt", "English software engineering interview. Preserve Java, Kotlin, Android, API, SQL, algorithm and complexity terms. Transcribe exactly in English.");
+        }
         output.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
         output.write(("Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n").getBytes(StandardCharsets.UTF_8));
         output.write(("Content-Type: " + audioMime + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
@@ -317,6 +440,7 @@ public final class OpenAiClient implements AiClient {
         if (sourceLang == null) return "";
         String result = sourceLang.trim().toLowerCase(Locale.ROOT);
         if (result.isBlank() || "auto".equals(result)) return "";
+        if (EnglishExpectedRecognition.isExpectedMode(result) || EnglishExpectedRecognition.isRetryMode(result)) return "en";
         int separator = result.indexOf('-');
         if (separator > 0) result = result.substring(0, separator);
         separator = result.indexOf('_');

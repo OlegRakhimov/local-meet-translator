@@ -8,6 +8,7 @@ const {
   CHUNK_MODES,
   createTeleprompterState
 } = require('./teleprompter');
+const { createCodingFocusState } = require('./coding-focus-state');
 
 const DEFAULT_ASSISTANT_SETTINGS = Object.freeze({
   enabled: true,
@@ -15,6 +16,7 @@ const DEFAULT_ASSISTANT_SETTINGS = Object.freeze({
   contentProtection: true,
   alwaysOnTop: true,
   clickThrough: false,
+  compactOverlay: true,
   fontSize: 20,
   backgroundOpacity: 0.94,
   languageLevel: 'B1',
@@ -62,8 +64,9 @@ function normalizeAssistantSettings(settings = {}, platform = process.platform) 
     contentProtection: boolValue(settings.INTERVIEW_ASSISTANT_CONTENT_PROTECTION ?? settings.contentProtection, contentProtectionDefault),
     alwaysOnTop: boolValue(settings.INTERVIEW_ASSISTANT_ALWAYS_ON_TOP ?? settings.alwaysOnTop, DEFAULT_ASSISTANT_SETTINGS.alwaysOnTop),
     clickThrough: boolValue(settings.INTERVIEW_ASSISTANT_CLICK_THROUGH ?? settings.clickThrough, DEFAULT_ASSISTANT_SETTINGS.clickThrough),
+    compactOverlay: boolValue(settings.INTERVIEW_ASSISTANT_COMPACT_OVERLAY ?? settings.compactOverlay, DEFAULT_ASSISTANT_SETTINGS.compactOverlay),
     fontSize: boundedInteger(settings.INTERVIEW_ASSISTANT_FONT_SIZE ?? settings.fontSize, DEFAULT_ASSISTANT_SETTINGS.fontSize, 14, 36),
-    backgroundOpacity: boundedFloat(settings.INTERVIEW_ASSISTANT_BACKGROUND_OPACITY ?? settings.backgroundOpacity, DEFAULT_ASSISTANT_SETTINGS.backgroundOpacity, 0.5, 1),
+    backgroundOpacity: boundedFloat(settings.INTERVIEW_ASSISTANT_BACKGROUND_OPACITY ?? settings.backgroundOpacity, DEFAULT_ASSISTANT_SETTINGS.backgroundOpacity, 0.15, 1),
     languageLevel: LEVELS.has(level) ? level : DEFAULT_ASSISTANT_SETTINGS.languageLevel,
     answerStyle: STYLES.has(style) ? style : DEFAULT_ASSISTANT_SETTINGS.answerStyle,
     toggleHotkey: String(settings.INTERVIEW_ASSISTANT_HOTKEY ?? settings.toggleHotkey ?? DEFAULT_ASSISTANT_SETTINGS.toggleHotkey).trim() || DEFAULT_ASSISTANT_SETTINGS.toggleHotkey,
@@ -139,6 +142,7 @@ function createAssistantOverlayController({
   let saveTimer = null;
   let registeredShortcuts = [];
   let moveMode = false;
+  const codingFocus = createCodingFocusState();
   const teleprompter = createTeleprompterState({
     enabled: settings.teleprompterEnabled,
     frozen: settings.teleprompterFrozen,
@@ -163,6 +167,7 @@ function createAssistantOverlayController({
       question: question ? { ...question } : null,
       suggestion: suggestion ? { ...suggestion } : null,
       teleprompter: teleprompter.snapshot(),
+      codingFocus: codingFocus.snapshot(),
       error,
       settings: { ...settings },
       moveMode,
@@ -195,13 +200,22 @@ function createAssistantOverlayController({
     const saved = readStateFile(statePath);
     const primary = screen.getPrimaryDisplay();
     const area = primary.workArea;
+    const preferredWidth = settings.compactOverlay ? 600 : 680;
+    const preferredHeight = settings.compactOverlay ? 690 : 780;
     const fallback = {
-      x: Math.round(area.x + area.width - Math.min(680, area.width) - 34),
+      x: Math.round(area.x + area.width - Math.min(preferredWidth, area.width) - 34),
       y: Math.round(area.y + 50),
-      width: Math.min(680, area.width),
-      height: Math.min(780, Math.max(460, area.height - 100))
+      width: Math.min(preferredWidth, area.width),
+      height: Math.min(preferredHeight, Math.max(460, area.height - 100))
     };
-    return clampBoundsToDisplays(saved.bounds || fallback, screen.getAllDisplays(), primary);
+    const savedBounds = saved.bounds && typeof saved.bounds === 'object'
+      ? {
+          ...saved.bounds,
+          width: settings.compactOverlay ? Math.min(Number(saved.bounds.width || preferredWidth), 620) : saved.bounds.width,
+          height: settings.compactOverlay ? Math.min(Number(saved.bounds.height || preferredHeight), 720) : saved.bounds.height
+        }
+      : null;
+    return clampBoundsToDisplays(savedBounds || fallback, screen.getAllDisplays(), primary);
   }
   function applyTeleprompterSettings() {
     teleprompter.updateSettings({
@@ -219,7 +233,8 @@ function createAssistantOverlayController({
     try { assistantWindow.setContentProtection(settings.contentProtection); } catch (_) {}
     try { assistantWindow.setMovable(true); } catch (_) {}
     try { assistantWindow.setIgnoreMouseEvents(moveMode ? false : settings.clickThrough, { forward: true }); } catch (_) {}
-    try { assistantWindow.setOpacity(settings.backgroundOpacity); } catch (_) {}
+    // Keep text fully opaque. Only the CSS panels use the configured background alpha.
+    try { assistantWindow.setOpacity(1); } catch (_) {}
     sendState();
   }
   function ensureWindow() {
@@ -228,8 +243,8 @@ function createAssistantOverlayController({
       ...initialBounds(),
       show: false,
       frame: false,
-      transparent: false,
-      backgroundColor: '#0b1220',
+      transparent: true,
+      backgroundColor: '#00000000',
       title: 'Local Meet Translator — Interview Assistant',
       skipTaskbar: false,
       resizable: true,
@@ -272,7 +287,7 @@ function createAssistantOverlayController({
   }
   function toggle() { return snapshot().visible ? hide() : show(); }
   function clear() {
-    status = 'idle'; question = null; suggestion = null; error = ''; teleprompter.clear(); sendState();
+    status = 'idle'; question = null; suggestion = null; error = ''; teleprompter.clear(); codingFocus.stop(); sendState();
     return { ok: true, ...snapshot() };
   }
   function setQuestion(value) {
@@ -286,6 +301,8 @@ function createAssistantOverlayController({
     }
     question = incoming;
     suggestion = null;
+    if (incoming.kind === 'coding-task') codingFocus.start(incoming);
+    else if (!codingFocus.snapshot().active) codingFocus.stop();
     error = '';
     status = 'question';
     if (settings.enabled) show(); else sendState();
@@ -315,6 +332,9 @@ function createAssistantOverlayController({
     }
     suggestion = sanitized;
     if (sanitized.question) question = { ...(question || {}), text: sanitized.question };
+    if (sanitized.responseType === 'coding_solution' && !codingFocus.snapshot().active) {
+      codingFocus.start(question || { text: sanitized.question, kind: 'coding-task' });
+    }
     status = 'ready';
     error = '';
     if (settings.enabled) show(); else sendState();
@@ -380,6 +400,86 @@ function createAssistantOverlayController({
     sendState();
     return { ok: true, ...snapshot() };
   }
+
+  function addCodingContext(entry = {}) {
+    codingFocus.appendContext(entry);
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function updateCodingContext(id, patch = {}) {
+    codingFocus.updateContext(id, patch);
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function setPendingCodingChange(change = {}) {
+    codingFocus.setPendingChange(change);
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function setPendingCodingChangeStatus(status, error = '') {
+    codingFocus.setPendingChangeStatus(status, error);
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function clearPendingCodingChange() {
+    codingFocus.clearPendingChange();
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function commitCodingInputs(inputs = []) {
+    codingFocus.commitActiveInputs(inputs);
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function removeCodingInput(id) {
+    codingFocus.removeActiveInput(id);
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function setCodingFollowUp(questionValue) {
+    codingFocus.setFollowUpQuestion(questionValue);
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function setCodingFollowUpAnalyzing(value = true) {
+    codingFocus.setFollowUpAnalyzing(value);
+    sendState();
+    return snapshot();
+  }
+  function setCodingFollowUpSuggestion(value) {
+    codingFocus.setFollowUpSuggestion(sanitizeSuggestion(value));
+    sendState();
+    return snapshot();
+  }
+  function setCodingFollowUpError(value) {
+    codingFocus.setFollowUpError(value);
+    sendState();
+    return snapshot();
+  }
+  function setPendingCodingTask(questionValue) {
+    codingFocus.setPendingTask(questionValue);
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function takePendingCodingTask() {
+    const result = codingFocus.takePendingTask();
+    sendState();
+    return result;
+  }
+  function endCodingFocus() {
+    codingFocus.stop();
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function clearCodingContext() {
+    codingFocus.clearContext();
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function codingContextSnapshot() {
+    return codingFocus.currentContext();
+  }
+
   function unregisterShortcuts() {
     for (const accelerator of registeredShortcuts) {
       try { globalShortcut.unregister(accelerator); } catch (_) {}
@@ -426,7 +526,10 @@ function createAssistantOverlayController({
   return {
     initialize, ensureWindow, show, hide, toggle, clear, setQuestion, setAnalyzing, setSuggestion,
     setError, updateSettings, setClickThrough, setMoveMode, setFrozen, nextChunk, previousChunk, firstChunk,
-    loadPending, rehome, snapshot, destroy, getWindow: () => assistantWindow
+    loadPending, addCodingContext, updateCodingContext, setCodingFollowUp, setCodingFollowUpAnalyzing, setCodingFollowUpSuggestion,
+    setCodingFollowUpError, setPendingCodingTask, takePendingCodingTask, endCodingFocus, clearCodingContext,
+    setPendingCodingChange, setPendingCodingChangeStatus, clearPendingCodingChange, commitCodingInputs, removeCodingInput,
+    codingContextSnapshot, rehome, snapshot, destroy, getWindow: () => assistantWindow
   };
 }
 

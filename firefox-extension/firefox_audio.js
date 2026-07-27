@@ -556,6 +556,9 @@ async function transcribeAndTranslate(blob, sourceLang, targetLang) {
       status("err", "Bridge/API error", `HTTP ${resp.status}: ${JSON.stringify(data)}`);
       return null;
     }
+    if (data.transcriptionRetried) {
+      status("run", "English expected", "Automatic strict-English retry was used for this audio chunk.");
+    }
     if ((data.transcript || "").trim() && !(data.translation || "").trim()) {
       const fallbackTranslation = await translateTextFallback(data.transcript, sourceLang, targetLang);
       if (fallbackTranslation) data.translation = fallbackTranslation;

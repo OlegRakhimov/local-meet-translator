@@ -71,3 +71,23 @@ test('does not treat outgoing speech as an interviewer question', () => {
   const detector = createQuestionDetector();
   assert.equal(detector.consume({ channel:'outgoing', transcript:'What should I say?' }).reason, 'outgoing');
 });
+
+test('keeps a coding follow-up separate from the active coding task', () => {
+  const detector = createQuestionDetector({ contextWindowMs: 30 * 60_000 });
+  detector.consume({ channel:'incoming', transcript:'Write a Java method for Two Sum.' }, 1_000);
+  const followUp = detector.consume({ channel:'incoming', transcript:'What is the time complexity?' }, 2_000);
+  assert.equal(followUp.accepted, true);
+  assert.equal(followUp.reason, 'coding-follow-up');
+  assert.equal(followUp.question.kind, 'question');
+  assert.match(followUp.question.baseTaskText, /Two Sum/);
+  assert.match(detector.snapshot().activeCodingTask.text, /Two Sum/);
+});
+
+test('marks a new coding task as pending context instead of replacing the active task', () => {
+  const detector = createQuestionDetector({ contextWindowMs: 30 * 60_000 });
+  detector.consume({ channel:'incoming', transcript:'Write a Java method for Two Sum.' }, 1_000);
+  const nextTask = detector.consume({ channel:'incoming', transcript:'Now reverse a linked list in Java.' }, 2_000);
+  assert.equal(nextTask.accepted, true);
+  assert.equal(nextTask.reason, 'new-coding-task');
+  assert.match(detector.snapshot().activeCodingTask.text, /Two Sum/);
+});

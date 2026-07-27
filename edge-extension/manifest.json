@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local Meet Translator (Edge)",
-  "version": "1.6.9",
+  "version": "1.7.4",
   "description": "Thin client for Local Meet Translator desktop app in Edge.",
   "permissions": [
     "storage",

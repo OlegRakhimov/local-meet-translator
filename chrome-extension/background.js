@@ -1,5 +1,7 @@
 let offscreenCreated = false;
 let running = false;
+let captureArmed = false;
+let armedTabId = null;
 let desktopExtensionToken = "";
 let desktopExtensionClientId = "";
 let desktopSessionId = "";
@@ -157,9 +159,23 @@ async function ensureDesktopToken(force = false) {
 
 async function ensureContentScriptsInjected(tabId) {
   if (!tabId || !chrome.scripting || typeof chrome.scripting.executeScript !== "function") return;
-  // Existing tabs opened before extension installation/reload do not automatically get content_script.js.
-  // Injecting manually makes "Connect this meeting tab" work without forcing the user to reload the meeting.
+  // Always inject a fresh controller. content_script.js disposes any previous
+  // polling loop before starting a new one, so reconnecting the popup repairs
+  // stale or invalidated extension contexts without reloading the Meet page.
   try { await chrome.scripting.executeScript({ target: { tabId }, files: ["content_script.js"] }); } catch (_) {}
+}
+
+async function restartContentPolling(tabId) {
+  if (!tabId) return { ok: false, error: "No tabId" };
+  try {
+    const result = await Promise.race([
+      chrome.tabs.sendMessage(tabId, { type: "LMT_RESTART_POLLING" }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Content-script restart timed out.")), 4000))
+    ]);
+    return result && result.ok ? result : { ok: false, error: String(result && (result.error || result.message) || "Content-script restart failed.") };
+  } catch (error) {
+    return { ok: false, error: String(error && (error.message || error) || error) };
+  }
 }
 
 async function armDesktopClient(payload) {
@@ -294,15 +310,110 @@ async function closeOffscreenIfPossible() {
     }
   } catch (_) {} finally {
     offscreenCreated = false;
+    running = false;
+    captureArmed = false;
+    armedTabId = null;
+  }
+}
+
+async function getOffscreenCaptureStatus() {
+  try {
+    if (!chrome.offscreen || typeof chrome.offscreen.hasDocument !== "function") {
+      return { ok: true, exists: !!offscreenCreated, armed: captureArmed, running, tabId: armedTabId };
+    }
+    const has = await chrome.offscreen.hasDocument();
+    if (!has) {
+      offscreenCreated = false;
+      running = false;
+      captureArmed = false;
+      armedTabId = null;
+      return { ok: true, exists: false, armed: false, running: false, tabId: null };
+    }
+    offscreenCreated = true;
+    const state = await sendRuntimeMessageWithTimeout({ type: "OFFSCREEN_STATUS" }, 4000);
+    if (state && state.ok) {
+      running = !!state.running;
+      captureArmed = !!state.armed;
+      armedTabId = state.tabId === undefined || state.tabId === null ? null : Number(state.tabId);
+    }
+    return state || { ok: false, error: "Offscreen status unavailable." };
+  } catch (error) {
+    return { ok: false, error: String(error && (error.message || error) || error) };
+  }
+}
+
+async function releaseCaptureCompletely() {
+  try {
+    const state = await getOffscreenCaptureStatus();
+    if ((state && state.exists) || offscreenCreated) {
+      try { await sendRuntimeMessageWithTimeout({ type: "OFFSCREEN_RELEASE" }, 8000); } catch (_) {}
+    }
+  } finally {
+    await closeOffscreenIfPossible();
+  }
+}
+
+async function pauseCaptureKeepArmed() {
+  const state = await getOffscreenCaptureStatus();
+  if (!state || !state.exists) {
+    running = false;
+    captureArmed = false;
+    armedTabId = null;
+    return { ok: true, already: true, armed: false };
+  }
+  const result = await sendRuntimeMessageWithTimeout({ type: "OFFSCREEN_PAUSE" }, 8000);
+  running = false;
+  captureArmed = !!(result && result.armed);
+  armedTabId = result && result.tabId !== undefined && result.tabId !== null ? Number(result.tabId) : armedTabId;
+  return result || { ok: false, error: "Could not pause translation capture." };
+}
+
+async function armTabCapture(tabId) {
+  if (!tabId) return { ok: false, error: "No tabId" };
+  const state = await getOffscreenCaptureStatus();
+  if (state && state.ok && state.armed && Number(state.tabId) === Number(tabId)) {
+    captureArmed = true;
+    armedTabId = Number(tabId);
+    running = !!state.running;
+    return { ok: true, armed: true, running, tabId: Number(tabId), reused: true };
+  }
+  if ((state && state.exists) || offscreenCreated) await releaseCaptureCompletely();
+  const streamId = await getTabStreamIdWithTimeout(tabId, 10000);
+  await ensureOffscreen();
+  const result = await sendRuntimeMessageWithTimeout({
+    type: "OFFSCREEN_ARM",
+    streamId,
+    tabId
+  }, 18000);
+  if (!result || !result.ok) {
+    await releaseCaptureCompletely();
+    return result || { ok: false, error: "Browser audio could not be armed." };
+  }
+  running = false;
+  captureArmed = true;
+  armedTabId = Number(tabId);
+  return { ...result, armed: true, tabId: Number(tabId) };
+}
+
+async function recoverArmedTabCapture(tabId) {
+  status("run", "Recovering audio", "The previously armed stream ended before startup. Re-arming the active meeting tab automatically...");
+  try {
+    const recovered = await armTabCapture(tabId);
+    if (recovered && recovered.ok && recovered.armed && Number(recovered.tabId) === Number(tabId)) {
+      status("ok", "Audio re-armed", "Browser audio was re-armed automatically for this meeting tab.");
+      return recovered;
+    }
+    return {
+      ok: false,
+      error: String(recovered && (recovered.error || recovered.message) || "Browser audio could not be re-armed automatically.")
+    };
+  } catch (error) {
+    return { ok: false, error: friendlyError(error) };
   }
 }
 
 async function stopCaptureForRestart() {
-  if (running || offscreenCreated) {
-    try { await chrome.runtime.sendMessage({ type: "OFFSCREEN_STOP" }); } catch (_) {}
-    await closeOffscreenIfPossible();
-  }
-  running = false;
+  await releaseCaptureCompletely();
 }
 
 async function ensureTabNotMuted(tabId) {
@@ -388,6 +499,16 @@ async function sendRuntimeMessageWithTimeout(message, timeoutMs = 15000) {
   ]).finally(() => { if (timer) clearTimeout(timer); });
 }
 
+async function getTabStreamIdWithTimeout(tabId, timeoutMs = 10000) {
+  let timer = null;
+  return Promise.race([
+    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Tab audio permission timed out after ${timeoutMs} ms.`)), timeoutMs);
+    })
+  ]).finally(() => { if (timer) clearTimeout(timer); });
+}
+
 async function updateRunningCaptureMode(msg) {
   await ensureOffscreen();
   return await sendRuntimeMessageWithTimeout({
@@ -441,17 +562,33 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
           return sendResponse({ ok:false, error:"Open the popup from a Meet/Zoom/Teams meeting tab, not from this page: " + String(tab && tab.url || "unknown") });
         }
         await ensureTabNotMuted(tabId);
+        const capture = await armTabCapture(tabId);
+        if (!capture || !capture.ok) {
+          const error = (capture && (capture.error || capture.message)) || "Browser audio could not be armed.";
+          status("err", "Audio capture not armed", error);
+          sendResponse({ ok:false, error, tabId, url: tab.url });
+          return;
+        }
         await ensureContentScriptsInjected(tabId);
+        const polling = await restartContentPolling(tabId);
         const arm = await armDesktopClient({ clientId: desktopExtensionClientId, url: tab.url, visible: true });
         try { await chrome.tabs.sendMessage(tabId, { type: "LMT_ARMED" }); } catch (_) {}
         if (!arm || !arm.ok) {
           const error = (arm && (arm.error || arm.message)) || "Desktop command server is not paired/ready.";
+          await releaseCaptureCompletely();
           status("err", "Desktop not ready", error);
           sendResponse({ ok:false, error });
           return;
         }
-        status("ok", "Meeting tab connected", "Meeting tab connected. Return to the desktop app and choose voice translation or subtitles.");
-        sendResponse({ ok:true, tabId, url: tab.url });
+        if (!polling.ok) {
+          const error = `Meeting tab was registered, but command polling did not start: ${polling.error}`;
+          await releaseCaptureCompletely();
+          status("err", "Meeting tab not ready", error);
+          sendResponse({ ok:false, error, tabId, url: tab.url });
+          return;
+        }
+        status("ok", "Meeting tab connected", "Meeting tab connected, command polling is active, and browser audio is armed locally.");
+        sendResponse({ ok:true, tabId, url: tab.url, polling:true, armed:true });
         return;
       }
 
@@ -463,9 +600,13 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         if (!tab || !isSupportedMeetingUrl(tab.url)) {
           return sendResponse({ ok:false, error:"Open the popup from a Meet/Zoom/Teams meeting tab, not from this page: " + String(tab && tab.url || "unknown") });
         }
+        await ensureTabNotMuted(tabId);
+        const capture = await armTabCapture(tabId);
+        if (!capture || !capture.ok) return sendResponse({ ok:false, error:(capture && (capture.error || capture.message)) || "Browser audio could not be armed." });
         await ensureContentScriptsInjected(tabId);
+        const polling = await restartContentPolling(tabId);
+        if (!polling.ok) return sendResponse({ ok:false, error:polling.error || "Command polling did not start." });
         await armDesktopClient({ clientId: desktopExtensionClientId, url: tab.url, visible: true });
-        if (running) await stopCaptureForRestart();
         msg = await getStartMessageFromStorage(msg, tabId);
         try {
           const { type, tabId: _tabId, ...settings } = msg;
@@ -519,6 +660,9 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
             await chrome.storage.local.set({ settings });
           } catch (_) {}
 
+          // Recover the offscreen state after a Manifest V3 service-worker restart.
+          await getOffscreenCaptureStatus();
+
           // Switching subtitles <-> outgoing voice must not reacquire tabCapture.
           // Reacquiring the tab stream from a desktop command is fragile because
           // activeTab permission is user-gesture scoped. Update only the mic/TTS path.
@@ -539,8 +683,71 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
             sendResponse({ ok: true, message: readyMessage, details });
             return;
           }
+
+          let captureState = await getOffscreenCaptureStatus();
+          if (!captureState || !captureState.ok || !captureState.armed || Number(captureState.tabId) !== Number(tabId)) {
+            const recovered = await recoverArmedTabCapture(tabId);
+            if (recovered && recovered.ok) {
+              captureState = await getOffscreenCaptureStatus();
+            }
+          }
+          if (!captureState || !captureState.ok || !captureState.armed || Number(captureState.tabId) !== Number(tabId)) {
+            const error = "Browser audio could not be armed for this meeting tab. Open the extension popup on the active meeting tab and press Connect this meeting tab once.";
+            const details = { incomingReady: false, armed: false, tabId };
+            status("err", "Audio capture not armed", error);
+            await ackDesktopFromBackground(false, { error, details });
+            sendResponse({ ok: false, error, details });
+            return;
+          }
+
+          const activated = await sendRuntimeMessageWithTimeout({
+            type: "OFFSCREEN_ACTIVATE",
+            tabId,
+            serverUrl: msg.serverUrl,
+            authToken: msg.authToken,
+            sourceLang: msg.sourceLang,
+            targetLang: msg.targetLang,
+            chunkSeconds: msg.chunkSeconds,
+            audioIsolationMode: msg.audioIsolationMode,
+            ttsEnabled: msg.ttsEnabled,
+            ttsVoice: msg.ttsVoice,
+            ttsSpeed: msg.ttsSpeed,
+            micTxEnabled: msg.micTxEnabled,
+            micTxSourceLang: msg.micTxSourceLang,
+            micTxTargetLang: msg.micTxTargetLang,
+            micDeviceId: msg.micDeviceId,
+            micDeviceName: msg.micDeviceName,
+            ttsSinkDeviceId: msg.ttsSinkDeviceId,
+            ttsSinkDeviceName: msg.ttsSinkDeviceName,
+            micTxChunkSeconds: msg.micTxChunkSeconds,
+            outVoiceStyle: msg.outVoiceStyle,
+            rvcModelTag: msg.rvcModelTag,
+            showOutgoingSubtitles: msg.showOutgoingSubtitles
+          }, 24000);
+          if (!activated || !activated.ok) {
+            const error = (activated && activated.error) || "Armed browser audio could not be activated.";
+            const details = (activated && activated.details) || { incomingReady: false, armed: true };
+            running = false;
+            captureArmed = true;
+            armedTabId = Number(tabId);
+            status("err", "Audio activation failed", error);
+            await ackDesktopFromBackground(false, { error, details });
+            sendResponse({ ok: false, error, details });
+            return;
+          }
+          running = true;
+          captureArmed = true;
+          armedTabId = Number(tabId);
+          const readyMessage = activated.message || "Incoming translation is ready.";
+          const details = activated.details || { incomingReady: true, armed: true };
+          status("run", msg.micTxEnabled ? "Voice ready" : "Running", readyMessage);
+          await ackDesktopFromBackground(true, { message: readyMessage, details });
+          sendResponse({ ok: true, message: readyMessage, details });
+          return;
         } else if (msg.action === "stop") {
-          msg = { type: "STOP" };
+          msg = { type: "PAUSE" };
+        } else if (msg.action === "release") {
+          msg = { type: "RELEASE" };
         } else {
           return sendResponse({ ok:false, error:"Unknown desktop command: " + String(msg.action) });
         }
@@ -551,7 +758,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         const tabId = msg.tabId;
         if (!tabId) return sendResponse({ ok: false, error: "No tabId" });
         await ensureTabNotMuted(tabId);
-        const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+        const streamId = await getTabStreamIdWithTimeout(tabId, 10000);
         await ensureOffscreen();
         const offscreenResult = await sendRuntimeMessageWithTimeout({
           type: "OFFSCREEN_START",
@@ -596,15 +803,44 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         return;
       }
 
+      if (msg?.type === "PAUSE") {
+        const paused = await pauseCaptureKeepArmed();
+        if (!paused || !paused.ok) {
+          const error = (paused && paused.error) || "Could not pause translation capture.";
+          await ackDesktopFromBackground(false, { error });
+          sendResponse({ ok: false, error });
+          return;
+        }
+        status("ok", "Paused", paused.armed
+          ? "Translation stopped. Browser audio remains armed locally for a fast restart."
+          : "Translation stopped.");
+        const message = paused.armed
+          ? "Translation stopped. Meeting tab remains armed for a fast restart."
+          : "Translation stopped.";
+        await ackDesktopFromBackground(true, { message, details: { armed: !!paused.armed, tabId: paused.tabId } });
+        sendResponse({ ok: true, message, armed: !!paused.armed, tabId: paused.tabId });
+        return;
+      }
+
+      if (msg?.type === "RELEASE") {
+        await releaseCaptureCompletely();
+        status("ok", "Disconnected", "Stopped translation and released browser audio capture.");
+        await ackDesktopFromBackground(true, { message: "Browser audio capture released." });
+        sendResponse({ ok: true, message: "Browser audio capture released." });
+        return;
+      }
+
       if (msg?.type === "STOP") {
-        if (!running) {
+        if (!running && !captureArmed) {
           await closeOffscreenIfPossible();
           await ackDesktopFromBackground(true, { message: "Already stopped." });
           return sendResponse({ ok: true, already: true });
         }
-        await chrome.runtime.sendMessage({ type: "OFFSCREEN_STOP" });
-        running = false;
-        await closeOffscreenIfPossible();
+        try {
+          await sendRuntimeMessageWithTimeout({ type: "OFFSCREEN_RELEASE" }, 8000);
+        } finally {
+          await closeOffscreenIfPossible();
+        }
         status("ok", "Stopped", "Stopped capture.");
         await ackDesktopFromBackground(true, { message: "Stopped capture." });
         sendResponse({ ok: true });
@@ -626,4 +862,27 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
     }
   })();
   return true;
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (armedTabId !== null && Number(tabId) === Number(armedTabId)) {
+    releaseCaptureCompletely().catch(() => {});
+  }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (armedTabId === null || Number(tabId) !== Number(armedTabId)) return;
+  const changedUrl = String(changeInfo && changeInfo.url || "");
+  const currentUrl = String(tab && tab.url || "");
+  if (changedUrl && !isSupportedMeetingUrl(changedUrl)) {
+    releaseCaptureCompletely().catch(() => {});
+    return;
+  }
+  // Do not release merely because Meet reports a transient "loading" state.
+  // Meet can refresh its document state after the popup has armed audio. The
+  // offscreen stream itself is the source of truth, and start-time recovery
+  // will re-arm it if the browser actually ended the track.
+  if (currentUrl && !isSupportedMeetingUrl(currentUrl)) {
+    releaseCaptureCompletely().catch(() => {});
+  }
 });
