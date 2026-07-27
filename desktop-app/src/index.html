@@ -297,7 +297,9 @@
         <div class="guideGrid">
           <details class="guideCard" open><summary data-i18n="guideQuickStart">Quick start for an English interview</summary><ol><li data-i18n="guideQuick1">Open Settings and save your OpenAI API key.</li><li data-i18n="guideQuick2">Open System and start Bridge.</li><li data-i18n="guideQuick3">Open the meeting tab and connect it from the extension popup.</li><li data-i18n="guideQuick4">On Dashboard choose en → ru and press Start subtitles.</li><li data-i18n="guideQuick5">Open Interview Assistant and start a live session.</li></ol></details>
           <details class="guideCard"><summary data-i18n="guideAssistantTitle">Interview Assistant</summary><p data-i18n="guideAssistantText">Automatic analysis reacts only to stable interview questions. Jokes and remarks remain in subtitles. Coding tasks receive an approach, plan, code, line-by-line explanation, complexity and speaking notes.</p></details>
-          <details class="guideCard"><summary data-i18n="guideVoiceTitle">Voice translation to the other participant</summary><p data-i18n="guideVoiceText">In Translation control select CABLE Input as output, select CABLE Output as the meeting microphone, confirm the checkbox and start outgoing voice translation.</p></details>
+          <details class="guideCard"><summary data-i18n="guideTranscriptGuardTitle">English expected and transcript protection</summary><p data-i18n="guideTranscriptGuardText">English expected first uses automatic recognition, retries suspicious text as English, rejects silent chunks before the network request, and blocks prompt echoes before translation. Dropped text never reaches subtitles, history, Coding Focus or the classifier.</p></details>
+          <details class="guideCard"><summary data-i18n="guideLearningAidsTitle">Keywords and useful phrases</summary><p data-i18n="guideLearningAidsText">Each Answer Library question may contain a first sentence, English keywords with Russian translations, and reusable English phrases with Russian translations. Generate missing aids for one question or fill all incomplete questions. Reviewed answers are preserved.</p></details>
+          <details class="guideCard"><summary data-i18n="guideClassifierTitle">Coding Focus and contextual replies</summary><p data-i18n="guideClassifierText">Remarks only enter the feed. Follow-up questions receive a separate answer. Recommendations are offered, direct requests and constraints revise the solution, corrections replace earlier inputs, and new tasks wait for confirmation.</p></details>          <details class="guideCard"><summary data-i18n="guideVoiceTitle">Voice translation to the other participant</summary><p data-i18n="guideVoiceText">In Translation control select CABLE Input as output, select CABLE Output as the meeting microphone, confirm the checkbox and start outgoing voice translation.</p></details>
           <details class="guideCard"><summary data-i18n="guidePrivacyTitle">Privacy and screen sharing</summary><p data-i18n="guidePrivacyText">Share only the browser tab or meeting window. Keep content protection enabled. The desktop app does not store raw audio.</p></details>
           <details class="guideCard"><summary data-i18n="guideHotkeysTitle">Main hotkeys</summary><div class="hotkeyGrid"><span>Ctrl+Shift+S</span><strong data-i18n="guideHotkeySubtitles">Show or hide subtitles</strong><span>Ctrl+Shift+A</span><strong data-i18n="guideHotkeyAssistant">Show or hide assistant</strong><span>Ctrl+Shift+M</span><strong data-i18n="guideHotkeyMove">Move assistant window</strong><span>Ctrl+Shift+F</span><strong data-i18n="guideHotkeyFreeze">Freeze teleprompter</strong></div></details>
           <details class="guideCard"><summary data-i18n="guideTroubleshootingTitle">When something does not work</summary><p data-i18n="guideTroubleshootingText">Check Bridge, reconnect the meeting tab, verify en as source language, use headphones and reset transient state in Diagnostics.</p></details>
@@ -576,7 +578,10 @@
             <span id="trainerSessionStatus" class="summaryChip" data-i18n="trainerIdle">Not started</span>
           </div>
           <div class="trainerQuestionBox"><p id="trainerQuestionText" data-i18n="trainerNoQuestion">Start a session to receive a question.</p></div>
-          <label><span data-i18n="trainerPracticeAnswer">Your practice answer or transcript</span><textarea id="trainerPracticeAnswer" rows="8"></textarea></label>
+          <div id="trainerLearningAids" class="trainerReferencePanel" hidden>
+            <div><span class="eyebrow" data-i18n="trainerKeywords">Keywords</span><div id="trainerKeywordList" class="keywordChips"></div></div>
+            <div><span class="eyebrow" data-i18n="trainerUsefulPhrases">Useful phrases</span><ul id="trainerUsefulPhraseList"></ul></div>
+          </div>          <label><span data-i18n="trainerPracticeAnswer">Your practice answer or transcript</span><textarea id="trainerPracticeAnswer" rows="8"></textarea></label>
           <div class="buttons">
             <button id="showTrainerReference" type="button" class="secondary" data-i18n="showTrainerReference">Show reviewed answer</button>
           </div>
@@ -770,6 +775,7 @@
           <div id="answerEntryList" class="answerEntryList"></div>
           <p id="answerEmptyState" class="emptyState" data-i18n="answerLibraryEmpty">No saved answers</p>
           <div class="buttons verticalButtons">
+            <button id="generateMissingLearningAids" type="button" class="secondary" data-i18n="generateMissingLearningAids">Add keywords and phrases to missing questions</button>
             <button id="importAnswerLibrary" type="button" class="secondary" data-i18n="importAnswerLibrary">Import JSON</button>
             <button id="exportAnswerLibrary" type="button" class="secondary" data-i18n="exportAnswerLibrary">Export JSON</button>
             <button id="resetAnswerLibrary" type="button" class="danger" data-i18n="resetAnswerLibrary">Clear library</button>
@@ -802,10 +808,15 @@
           <label><span data-i18n="answerFirstSentence">First sentence / speaking start</span><textarea id="answerFirstSentence" rows="2"></textarea></label>
           <div class="grid">
             <label><span data-i18n="answerKeywords">Keywords, one per line</span><textarea id="answerKeywords" rows="7"></textarea></label>
+            <label><span data-i18n="answerUsefulPhrases">Useful phrases, one per line</span><textarea id="answerUsefulPhrases" rows="7" placeholder="The main difference is... — Главное различие заключается в..."></textarea></label>
             <label><span data-i18n="answerGroundingFacts">Confirmed facts used, one per line</span><textarea id="answerGroundingFacts" rows="7"></textarea></label>
           </div>
+          <p class="hint" data-i18n="learningAidsHint">Keywords and useful phrases are study aids. Generation preserves your reviewed answer and may use the OpenAI API.</p>
+          <p id="answerLearningAidsStatus" class="hint"></p>
           <label class="check"><input id="answerLocked" type="checkbox" /> <span data-i18n="answerLocked">Lock this reviewed answer against automatic rewriting</span></label>
           <div class="buttons screenActions">
+            <button id="generateAnswerLearningAids" type="button" class="secondary" data-i18n="generateLearningAids">Generate missing aids</button>
+            <button id="regenerateAnswerLearningAids" type="button" class="secondary" data-i18n="regenerateLearningAids">Regenerate aids</button>
             <button id="saveAnswerEntry" type="button" data-i18n="saveAnswer">Save answer</button>
             <button id="deleteAnswerEntry" type="button" class="danger" data-i18n="deleteAnswer">Delete answer</button>
           </div>

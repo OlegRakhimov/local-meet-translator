@@ -37,7 +37,9 @@ let showOutgoingSubtitles = false;
 
 // Reduce hallucinations on silence and prevent self-feedback.
 const VAD_ENABLED = true;
-const VAD_THRESHOLD = 0.015; // RMS in [0..1] (heuristic) for incoming tab audio
+const VAD_THRESHOLD = 0.010;
+const TAB_MIN_AVERAGE_RMS = 0.0025;
+const TAB_MIN_SPEECH_RATIO = 0.06;
 const MIN_AUDIO_BLOB_BYTES = 900;
 
 let tabAudioMonitor = null;
@@ -270,6 +272,10 @@ function createLevelMeter(stream) {
     const buf = new Uint8Array(analyser.fftSize);
     let rms = 0;
     let peak = 0;
+    let windowPeak = 0;
+    let windowSum = 0;
+    let windowSamples = 0;
+    let windowSpeechSamples = 0;
 
     const timer = setInterval(() => {
       try {
@@ -280,8 +286,11 @@ function createLevelMeter(stream) {
           sum += v * v;
         }
         rms = Math.sqrt(sum / buf.length);
-        // peak-hold with decay so we capture speech occurring within the last ~1s.
         peak = Math.max(rms, peak * 0.85);
+        windowPeak = Math.max(windowPeak, rms);
+        windowSum += rms;
+        windowSamples += 1;
+        if (rms >= VAD_THRESHOLD) windowSpeechSamples += 1;
       } catch (_) {
         // ignore
       }
@@ -290,6 +299,22 @@ function createLevelMeter(stream) {
     return {
       getRms: () => rms,
       getPeak: () => peak,
+      consumeWindowStats: () => {
+        const samples = windowSamples;
+        const stats = {
+          peak: windowPeak,
+          average: samples ? windowSum / samples : 0,
+          samples,
+          speechSamples: windowSpeechSamples,
+          speechRatio: samples ? windowSpeechSamples / samples : 0
+        };
+        peak = 0;
+        windowPeak = 0;
+        windowSum = 0;
+        windowSamples = 0;
+        windowSpeechSamples = 0;
+        return stats;
+      },
       stop: () => {
         try { clearInterval(timer); } catch (_) {}
         try { src.disconnect(); } catch (_) {}
@@ -301,7 +326,6 @@ function createLevelMeter(stream) {
     return null;
   }
 }
-
 
 function createTabAudioMonitor(stream) {
   // chrome.tabCapture removes the captured tab from the browser's normal
@@ -692,6 +716,14 @@ async function transcribeAndTranslate(blob, sourceLang, targetLang) {
       status("err", "Bridge/API error", `HTTP ${resp.status}: ${JSON.stringify(data)}`);
       return null;
     }
+    if (data.transcriptDropped) {
+      const reason = String(data.dropReason || "").toLowerCase();
+      const message = reason === "prompt-echo"
+        ? "[TRANSCRIPT DROPPED] prompt echo detected"
+        : "[TRANSCRIPT DROPPED] no speech detected";
+      status("run", "Transcript guard", message);
+      return null;
+    }
     if (data.transcriptionRetried) {
       status("run", "English expected", "Automatic strict-English retry was used for this audio chunk.");
     }
@@ -753,9 +785,17 @@ async function startTabRecorder() {
     if (!ev.data || ev.data.size === 0) return;
     if (ev.data.size < MIN_AUDIO_BLOB_BYTES) return;
 
-    if (VAD_ENABLED && tabMeter && tabMeter.getPeak() < VAD_THRESHOLD) {
-      // Skip likely silence chunks to reduce random hallucinations.
-      return;
+    if (VAD_ENABLED && tabMeter) {
+      const stats = typeof tabMeter.consumeWindowStats === "function"
+        ? tabMeter.consumeWindowStats()
+        : { peak: tabMeter.getPeak(), average: tabMeter.getRms(), samples: 1, speechRatio: tabMeter.getPeak() >= VAD_THRESHOLD ? 1 : 0 };
+      const silent = stats.samples < 2
+        || stats.peak < VAD_THRESHOLD
+        || (stats.average < TAB_MIN_AVERAGE_RMS && stats.speechRatio < TAB_MIN_SPEECH_RATIO);
+      if (silent) {
+        status("run", "Transcript guard", "[TRANSCRIPT DROPPED] silence detected");
+        return;
+      }
     }
 
     const data = await transcribeAndTranslate(ev.data, tabSourceLang, tabTargetLang);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local Meet Translator (Chrome)",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "description": "Thin client for Local Meet Translator desktop app in Chrome.",
   "permissions": [
     "storage",

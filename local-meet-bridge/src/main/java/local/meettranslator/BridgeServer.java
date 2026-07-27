@@ -6,6 +6,7 @@ import local.meettranslator.http.ApiException;
 import local.meettranslator.http.HttpSupport;
 import local.meettranslator.http.RequestRegistry;
 import local.meettranslator.model.TranscribeAndTranslateRequest;
+import local.meettranslator.model.InterviewLearningAidsRequest;
 import local.meettranslator.model.InterviewSuggestionRequest;
 import local.meettranslator.model.InterviewUtteranceClassificationRequest;
 import local.meettranslator.model.TranslateTextRequest;
@@ -128,14 +129,19 @@ public final class BridgeServer implements AutoCloseable {
             TranscribeAndTranslateRequest request = TranscribeAndTranslateRequest.from(HttpSupport.readJsonBody(ex, 12_000_000));
             boolean englishExpected = EnglishExpectedRecognition.isExpectedMode(request.sourceLang());
             boolean transcriptionRetried = false;
+            boolean promptEchoDetected = false;
+            boolean transcriptDropped = false;
+            String dropReason = "";
             String transcript;
             try {
                 String firstPassLanguage = englishExpected ? "auto" : request.sourceLang();
                 transcript = aiClient.transcribe(context, request.audio(), request.audioMime(), firstPassLanguage);
+                promptEchoDetected = EnglishExpectedRecognition.isPromptEcho(transcript);
                 if (englishExpected && EnglishExpectedRecognition.shouldRetry(transcript)) {
                     transcriptionRetried = true;
                     try {
                         String strictEnglish = aiClient.transcribe(context, request.audio(), request.audioMime(), EnglishExpectedRecognition.RETRY_MODE);
+                        promptEchoDetected = promptEchoDetected || EnglishExpectedRecognition.isPromptEcho(strictEnglish);
                         transcript = EnglishExpectedRecognition.chooseBetterCandidate(transcript, strictEnglish);
                     } catch (IOException retryFailure) {
                         if (transcript == null || transcript.isBlank()) throw retryFailure;
@@ -143,6 +149,12 @@ public final class BridgeServer implements AutoCloseable {
                 }
             } catch (IOException cause) {
                 throw HttpSupport.upstream("openai_transcription_failed", cause);
+            }
+            if (EnglishExpectedRecognition.isPromptEcho(transcript)
+                    || ((transcript == null || transcript.isBlank()) && promptEchoDetected)) {
+                transcript = "";
+                transcriptDropped = true;
+                dropReason = "prompt-echo";
             }
             String translation = "";
             String translationSourceLanguage = EnglishExpectedRecognition.translationSourceLanguage(request.sourceLang());
@@ -159,11 +171,24 @@ public final class BridgeServer implements AutoCloseable {
                     .put("effectiveSourceLang", translationSourceLanguage)
                     .put("recognitionMode", englishExpected ? EnglishExpectedRecognition.MODE : request.sourceLang())
                     .put("transcriptionRetried", transcriptionRetried)
+                    .put("transcriptDropped", transcriptDropped)
+                    .put("dropReason", dropReason)
                     .put("targetLang", request.targetLang())
                     .put("transcript", Objects.requireNonNullElse(transcript, ""))
                     .put("translation", translation), context.requestId());
         }));
-
+        server.createContext("/interview/generate-learning-aids", exchange -> HttpSupport.handle(exchange, "POST", config.authToken(), requestRegistry, (ex, context) -> {
+            InterviewLearningAidsRequest request = InterviewLearningAidsRequest.from(HttpSupport.readJsonBody(ex, 1_500_000));
+            com.fasterxml.jackson.databind.JsonNode learningAids;
+            try {
+                learningAids = aiClient.generateInterviewLearningAids(context, request);
+            } catch (IOException cause) {
+                throw HttpSupport.upstream("openai_interview_learning_aids_failed", cause);
+            }
+            HttpSupport.writeJson(ex, 200, HttpSupport.MAPPER.createObjectNode()
+                    .put("ok", true)
+                    .set("learningAids", learningAids), context.requestId());
+        }));
         server.createContext("/interview/suggest-answer", exchange -> HttpSupport.handle(exchange, "POST", config.authToken(), requestRegistry, (ex, context) -> {
             InterviewSuggestionRequest request = InterviewSuggestionRequest.from(HttpSupport.readJsonBody(ex, 1_500_000));
             com.fasterxml.jackson.databind.JsonNode suggestion;

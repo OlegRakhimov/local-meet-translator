@@ -541,6 +541,7 @@ function emptyAnswerEntry() {
     answer: '',
     firstSentence: '',
     keywords: [],
+    usefulPhrases: [],
     groundingFacts: [],
     locked: false,
     createdAt: '',
@@ -558,6 +559,7 @@ function answerEntryFromUi() {
     answer: val('answerText'),
     firstSentence: val('answerFirstSentence'),
     keywords: splitProfileLines(val('answerKeywords')),
+    usefulPhrases: splitProfileLines(val('answerUsefulPhrases')),
     groundingFacts: splitProfileLines(val('answerGroundingFacts')),
     locked: checked('answerLocked')
   };
@@ -575,6 +577,7 @@ function applyAnswerEntry(entry = {}, options = {}) {
     $('answerText').value = value.answer || '';
     $('answerFirstSentence').value = value.firstSentence || '';
     $('answerKeywords').value = Array.isArray(value.keywords) ? value.keywords.join('\n') : String(value.keywords || '');
+    $('answerUsefulPhrases').value = Array.isArray(value.usefulPhrases) ? value.usefulPhrases.join('\n') : String(value.usefulPhrases || '');
     $('answerGroundingFacts').value = Array.isArray(value.groundingFacts) ? value.groundingFacts.join('\n') : String(value.groundingFacts || '');
     $('answerLocked').checked = value.locked === true;
   } finally {
@@ -701,6 +704,116 @@ async function deleteCurrentAnswer() {
 }
 
 
+function uniqueLearningAidLines(values) {
+  const seen = new Set();
+  const result = [];
+  for (const raw of Array.isArray(values) ? values : []) {
+    const value = String(raw || '').trim();
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+async function requestLearningAids(entry) {
+  const result = await window.lmt.answerLibraryGenerateLearningAids(entry || {});
+  if (!result?.ok || !result.learningAids) throw new Error(result?.error || t('learningAidsFailed'));
+  return result.learningAids;
+}
+
+function applyLearningAidsToDraft(aids = {}, overwrite = false) {
+  suppressAnswerDirty = true;
+  try {
+    const generatedKeywords = uniqueLearningAidLines(aids.keywords);
+    const generatedPhrases = uniqueLearningAidLines(aids.usefulPhrases);
+    if (overwrite || !val('answerKeywords')) $('answerKeywords').value = generatedKeywords.join('\n');
+    if (overwrite || !val('answerUsefulPhrases')) $('answerUsefulPhrases').value = generatedPhrases.join('\n');
+    if ((overwrite || !val('answerFirstSentence')) && String(aids.firstSentence || '').trim()) {
+      $('answerFirstSentence').value = String(aids.firstSentence).trim();
+    }
+  } finally {
+    suppressAnswerDirty = false;
+  }
+  setAnswerEditorDirty(true);
+}
+
+async function generateCurrentAnswerLearningAids(overwrite = false) {
+  const draft = answerEntryFromUi();
+  if (!draft.question) throw new Error(t('answerQuestionRequired'));
+  if (!draft.answer) throw new Error(t('answerTextRequired'));
+  if (overwrite && !window.confirm(t('regenerateLearningAidsConfirm'))) return { ok: false, canceled: true };
+  if ($('answerLearningAidsStatus')) $('answerLearningAidsStatus').textContent = t('learningAidsGenerating');
+  const aids = await requestLearningAids(draft);
+  applyLearningAidsToDraft(aids, overwrite);
+  if ($('answerLearningAidsStatus')) $('answerLearningAidsStatus').textContent = t('learningAidsGenerated');
+  return { ok: true, learningAids: aids };
+}
+
+async function generateMissingLearningAidsForLibrary() {
+  const entries = Array.isArray(answerLibraryState.entries) ? answerLibraryState.entries : [];
+  const targets = entries.filter(entry => entry.question && entry.answer && (
+    !Array.isArray(entry.keywords) || !entry.keywords.length
+    || !Array.isArray(entry.usefulPhrases) || !entry.usefulPhrases.length
+    || !String(entry.firstSentence || '').trim()
+  ));
+  if (!targets.length) {
+    if ($('answerLearningAidsStatus')) $('answerLearningAidsStatus').textContent = t('learningAidsNoneMissing');
+    return { ok: true, updated: 0, failed: 0 };
+  }
+  if (!window.confirm(t('bulkLearningAidsConfirm'))) return { ok: false, canceled: true };
+  let updated = 0;
+  let failed = 0;
+  for (let index = 0; index < targets.length; index += 1) {
+    const entry = targets[index];
+    if ($('answerLearningAidsStatus')) {
+      $('answerLearningAidsStatus').textContent = `${t('learningAidsGenerating')} ${index + 1}/${targets.length}`;
+    }
+    try {
+      const aids = await requestLearningAids(entry);
+      if (!Array.isArray(entry.keywords) || !entry.keywords.length) entry.keywords = uniqueLearningAidLines(aids.keywords);
+      if (!Array.isArray(entry.usefulPhrases) || !entry.usefulPhrases.length) entry.usefulPhrases = uniqueLearningAidLines(aids.usefulPhrases);
+      if (!String(entry.firstSentence || '').trim() && String(aids.firstSentence || '').trim()) entry.firstSentence = String(aids.firstSentence).trim();
+      entry.updatedAt = new Date().toISOString();
+      updated += 1;
+    } catch (error) {
+      failed += 1;
+      log(`[LEARNING AIDS] ${entry.question}: ${error.message || error}`);
+    }
+  }
+  await persistAnswerLibrary('answerLibrarySaved');
+  if ($('answerLearningAidsStatus')) {
+    $('answerLearningAidsStatus').textContent = `${t('learningAidsBulkCompleted')} ${updated}; ${t('learningAidsFailedCount')} ${failed}`;
+  }
+  return { ok: failed === 0, updated, failed };
+}
+
+function renderTrainerLearningAids(entry) {
+  const panel = $('trainerLearningAids');
+  const keywordsRoot = $('trainerKeywordList');
+  const phrasesRoot = $('trainerUsefulPhraseList');
+  const keywords = Array.isArray(entry?.keywords) ? entry.keywords : [];
+  const phrases = Array.isArray(entry?.usefulPhrases) ? entry.usefulPhrases : [];
+  if (keywordsRoot) {
+    keywordsRoot.innerHTML = '';
+    for (const value of keywords) {
+      const chip = document.createElement('span');
+      chip.className = 'keywordChip';
+      chip.textContent = value;
+      keywordsRoot.appendChild(chip);
+    }
+  }
+  if (phrasesRoot) {
+    phrasesRoot.innerHTML = '';
+    for (const value of phrases) {
+      const item = document.createElement('li');
+      item.textContent = value;
+      phrasesRoot.appendChild(item);
+    }
+  }
+  if (panel) panel.hidden = !keywords.length && !phrases.length;
+}
 function assistantProtectionSummary(protection = {}) {
   if (!protection.supported) return t('assistantProtectionUnsupported');
   if (protection.applied) return t('assistantProtectionApplied');
@@ -1345,6 +1458,7 @@ function renderTrainingPractice() {
     if ($('trainerSessionStatus')) $('trainerSessionStatus').textContent = t('trainerIdle');
     if ($('trainerQuestionText')) $('trainerQuestionText').textContent = t('trainerNoQuestion');
     if ($('trainerReferencePanel')) $('trainerReferencePanel').hidden = true;
+    renderTrainerLearningAids(null);
     for (const id of ['saveTrainingAttempt','finishTrainingSession','showTrainerReference']) if ($(id)) $(id).disabled = true;
     return;
   }
@@ -1355,6 +1469,7 @@ function renderTrainingPractice() {
   if ($('trainerQuestionText')) $('trainerQuestionText').textContent = entry.question || t('trainerNoQuestion');
   if ($('trainerReferenceFirstSentence')) $('trainerReferenceFirstSentence').textContent = entry.firstSentence || '';
   if ($('trainerReferenceAnswer')) $('trainerReferenceAnswer').textContent = entry.answer || '';
+  renderTrainerLearningAids(entry);
   if ($('trainerReferencePanel')) $('trainerReferencePanel').hidden = !trainerReferenceVisible;
   if ($('showTrainerReference')) $('showTrainerReference').textContent = trainerReferenceVisible ? t('hideTrainerReference') : t('showTrainerReference');
   for (const id of ['saveTrainingAttempt','finishTrainingSession','showTrainerReference']) if ($(id)) $(id).disabled = false;
@@ -1887,6 +2002,15 @@ window.addEventListener('DOMContentLoaded', async () => {
     selectedAnswerId = '';
     applyAnswerEntry(emptyAnswerEntry(), { markClean: true });
     renderAnswerEntryList();
+  };
+  if ($('generateAnswerLearningAids')) $('generateAnswerLearningAids').onclick = async () => {
+    await runUiAction('Generate missing learning aids clicked.', 'generateAnswerLearningAids', () => generateCurrentAnswerLearningAids(false));
+  };
+  if ($('regenerateAnswerLearningAids')) $('regenerateAnswerLearningAids').onclick = async () => {
+    await runUiAction('Regenerate learning aids clicked.', 'regenerateAnswerLearningAids', () => generateCurrentAnswerLearningAids(true));
+  };
+  if ($('generateMissingLearningAids')) $('generateMissingLearningAids').onclick = async () => {
+    await runUiAction('Generate missing learning aids for library clicked.', 'generateMissingLearningAids', generateMissingLearningAidsForLibrary);
   };
   if ($('saveAnswerEntry')) $('saveAnswerEntry').onclick = async () => {
     await runUiAction('Save Answer Library entry clicked.', 'saveAnswerEntry', saveCurrentAnswer);

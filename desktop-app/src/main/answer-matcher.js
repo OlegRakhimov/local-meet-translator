@@ -9,6 +9,10 @@ function meaningfulTokens(value) {
   return questionTokens(value).filter(token => !STOP_WORDS.has(token));
 }
 
+function englishSide(value) {
+  return String(value || "").split(/\s+(?:—|–|-)\s+/)[0].trim();
+}
+
 function overlapScore(queryTokens, candidateTokens) {
   const query = new Set(queryTokens);
   const candidate = new Set(candidateTokens);
@@ -28,11 +32,13 @@ function scoreAnswerEntry(question, entry = {}) {
 
   const queryTokens = meaningfulTokens(normalizedQuestion);
   const savedTokens = meaningfulTokens(normalizedSaved);
-  const keywordTokens = meaningfulTokens(Array.isArray(entry.keywords) ? entry.keywords.join(' ') : entry.keywords || '');
+  const keywordTokens = meaningfulTokens((Array.isArray(entry.keywords) ? entry.keywords : [entry.keywords || '']).map(englishSide).join(' '));
+  const phraseTokens = meaningfulTokens((Array.isArray(entry.usefulPhrases) ? entry.usefulPhrases : [entry.usefulPhrases || '']).map(englishSide).join(' '));
   const intentTokens = meaningfulTokens(entry.intent || '');
-  let score = overlapScore(queryTokens, savedTokens) * 0.68;
+  let score = overlapScore(queryTokens, savedTokens) * 0.62;
   score += overlapScore(queryTokens, keywordTokens) * 0.22;
-  score += overlapScore(queryTokens, intentTokens) * 0.1;
+  score += overlapScore(queryTokens, phraseTokens) * 0.08;
+  score += overlapScore(queryTokens, intentTokens) * 0.08;
 
   if (normalizedQuestion.includes(normalizedSaved) || normalizedSaved.includes(normalizedQuestion)) score += 0.12;
   if (entry.locked === true) score += 0.03;
@@ -40,7 +46,8 @@ function scoreAnswerEntry(question, entry = {}) {
 }
 
 function entryToSuggestion(entry, score) {
-  const keywords = Array.isArray(entry.keywords) ? entry.keywords.filter(Boolean).slice(0, 6) : [];
+  const keywords = Array.isArray(entry.keywords) ? entry.keywords.filter(Boolean).map(englishSide).slice(0, 6) : [];
+  const usefulPhrases = Array.isArray(entry.usefulPhrases) ? entry.usefulPhrases.filter(Boolean).map(englishSide).slice(0, 3) : [];
   const facts = Array.isArray(entry.groundingFacts) ? entry.groundingFacts.filter(Boolean).slice(0, 10) : [];
   return {
     source: 'library',
@@ -49,7 +56,7 @@ function entryToSuggestion(entry, score) {
     question: String(entry.question || ''),
     firstSentence: String(entry.firstSentence || '').trim() || String(entry.answer || '').split(/(?<=[.!?])\s+/)[0] || '',
     answer: String(entry.answer || ''),
-    keyPoints: keywords,
+    keyPoints: [...keywords, ...usefulPhrases],
     basis: facts,
     confidence: score >= 0.82 ? 'high' : 'medium',
     experienceGap: false,
@@ -76,6 +83,7 @@ function matchAnswerLibrary(question, entries = [], { threshold = 0.52 } = {}) {
 module.exports = {
   STOP_WORDS,
   meaningfulTokens,
+  englishSide,
   overlapScore,
   scoreAnswerEntry,
   entryToSuggestion,

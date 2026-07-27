@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('lmt', {
   candidateProfileExport: (profile) => ipcRenderer.invoke('candidate-profile:export', profile || {}),
   answerLibraryLoad: () => ipcRenderer.invoke('answer-library:load'),
   answerLibrarySave: (library) => ipcRenderer.invoke('answer-library:save', library || {}),
+  answerLibraryGenerateLearningAids: (entry) => ipcRenderer.invoke('answer-library:generate-learning-aids', entry || {}),
   answerLibraryReset: () => ipcRenderer.invoke('answer-library:reset'),
   answerLibraryImport: () => ipcRenderer.invoke('answer-library:import'),
   answerLibraryExport: (library) => ipcRenderer.invoke('answer-library:export', library || {}),

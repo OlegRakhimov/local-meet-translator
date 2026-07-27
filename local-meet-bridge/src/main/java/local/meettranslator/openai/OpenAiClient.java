@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import local.meettranslator.config.BridgeConfig;
 import local.meettranslator.http.RequestContext;
+import local.meettranslator.model.InterviewLearningAidsRequest;
 import local.meettranslator.model.InterviewSuggestionRequest;
 import local.meettranslator.model.InterviewUtteranceClassificationRequest;
 
@@ -113,6 +114,75 @@ public final class OpenAiClient implements AiClient {
         return validateInterviewSuggestion(suggestion);
     }
 
+    @Override
+    public JsonNode generateInterviewLearningAids(RequestContext context, InterviewLearningAidsRequest request) throws IOException {
+        var body = MAPPER.createObjectNode()
+                .put("model", config.textModel())
+                .put("instructions", "Create compact learning aids for one reviewed interview question. Preserve reviewed factual content. Do not invent candidate experience. Return English technical terms and reusable English speaking phrases with Russian translations. Phrases must be scaffolding, not a replacement full answer. Return no prose outside the required JSON schema.")
+                .put("input", buildLearningAidsPrompt(request))
+                .put("store", false)
+                .put("temperature", 0);
+        body.set("text", MAPPER.createObjectNode().set("format", MAPPER.createObjectNode()
+                .put("type", "json_schema")
+                .put("name", "interview_learning_aids")
+                .put("strict", true)
+                .set("schema", buildLearningAidsSchema())));
+        HttpRequest httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create(config.baseUrl() + "/v1/responses"))
+                .timeout(Duration.ofSeconds(75))
+                .header("Authorization", "Bearer " + config.apiKey())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(MAPPER.writeValueAsBytes(body)))
+                .build();
+        HttpResponse<byte[]> response = context.await(http.sendAsync(httpRequest, HttpResponse.BodyHandlers.ofByteArray()));
+        ensureSuccess("OpenAI interview learning aids", response);
+        String output = extractOutputText(MAPPER.readTree(response.body()));
+        if (output.isBlank()) throw new IOException("OpenAI learning aids returned no output text");
+        JsonNode learningAids;
+        try {
+            learningAids = MAPPER.readTree(output);
+        } catch (Exception cause) {
+            throw new IOException("OpenAI learning aids returned invalid structured JSON", cause);
+        }
+        return validateLearningAids(learningAids);
+    }
+
+    private static String buildLearningAidsPrompt(InterviewLearningAidsRequest request) throws IOException {
+        var context = MAPPER.createObjectNode();
+        context.put("question", request.question());
+        context.put("reviewedAnswer", request.answer());
+        context.put("existingFirstSentence", request.firstSentence());
+        context.put("languageLevel", request.languageLevel());
+        context.set("existingKeywords", request.existingKeywords());
+        context.set("existingUsefulPhrases", request.existingUsefulPhrases());
+        return "Generate missing or improved study metadata.\n"
+                + "Rules:\n"
+                + "1. keywords: 5 to 10 question-specific technical concepts. Format each as 'English term — Russian translation'.\n"
+                + "2. usefulPhrases: 4 to 8 reusable English sentence starters or linking phrases for answering this exact question. Format each as 'English phrase — Russian translation'.\n"
+                + "3. firstSentence: one natural English opening sentence for the requested level. Keep a reviewed existing first sentence when it is already good.\n"
+                + "4. Do not copy the complete answer into usefulPhrases.\n"
+                + "5. Do not add unsupported personal claims.\n\n"
+                + "Context JSON:\n" + MAPPER.writeValueAsString(context);
+    }
+
+    private static JsonNode buildLearningAidsSchema() {
+        var properties = MAPPER.createObjectNode();
+        properties.set("keywords", stringArraySchema(10));
+        properties.set("usefulPhrases", stringArraySchema(8));
+        properties.set("firstSentence", MAPPER.createObjectNode().put("type", "string"));
+        var root = MAPPER.createObjectNode().put("type", "object").put("additionalProperties", false);
+        root.set("properties", properties);
+        root.set("required", MAPPER.createArrayNode().add("keywords").add("usefulPhrases").add("firstSentence"));
+        return root;
+    }
+
+    private static JsonNode validateLearningAids(JsonNode learningAids) throws IOException {
+        if (learningAids == null || !learningAids.isObject()) throw new IOException("Learning aids must be a JSON object");
+        if (!learningAids.path("keywords").isArray()) throw new IOException("Learning aids keywords are invalid");
+        if (!learningAids.path("usefulPhrases").isArray()) throw new IOException("Learning aids usefulPhrases are invalid");
+        if (!learningAids.path("firstSentence").isTextual()) throw new IOException("Learning aids firstSentence is invalid");
+        return learningAids;
+    }
     @Override
     public JsonNode classifyInterviewUtterance(RequestContext context, InterviewUtteranceClassificationRequest request) throws IOException {
         var body = MAPPER.createObjectNode()
@@ -405,7 +475,7 @@ public final class OpenAiClient implements AiClient {
         String language = normalizeLanguageForTranscription(sourceLang);
         if (!language.isBlank()) writePart(output, boundary, "language", language);
         if (EnglishExpectedRecognition.isRetryMode(sourceLang)) {
-            writePart(output, boundary, "prompt", "English software engineering interview. Preserve Java, Kotlin, Android, API, SQL, algorithm and complexity terms. Transcribe exactly in English.");
+            writePart(output, boundary, "prompt", EnglishExpectedRecognition.TECHNICAL_TRANSCRIPTION_VOCABULARY);
         }
         output.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
         output.write(("Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n").getBytes(StandardCharsets.UTF_8));

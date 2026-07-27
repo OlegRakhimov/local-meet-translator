@@ -2,6 +2,7 @@ package local.meettranslator.openai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import local.meettranslator.http.RequestContext;
+import local.meettranslator.model.InterviewLearningAidsRequest;
 import local.meettranslator.model.InterviewSuggestionRequest;
 import local.meettranslator.model.InterviewUtteranceClassificationRequest;
 
@@ -17,6 +18,8 @@ public interface AiClient {
     String translateText(RequestContext context, String sourceLang, String targetLang, String text) throws IOException;
 
     JsonNode suggestInterviewAnswer(RequestContext context, InterviewSuggestionRequest request) throws IOException;
+
+    JsonNode generateInterviewLearningAids(RequestContext context, InterviewLearningAidsRequest request) throws IOException;
 
     JsonNode classifyInterviewUtterance(RequestContext context, InterviewUtteranceClassificationRequest request) throws IOException;
 

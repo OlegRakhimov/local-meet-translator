@@ -201,6 +201,17 @@ class BridgeServerTest {
         }
 
         @Override
+        public com.fasterxml.jackson.databind.JsonNode generateInterviewLearningAids(
+                local.meettranslator.http.RequestContext context,
+                local.meettranslator.model.InterviewLearningAidsRequest request
+        ) {
+            var result = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            result.putArray("keywords").add("backend");
+            result.putArray("usefulPhrases").add("The main point is...");
+            result.put("firstSentence", "The main point is...");
+            return result;
+        }
+        @Override
         public JsonNode classifyInterviewUtterance(RequestContext context, InterviewUtteranceClassificationRequest request) {
             ObjectNode classification = MAPPER.createObjectNode();
             classification.put("type", "recommendation");

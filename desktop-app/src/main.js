@@ -1524,7 +1524,27 @@ ipcMain.handle('candidate-profile:export', async (_event, profile) => {
 });
 ipcMain.handle('answer-library:load', () => answerLibraryStore.load());
 ipcMain.handle('answer-library:save', (_event, library) => answerLibraryStore.save(library || {}));
-ipcMain.handle('answer-library:reset', () => answerLibraryStore.reset());
+ipcMain.handle('answer-library:generate-learning-aids', async (_event, entry) => {
+  const bridge = await ensureBridgeForAssistant();
+  if (!bridge.ok) return { ok: false, error: bridge.message || 'Bridge is not available.' };
+  const response = await requestJsonPost(
+    `http://127.0.0.1:${bridge.settings.LOCAL_MEET_TRANSLATOR_PORT}/interview/generate-learning-aids`,
+    bridge.settings.LOCAL_MEET_TRANSLATOR_TOKEN,
+    {
+      question: String(entry?.question || '').trim(),
+      answer: String(entry?.answer || '').trim(),
+      firstSentence: String(entry?.firstSentence || '').trim(),
+      existingKeywords: Array.isArray(entry?.keywords) ? entry.keywords : [],
+      existingUsefulPhrases: Array.isArray(entry?.usefulPhrases) ? entry.usefulPhrases : [],
+      languageLevel: String(entry?.level || 'B1').trim() || 'B1'
+    },
+    85_000
+  );
+  if (!response.ok || !response.json?.learningAids) {
+    return { ok: false, error: response.json?.message || response.body || `Learning aids request failed with HTTP ${response.status}.`, requestId: response.requestId };
+  }
+  return { ok: true, learningAids: response.json.learningAids, requestId: response.requestId };
+});ipcMain.handle('answer-library:reset', () => answerLibraryStore.reset());
 ipcMain.handle('answer-library:import', async () => {
   const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
   const options = {

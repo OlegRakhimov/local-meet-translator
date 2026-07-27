@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const MAX_ENTRIES = 500;
 const MAX_TEXT = 20000;
 const LEVELS = new Set(['A2', 'B1', 'B2']);
@@ -51,6 +51,7 @@ function sanitizeEntry(input = {}, index = 0) {
     answer: cleanText(source.answer, MAX_TEXT),
     firstSentence: cleanText(source.firstSentence, 2000),
     keywords: uniqueLines(source.keywords, 80),
+    usefulPhrases: uniqueLines(source.usefulPhrases, 80),
     groundingFacts: uniqueLines(source.groundingFacts, 150),
     locked: source.locked === true,
     createdAt: cleanText(source.createdAt, 64) || now,
