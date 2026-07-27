@@ -14,6 +14,14 @@ function Read-JsonVersion {
     return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json).version
 }
 
+function Run-TestStubFix {
+    $FixPath = Join-Path $PSScriptRoot 'FIX_TEST_STUB.ps1'
+    if (-not (Test-Path -LiteralPath $FixPath -PathType Leaf)) {
+        throw "FIX_TEST_STUB.ps1 was not found: $FixPath"
+    }
+    & $FixPath -ProjectPath $ProjectPath
+}
+
 if (-not (Test-Path -LiteralPath $ProjectPath -PathType Container)) {
     throw "Project directory does not exist: $ProjectPath"
 }
@@ -82,7 +90,8 @@ if ($LooksPartiallyApplied) {
     Write-Host "Baseline restored from: $($Backup.FullName)" -ForegroundColor Green
 }
 elseif ($DesktopVersion -eq '1.0.27' -and (Test-Path -LiteralPath $ValidatorPath -PathType Leaf)) {
-    Write-Host 'Stage 15.1 already appears to be fully applied. Run VERIFY_UPDATE.ps1.' -ForegroundColor Yellow
+    Write-Host 'Stage 15.1 is already applied. Completing the bridge test-stub fix.' -ForegroundColor Yellow
+    Run-TestStubFix
     exit 0
 }
 elseif ($DesktopVersion -ne '1.0.26') {
@@ -103,3 +112,4 @@ $Source = $Source.Replace("`r`n", "`n").Replace("`r", "`n")
 
 $ScriptBlock = [ScriptBlock]::Create($Source)
 & $ScriptBlock -ProjectPath $ProjectPath
+Run-TestStubFix
