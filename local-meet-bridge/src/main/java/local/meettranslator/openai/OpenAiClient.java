@@ -301,6 +301,7 @@ public final class OpenAiClient implements AiClient {
         return classification;
     }
 
+
     private static String buildInterviewPrompt(InterviewSuggestionRequest request) throws IOException {
         var evidence = MAPPER.createObjectNode();
         evidence.put("questionOrTask", request.question());
@@ -311,6 +312,35 @@ public final class OpenAiClient implements AiClient {
         evidence.set("candidateProfile", request.candidateProfile());
         evidence.set("confirmedFacts", request.confirmedFacts());
         evidence.set("reviewedAnswerCandidates", request.reviewedAnswers());
+        if (!request.currentTask().isBlank()) evidence.put("currentTask", request.currentTask());
+        if (request.currentSolution().size() > 0) evidence.set("currentSolution", request.currentSolution());
+        if (request.activeInputs().size() > 0) evidence.set("activeInterviewerInputs", request.activeInputs());
+        if (!request.latestUtterance().isBlank()) evidence.put("latestUtterance", request.latestUtterance());
+        if (request.recentContext().size() > 0) evidence.set("recentContext", request.recentContext());
+
+        boolean hasStructuredCodingContext = !request.currentTask().isBlank() && !request.latestUtterance().isBlank();
+        String contextualRules = "";
+        if (hasStructuredCodingContext && "coding-task".equals(request.taskKind())) {
+            contextualRules = """
+                    Structured coding revision mode:
+                    - currentTask is the original coding task and must remain the task boundary.
+                    - currentSolution is the solution currently visible to the candidate.
+                    - latestUtterance is the newest interviewer request or constraint.
+                    - activeInterviewerInputs are the authoritative accumulated requirements after corrections.
+                    - recentContext is supporting context only and has lower priority than activeInterviewerInputs and latestUtterance.
+                    - Return a complete revised coding_solution. Preserve still-valid parts of currentSolution, but update approach, code, explanation, complexity, edge cases, and speaking notes wherever required.
+                    - Never return only an acknowledgement of latestUtterance.
+                    """;
+        } else if (hasStructuredCodingContext && "question".equals(request.taskKind())) {
+            contextualRules = """
+                    Structured coding follow-up mode:
+                    - Answer latestUtterance as a separate spoken interview answer about currentTask and currentSolution.
+                    - Preserve the current solution. Do not rewrite or replace code in this response.
+                    - Use activeInterviewerInputs and recentContext only to understand the current solution and constraints.
+                    - Set responseType to interview_answer and leave coding-only fields empty.
+                    """;
+        }
+
         return "Prepare guidance the candidate can use during a live interview.\n"
                 + "Shared rules:\n"
                 + "1. Keep spoken guidance natural for the requested English level.\n"
@@ -333,6 +363,7 @@ public final class OpenAiClient implements AiClient {
                 + "- edgeCases must list important edge cases.\n"
                 + "- speakingNotes must be short phrases the candidate can say while coding, including what will be done first, next, and why.\n"
                 + "- Do not claim the candidate has used a technology unless supplied evidence supports that claim.\n\n"
+                + contextualRules
                 + "Input JSON:\n" + MAPPER.writeValueAsString(evidence);
     }
 

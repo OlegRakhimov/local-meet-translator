@@ -1,3 +1,4 @@
+
 package local.meettranslator.model;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -15,7 +16,12 @@ public record InterviewSuggestionRequest(
         String answerStyle,
         ObjectNode candidateProfile,
         ArrayNode confirmedFacts,
-        ArrayNode reviewedAnswers
+        ArrayNode reviewedAnswers,
+        String currentTask,
+        ObjectNode currentSolution,
+        ArrayNode activeInputs,
+        String latestUtterance,
+        ArrayNode recentContext
 ) {
     private static final Set<String> LEVELS = Set.of("A2", "B1", "B2");
     private static final Set<String> STYLES = Set.of("simple", "technical", "star", "general");
@@ -31,7 +37,26 @@ public record InterviewSuggestionRequest(
         ObjectNode profile = objectCopy(json.get("candidateProfile"), "candidateProfile", 40_000);
         ArrayNode facts = textArrayCopy(json.get("confirmedFacts"), "confirmedFacts", 120, 1_500);
         ArrayNode answers = objectArrayCopy(json.get("reviewedAnswers"), "reviewedAnswers", 5, 30_000);
-        return new InterviewSuggestionRequest(question, taskKind, codingLanguage, level, style, profile, facts, answers);
+        String currentTask = JsonContract.text(json, "currentTask", "", 12_000).trim();
+        ObjectNode currentSolution = objectCopy(json.get("currentSolution"), "currentSolution", 70_000);
+        ArrayNode activeInputs = objectArrayCopy(json.get("activeInputs"), "activeInputs", 20, 50_000);
+        String latestUtterance = JsonContract.text(json, "latestUtterance", "", 2_400).trim();
+        ArrayNode recentContext = objectArrayCopy(json.get("recentContext"), "recentContext", 8, 20_000);
+        return new InterviewSuggestionRequest(
+                question,
+                taskKind,
+                codingLanguage,
+                level,
+                style,
+                profile,
+                facts,
+                answers,
+                currentTask,
+                currentSolution,
+                activeInputs,
+                latestUtterance,
+                recentContext
+        );
     }
 
     private static ObjectNode objectCopy(JsonNode value, String field, int maxSerializedLength) {

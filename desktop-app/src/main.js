@@ -19,6 +19,7 @@ const { matchAnswerLibrary } = require('./main/answer-matcher');
 const { createAssistantOverlayController, normalizeAssistantSettings } = require('./main/assistant-overlay');
 const { createAutomaticAnalysisCoordinator } = require('./main/assistant-auto-analysis');
 const { normalizeClassification, fallbackClassifyUtterance, isAutomaticChange, previewActiveInputs } = require('./main/utterance-classifier');
+const { buildCodingRequestParts } = require('./main/interview-context');
 const { constantTimeEqual, createSlidingWindowRateLimiter, isJsonRequest, applyLocalSecurityHeaders } = require('./main/security-guard');
 const { createDiagnosticsTracker, buildDiagnosticsReport, diagnosticsToMarkdown } = require('./main/diagnostics');
 
@@ -409,27 +410,26 @@ async function analyzeCodingFollowUp(questionInput) {
   const profile = candidateProfileStore.load().profile || {};
   const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
   const currentSuggestion = overlayState.suggestion || {};
-  const prompt = [
-    'You are answering a follow-up about a coding task that is already visible to the candidate.',
-    `Original coding task: ${cleanQuestionText(focus.task.text)}`,
-    currentSuggestion.approachSummary ? `Current approach: ${String(currentSuggestion.approachSummary).slice(0, 4000)}` : '',
-    currentSuggestion.code ? `Current code (do not rewrite unless the question explicitly asks for a change):\n${String(currentSuggestion.code).slice(0, 9000)}` : '',
-    `Interviewer follow-up: ${question.text}`,
-    'Prepare a concise spoken English answer to this follow-up. Preserve the existing coding solution. If a code change is requested, explain the exact change and where it belongs instead of replacing the whole solution.'
-  ].filter(Boolean).join('\n\n');
+  const contextParts = buildCodingRequestParts({
+    focus,
+    currentSuggestion,
+    latestUtterance: question.text,
+    proposedInputs: focus.activeInputs
+  });
 
   const response = await requestJsonPost(
     `http://127.0.0.1:${bridge.settings.LOCAL_MEET_TRANSLATOR_PORT}/interview/suggest-answer`,
     bridge.settings.LOCAL_MEET_TRANSLATOR_TOKEN,
     {
-      question: prompt,
+      question: question.text,
       taskKind: 'question',
       codingLanguage: cleanQuestionText(focus.task.codingLanguage || currentSuggestion.codeLanguage).toLowerCase(),
       languageLevel: assistantSettings.languageLevel,
       answerStyle: assistantSettings.answerStyle,
       candidateProfile: buildInterviewGrounding(profile),
       confirmedFacts: confirmedCandidateFacts(profile),
-      reviewedAnswers: []
+      reviewedAnswers: [],
+      ...contextParts
     }
   );
 
@@ -449,29 +449,6 @@ async function analyzeCodingFollowUp(questionInput) {
   return { ok: true, suggestion, requestId: response.requestId };
 }
 
-
-function buildCodingRevisionPrompt({ focus, currentSuggestion, classification, utterance, proposedInputs }) {
-  const activeLines = (Array.isArray(proposedInputs) ? proposedInputs : [])
-    .map((item, index) => `${index + 1}. [${item.type || 'input'} / ${item.target || 'other'}] ${item.normalizedInput}`)
-    .join('\n');
-  const criteria = Array.isArray(classification.verificationCriteria)
-    ? classification.verificationCriteria.map((item, index) => `${index + 1}. ${item}`).join('\n')
-    : '';
-  return [
-    'Revise the coding solution currently shown to the candidate.',
-    `Original coding task: ${cleanQuestionText(focus.task?.text)}`,
-    currentSuggestion.approachSummary ? `Current approach:\n${String(currentSuggestion.approachSummary).slice(0, 5000)}` : '',
-    currentSuggestion.code ? `Current code:\n${String(currentSuggestion.code).slice(0, 30_000)}` : '',
-    `Latest interviewer utterance: ${cleanQuestionText(utterance.text)}`,
-    `Interpreted intent: ${classification.type}; action: ${classification.action}; target: ${classification.target}.`,
-    classification.normalizedInput ? `Normalized input: ${classification.normalizedInput}` : '',
-    activeLines ? `Active interviewer inputs after this update:\n${activeLines}` : 'Active interviewer inputs after this update: none.',
-    criteria ? `Semantic verification criteria:\n${criteria}` : '',
-    'Return a complete revised coding solution, not merely an acknowledgement.',
-    'Preserve parts of the current solution that are still valid, but change the approach, code, explanation, complexity, edge cases, and speaking notes wherever the active inputs require it.',
-    'Do not describe the classifier or mention that an utterance was classified.'
-  ].filter(Boolean).join('\n\n');
-}
 
 async function applyCodingChange(changeInput = null) {
   if (!assistantOverlay) return { ok: false, message: 'Interview assistant window is not initialized.' };
@@ -499,11 +476,10 @@ async function applyCodingChange(changeInput = null) {
   const currentSuggestion = overlayState.suggestion || {};
   const profile = candidateProfileStore.load().profile || {};
   const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
-  const prompt = buildCodingRevisionPrompt({
+  const contextParts = buildCodingRequestParts({
     focus,
     currentSuggestion,
-    classification,
-    utterance: change.utterance,
+    latestUtterance: change.utterance.text,
     proposedInputs
   });
   const generation = ++assistantAnalysisGeneration;
@@ -511,14 +487,15 @@ async function applyCodingChange(changeInput = null) {
     `http://127.0.0.1:${bridge.settings.LOCAL_MEET_TRANSLATOR_PORT}/interview/suggest-answer`,
     bridge.settings.LOCAL_MEET_TRANSLATOR_TOKEN,
     {
-      question: prompt,
+      question: focus.task.text,
       taskKind: 'coding-task',
       codingLanguage: cleanQuestionText(focus.task.codingLanguage || currentSuggestion.codeLanguage).toLowerCase(),
       languageLevel: assistantSettings.languageLevel,
       answerStyle: assistantSettings.answerStyle,
       candidateProfile: buildInterviewGrounding(profile),
       confirmedFacts: confirmedCandidateFacts(profile),
-      reviewedAnswers: []
+      reviewedAnswers: [],
+      ...contextParts
     },
     95_000
   );
