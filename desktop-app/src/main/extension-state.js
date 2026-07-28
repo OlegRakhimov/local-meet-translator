@@ -22,7 +22,8 @@ class ExtensionClientRegistry {
       armedAt: armed ? now : (previous ? previous.armedAt : 0)
     };
     this.clients.set(id, client);
-    if (armed) this.activeClientId = id;
+    if (armed && client.visible) this.activeClientId = id;
+    else if (!client.visible && this.activeClientId === id) this.activeClientId = '';
     return { ...client };
   }
 
@@ -39,9 +40,9 @@ class ExtensionClientRegistry {
   choose() {
     const clients = this.recent();
     clients.sort((a, b) =>
-      Number(b.id === this.activeClientId) - Number(a.id === this.activeClientId)
+      Number(Boolean(b.visible)) - Number(Boolean(a.visible))
+      || Number(b.id === this.activeClientId) - Number(a.id === this.activeClientId)
       || (b.armedAt || 0) - (a.armedAt || 0)
-      || Number(Boolean(b.visible)) - Number(Boolean(a.visible))
       || (b.lastVisibleAt || 0) - (a.lastVisibleAt || 0)
       || b.lastSeen - a.lastSeen
     );
@@ -54,7 +55,7 @@ class ExtensionClientRegistry {
 
   markActive(clientId) {
     const id = String(clientId || '').trim();
-    if (id && this.clients.has(id)) this.activeClientId = id;
+    if (id && this.clients.get(id)?.visible) this.activeClientId = id;
   }
 
   clearActive(clientId = '') {

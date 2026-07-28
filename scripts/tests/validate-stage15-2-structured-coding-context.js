@@ -8,7 +8,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const assert = (condition, message) => { if (!condition) throw new Error(message); };
 
 const pkg = JSON.parse(read('desktop-app/package.json'));
-assert(pkg.version === '1.0.28', 'Desktop version must be 1.0.28.');
+assert(pkg.version === '1.0.29', 'Desktop version must be 1.0.29.');
 assert(pkg.scripts['test:architecture'].includes('validate-stage15-2-structured-coding-context.js'), 'Stage 15.2 validator must be part of architecture tests.');
 
 const helper = read('desktop-app/src/main/interview-context.js');

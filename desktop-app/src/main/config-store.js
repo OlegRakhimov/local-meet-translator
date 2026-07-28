@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { COMPLIANCE_CONTROLLED_SETTINGS, isExamComplianceModeEnabled, enforceExamComplianceSettings } = require('./compliance-mode');
 
 const SETTINGS_ORDER = [
   'OPENAI_API_KEY',
@@ -10,6 +11,7 @@ const SETTINGS_ORDER = [
   'DESKTOP_EXTENSION_PAIRING_CODE',
   'OPENAI_TRANSCRIBE_MODEL',
   'OPENAI_TEXT_MODEL',
+  'EXAM_COMPLIANCE_MODE',
   'ENABLE_TTS',
   'OPENAI_TTS_MODEL',
   'OPENAI_TTS_VOICE',
@@ -247,6 +249,7 @@ function createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPat
     }
     result.OPENAI_TRANSCRIBE_MODEL ||= 'whisper-1';
     result.OPENAI_TEXT_MODEL ||= 'gpt-4o-mini';
+    result.EXAM_COMPLIANCE_MODE ||= 'false';
     result.ENABLE_TTS ||= 'true';
     result.OPENAI_TTS_MODEL ||= 'gpt-4o-mini-tts';
     result.OPENAI_TTS_VOICE ||= 'onyx';
@@ -312,11 +315,12 @@ function createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPat
     result.INTERVIEW_ASSISTANT_CLICK_THROUGH_HOTKEY ||= 'CommandOrControl+Shift+Z';
     result.INTERVIEW_ASSISTANT_MOVE_HOTKEY ||= 'CommandOrControl+Shift+M';
 
-    Object.defineProperties(result, {
+    const enforced = enforceExamComplianceSettings(result);
+    Object.defineProperties(enforced, {
       __ENV_PATH: { value: envPath, enumerable: false, configurable: false, writable: false },
       __CONFIG_DIR: { value: userConfigDir, enumerable: false, configurable: false, writable: false }
     });
-    return { settings: result, generatedSecurityValues };
+    return { settings: enforced, generatedSecurityValues };
   }
 
   function loadSettings() {
@@ -337,7 +341,32 @@ function createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPat
 
   function saveSettings(next) {
     ensureUserConfigDir();
-    const merged = { ...loadSettings(), ...(next || {}) };
+    const persisted = fs.existsSync(envPath) ? parseDotEnv(fs.readFileSync(envPath, 'utf8')) : {};
+    const current = loadSettings();
+    const wasComplianceEnabled = isExamComplianceModeEnabled(persisted);
+    const requested = { ...current, ...(next || {}) };
+    const willEnableCompliance = isExamComplianceModeEnabled(requested);
+    let merged = { ...requested };
+
+    if (!wasComplianceEnabled && willEnableCompliance) {
+      const previous = {};
+      for (const key of COMPLIANCE_CONTROLLED_SETTINGS) previous[key] = current[key];
+      merged.EXAM_COMPLIANCE_PREVIOUS_SETTINGS = JSON.stringify(previous);
+    } else if (wasComplianceEnabled && willEnableCompliance && persisted.EXAM_COMPLIANCE_PREVIOUS_SETTINGS) {
+      merged.EXAM_COMPLIANCE_PREVIOUS_SETTINGS = persisted.EXAM_COMPLIANCE_PREVIOUS_SETTINGS;
+    } else if (wasComplianceEnabled && !willEnableCompliance) {
+      try {
+        const previous = JSON.parse(String(persisted.EXAM_COMPLIANCE_PREVIOUS_SETTINGS || '{}'));
+        for (const key of COMPLIANCE_CONTROLLED_SETTINGS) {
+          if (previous[key] !== undefined) merged[key] = String(previous[key]);
+        }
+      } catch (_) {
+        // A damaged preference snapshot must not prevent the user from leaving compliance mode.
+      }
+      delete merged.EXAM_COMPLIANCE_PREVIOUS_SETTINGS;
+    }
+
+    merged = enforceExamComplianceSettings(merged);
     if (!merged.LOCAL_MEET_TRANSLATOR_TOKEN) merged.LOCAL_MEET_TRANSLATOR_TOKEN = crypto.randomBytes(24).toString('hex');
     if (!merged.DESKTOP_EXTENSION_TOKEN) merged.DESKTOP_EXTENSION_TOKEN = crypto.randomBytes(24).toString('hex');
     if (!merged.DESKTOP_EXTENSION_PAIRING_CODE) merged.DESKTOP_EXTENSION_PAIRING_CODE = generatePairingCode();

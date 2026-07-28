@@ -886,3 +886,47 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     releaseCaptureCompletely().catch(() => {});
   }
 });
+
+// Last payload is kept briefly so a newly-created side panel can request it
+// after its JavaScript listener has finished loading.
+let pendingSidePanelTranslation = null;
+
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== "translate-selection") return;
+
+  const tabId = tab && tab.id;
+  if (!tabId) return;
+
+  try {
+    // A keyboard command is a user gesture, so Chrome permits opening the panel.
+    await chrome.sidePanel.open({ tabId });
+
+    // This reads the current selection without Clipboard API calls, synthetic
+    // keyboard events, or any changes to the page DOM.
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => window.getSelection().toString()
+    });
+
+    pendingSidePanelTranslation = {
+      type: "LMT_TRANSLATE_SELECTION",
+      text: String(results && results[0] && results[0].result || "")
+    };
+  } catch (error) {
+    pendingSidePanelTranslation = {
+      type: "LMT_TRANSLATE_SELECTION",
+      text: "",
+      error: String(error && (error.message || error) || "Could not read the selection.")
+    };
+  }
+
+  // If the panel is already loaded, it receives the text immediately. A new
+  // panel also sends LMT_SIDE_PANEL_READY and receives the same payload below.
+  chrome.runtime.sendMessage(pendingSidePanelTranslation).catch(() => {});
+});
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message && message.type === "LMT_SIDE_PANEL_READY" && pendingSidePanelTranslation) {
+    chrome.runtime.sendMessage(pendingSidePanelTranslation).catch(() => {});
+  }
+});

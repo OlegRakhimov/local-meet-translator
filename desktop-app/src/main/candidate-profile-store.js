@@ -6,7 +6,7 @@ const SCHEMA_VERSION = 1;
 const MAX_TEXT = 20000;
 const MAX_RESUME_TEXT = 200000;
 const MAX_FACTS = 300;
-const SUPPORTED_IMPORT_EXTENSIONS = new Set(['.json', '.txt', '.md']);
+const SUPPORTED_IMPORT_EXTENSIONS = new Set(['.json', '.txt', '.md', '.pdf', '.docx']);
 
 function cleanText(value, maxLength = MAX_TEXT) {
   return String(value ?? '')
@@ -117,7 +117,7 @@ function readJsonSafe(filePath) {
   }
 }
 
-function createCandidateProfileStore({ profilePath }) {
+function createCandidateProfileStore({ profilePath, extractDocumentText = null }) {
   if (!profilePath) throw new TypeError('profilePath is required.');
 
   function load() {
@@ -137,10 +137,10 @@ function createCandidateProfileStore({ profilePath }) {
     return { ok: true, path: profilePath, profile };
   }
 
-  function importFromPath(filePath) {
+  async function importFromPath(filePath) {
     const extension = path.extname(String(filePath || '')).toLowerCase();
     if (!SUPPORTED_IMPORT_EXTENSIONS.has(extension)) {
-      throw new Error('Supported resume imports are JSON, TXT and MD in this stage.');
+      throw new Error('Supported resume imports are JSON, TXT, MD, PDF and DOCX.');
     }
     if (extension === '.json') {
       const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -148,11 +148,24 @@ function createCandidateProfileStore({ profilePath }) {
       profile.resumeSource = filePath;
       return { ok: true, kind: 'profile-json', filePath, profile };
     }
-    const resumeText = cleanText(fs.readFileSync(filePath, 'utf8'), MAX_RESUME_TEXT);
+    let resumeText = '';
+    let format = extension.slice(1);
+    if (extension === '.txt' || extension === '.md') {
+      resumeText = cleanText(fs.readFileSync(filePath, 'utf8'), MAX_RESUME_TEXT);
+    } else {
+      if (typeof extractDocumentText !== 'function') {
+        throw new Error('PDF/DOCX document extraction is not configured.');
+      }
+      const extracted = await extractDocumentText(filePath);
+      resumeText = cleanText(extracted && extracted.text, MAX_RESUME_TEXT);
+      format = cleanText(extracted && extracted.format, 20) || format;
+    }
+    if (!resumeText) throw new Error('The selected resume contains no readable text.');
     const current = load().profile;
     return {
       ok: true,
       kind: 'resume-text',
+      format,
       filePath,
       profile: sanitizeProfile({ ...current, resumeText, resumeSource: filePath })
     };

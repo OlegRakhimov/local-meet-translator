@@ -293,8 +293,38 @@ function initVoices() {
   if (!el) return;
   el.innerHTML = VOICES.map(v => `<option value="${v}">${v}</option>`).join('');
 }
+function syncComplianceModeUi() {
+  const active = $('examComplianceMode') ? checked('examComplianceMode') : false;
+  const forcedOffCheckboxes = [
+    'subtitleContentProtection', 'homeSubtitleProtection',
+    'assistantEnabled', 'assistantAutoAnalyze', 'assistantContentProtection',
+    'assistantTeleprompterEnabled', 'assistantTeleprompterAutoStart',
+    'homeAssistantAutoAnalyze', 'homeAssistantEnabled'
+  ];
+  for (const id of forcedOffCheckboxes) {
+    const control = $(id);
+    if (!control) continue;
+    if (active) control.checked = false;
+    control.disabled = active;
+  }
+  for (const id of [
+    'showAssistantWindowTop', 'showAssistantWindow', 'analyzeAssistantQuestion',
+    'generateAnswerLearningAids', 'regenerateAnswerLearningAids', 'generateMissingLearningAids'
+  ]) {
+    const control = $(id);
+    if (control) control.disabled = active;
+  }
+  const status = $('examComplianceModeStatus');
+  if (status) {
+    status.textContent = t(active ? 'examComplianceModeOn' : 'examComplianceModeOff');
+    status.classList.toggle('active', active);
+  }
+  document.body.classList.toggle('examComplianceModeActive', active);
+}
+
 function apply(s) {
   $('openaiKey').value = s.OPENAI_API_KEY || '';
+  if ($('examComplianceMode')) $('examComplianceMode').checked = String(s.EXAM_COMPLIANCE_MODE || 'false') === 'true';
   $('bridgePort').value = s.LOCAL_MEET_TRANSLATOR_PORT || '8799';
   $('voicePort').value = s.VOICE_CONVERSION_PORT || '18799';
   $('textModel').value = s.OPENAI_TEXT_MODEL || 'gpt-4o-mini';
@@ -358,11 +388,14 @@ function apply(s) {
   if ($('assistantTeleprompterPreviousHotkey')) $('assistantTeleprompterPreviousHotkey').value = s.INTERVIEW_TELEPROMPTER_PREVIOUS_HOTKEY || 'CommandOrControl+Shift+Left';
   if ($('assistantTeleprompterFreezeHotkey')) $('assistantTeleprompterFreezeHotkey').value = s.INTERVIEW_TELEPROMPTER_FREEZE_HOTKEY || 'CommandOrControl+Shift+F';
   if ($('assistantTeleprompterPendingHotkey')) $('assistantTeleprompterPendingHotkey').value = s.INTERVIEW_TELEPROMPTER_LOAD_PENDING_HOTKEY || 'CommandOrControl+Shift+Enter';
+  syncComplianceModeUi();
   syncHomeControlsFromSettings();
+  syncComplianceModeUi();
 }
 function readSettings() {
   return {
     OPENAI_API_KEY: val('openaiKey'),
+    EXAM_COMPLIANCE_MODE: $('examComplianceMode') && checked('examComplianceMode') ? 'true' : 'false',
     LOCAL_MEET_TRANSLATOR_PORT: val('bridgePort') || '8799',
     LOCAL_MEET_TRANSLATOR_TOKEN: val('token'),
     OPENAI_TEXT_MODEL: val('textModel') || 'gpt-4o-mini',
@@ -1738,6 +1771,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   });
   if ($('saveSettingsTop')) $('saveSettingsTop').onclick = () => saveFromSecondaryScreen('saveSettingsTop');
   if ($('saveTranslationTop')) $('saveTranslationTop').onclick = () => saveFromSecondaryScreen('saveTranslationTop');
+  if ($('examComplianceMode')) $('examComplianceMode').onchange = async () => {
+    syncComplianceModeUi();
+    const result = await saveFromSecondaryScreen('examComplianceMode');
+    if (result?.complianceMode) log(`[COMPLIANCE] ${t('examComplianceModeEnabledLog')}`);
+    else log(`[COMPLIANCE] ${t('examComplianceModeDisabledLog')}`);
+  };
   const navRegistry = $('candidateProfileDot')?.closest('.stateRegistry');
   if (navRegistry && window.MutationObserver) {
     new MutationObserver(syncNavigationStatus).observe(navRegistry, { attributes: true, childList: true, subtree: true, characterData: true });

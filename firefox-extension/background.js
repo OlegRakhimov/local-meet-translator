@@ -464,3 +464,46 @@ loadExtensionIdentity().then(() => {
     syncDesktopCommand().catch(() => {});
   }
 }).catch(() => {});
+
+// Keep the latest payload until a newly-created Firefox sidebar is ready.
+let pendingSidebarTranslation = null;
+
+browser.commands.onCommand.addListener((command, tab) => {
+  if (command !== "translate-selection") return;
+
+  // Call open() synchronously inside the shortcut handler. Firefox requires
+  // sidebarAction.open() to run while the user-action permission is active.
+  const openingSidebar = browser.sidebarAction.open();
+  const tabId = tab && tab.id;
+
+  Promise.resolve(openingSidebar)
+    .then(async () => {
+      if (!tabId) throw new Error("No active page tab is available.");
+
+      // Manifest V2 uses tabs.executeScript. This expression only reads the
+      // current selection and does not write to the page DOM.
+      const results = await browser.tabs.executeScript(tabId, {
+        code: "window.getSelection().toString()"
+      });
+
+      pendingSidebarTranslation = {
+        type: "LMT_TRANSLATE_SELECTION",
+        text: String(results && results[0] || "")
+      };
+    })
+    .catch((error) => {
+      pendingSidebarTranslation = {
+        type: "LMT_TRANSLATE_SELECTION",
+        text: "",
+        error: String(error && (error.message || error) || "Could not read the selection.")
+      };
+    })
+    .then(() => browser.runtime.sendMessage(pendingSidebarTranslation).catch(() => {}));
+});
+
+browser.runtime.onMessage.addListener((message) => {
+  if (message && message.type === "LMT_SIDE_PANEL_READY" && pendingSidebarTranslation) {
+    browser.runtime.sendMessage(pendingSidebarTranslation).catch(() => {});
+  }
+  return undefined;
+});

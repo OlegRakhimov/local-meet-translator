@@ -17,3 +17,11 @@ out/
 # Local configs / secrets
 .env
 local.properties
+# Poppler runtime staged by the Windows release build
+document-tools/poppler/*
+!document-tools/poppler/.gitkeep
+!document-tools/poppler/README.txt
+
+# Python generated files
+__pycache__/
+*.py[cod]

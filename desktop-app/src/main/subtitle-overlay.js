@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { isExamComplianceModeEnabled } = require('./compliance-mode');
 
 const DEFAULT_SUBTITLE_SETTINGS = Object.freeze({
   enabled: true,
@@ -41,12 +42,14 @@ function boundedFloat(value, fallback, min, max) {
 
 function normalizeSubtitleSettings(settings = {}, platform = process.platform) {
   const source = settings || {};
+  const complianceMode = isExamComplianceModeEnabled(source);
   const contentProtectionDefault = SUPPORTED_PROTECTION_PLATFORMS.has(platform)
     ? DEFAULT_SUBTITLE_SETTINGS.contentProtection
     : false;
   return {
+    complianceMode,
     enabled: boolValue(source.SUBTITLE_WINDOW_ENABLED ?? source.enabled, DEFAULT_SUBTITLE_SETTINGS.enabled),
-    contentProtection: boolValue(
+    contentProtection: complianceMode ? false : boolValue(
       source.SUBTITLE_WINDOW_CONTENT_PROTECTION ?? source.contentProtection,
       contentProtectionDefault
     ),

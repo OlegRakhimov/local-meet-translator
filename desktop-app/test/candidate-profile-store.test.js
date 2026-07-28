@@ -37,15 +37,37 @@ test('saves and loads profile atomically', () => {
   assert.equal(loaded.profile.targetRole, 'Android Developer');
 });
 
-test('imports text as reviewable resume content without inventing facts', () => {
+test('imports text as reviewable resume content without inventing facts', async () => {
   const directory = tempDir();
   const profilePath = path.join(directory, 'candidate-profile.json');
   const resumePath = path.join(directory, 'resume.txt');
   fs.writeFileSync(resumePath, 'Kotlin developer with Android projects.\n', 'utf8');
   const store = createCandidateProfileStore({ profilePath });
-  const imported = store.importFromPath(resumePath);
+  const imported = await store.importFromPath(resumePath);
   assert.equal(imported.kind, 'resume-text');
   assert.match(imported.profile.resumeText, /Kotlin developer/);
+  assert.deepEqual(imported.profile.confirmedFacts, []);
+});
+
+
+test('imports PDF and DOCX through the configured local document extractor', async () => {
+  const directory = tempDir();
+  const profilePath = path.join(directory, 'candidate-profile.json');
+  const resumePath = path.join(directory, 'resume.pdf');
+  fs.writeFileSync(resumePath, '%PDF-1.4\n', 'utf8');
+  const calls = [];
+  const store = createCandidateProfileStore({
+    profilePath,
+    extractDocumentText: async filePath => {
+      calls.push(filePath);
+      return { text: 'Android developer with Kotlin and Flutter experience.', format: 'pdf' };
+    }
+  });
+  const imported = await store.importFromPath(resumePath);
+  assert.equal(imported.kind, 'resume-text');
+  assert.equal(imported.format, 'pdf');
+  assert.equal(calls.length, 1);
+  assert.match(imported.profile.resumeText, /Kotlin and Flutter/);
   assert.deepEqual(imported.profile.confirmedFacts, []);
 });
 

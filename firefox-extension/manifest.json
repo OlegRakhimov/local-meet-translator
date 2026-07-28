@@ -19,6 +19,19 @@
     "default_title": "Local Meet Translator",
     "default_popup": "popup.html"
   },
+  "sidebar_action": {
+    "default_title": "Local Meet Translator — Переводчик",
+    "default_panel": "sidepanel.html",
+    "open_at_install": false
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "Translate the selected text in the sidebar"
+    }
+  },
   "background": {
     "scripts": [
       "firefox_audio.js",

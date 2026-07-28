@@ -11,6 +11,7 @@ const { ExtensionClientRegistry, ExtensionCommandCoordinator } = require('./main
 const { createSubtitleOverlayController, sanitizeSubtitleEvent } = require('./main/subtitle-overlay');
 const { createSubtitleDedupeGuard } = require('./main/subtitle-dedupe');
 const { createCandidateProfileStore } = require('./main/candidate-profile-store');
+const { createDocumentTextExtractor } = require('./main/document-text-extractor');
 const { createAnswerLibraryStore } = require('./main/answer-library-store');
 const { createInterviewTrainingStore } = require('./main/interview-training-store');
 const { createLiveInterviewStore } = require('./main/live-interview-store');
@@ -22,6 +23,7 @@ const { normalizeClassification, fallbackClassifyUtterance, isAutomaticChange, p
 const { buildCodingRequestParts } = require('./main/interview-context');
 const { constantTimeEqual, createSlidingWindowRateLimiter, isJsonRequest, applyLocalSecurityHeaders } = require('./main/security-guard');
 const { createDiagnosticsTracker, buildDiagnosticsReport, diagnosticsToMarkdown } = require('./main/diagnostics');
+const { isExamComplianceModeEnabled, complianceBlockedResult } = require('./main/compliance-mode');
 
 if (process.platform === 'win32') {
   app.setAppUserModelId('local.meet.translator.desktop');
@@ -46,13 +48,17 @@ const assistantWindowStatePath = path.join(userConfigDir, 'assistant-window-stat
 const extensionPath = isPackaged ? path.join(repoRoot, 'browser-extensions') : repoRoot;
 const configStore = createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPath });
 const { loadSettings, saveSettings, migrateLegacyEnvIfNeeded, getSystemLanguageCode } = configStore;
+const documentTextExtractor = createDocumentTextExtractor({ resourcesRoot: repoRoot });
 const translationSession = new SessionStateMachine({ mode: 'translator' });
 const subtitleDedupe = createSubtitleDedupeGuard();
 const diagnosticsTracker = createDiagnosticsTracker();
 const pairingRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 10 });
 const subtitleRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 180 });
 const controlRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 600 });
-const candidateProfileStore = createCandidateProfileStore({ profilePath: candidateProfilePath });
+const candidateProfileStore = createCandidateProfileStore({
+  profilePath: candidateProfilePath,
+  extractDocumentText: documentTextExtractor.extractFromPath
+});
 const answerLibraryStore = createAnswerLibraryStore({ libraryPath: answerLibraryPath });
 const interviewTrainingStore = createInterviewTrainingStore({ trainingPath: interviewTrainingPath });
 const liveInterviewStore = createLiveInterviewStore({ historyPath: liveInterviewPath });
@@ -89,6 +95,10 @@ function sendLog(line) {
     // Window is already closing/destroyed. Logging must never crash the app.
   }
 }
+function examComplianceModeActive() {
+  return isExamComplianceModeEnabled(loadSettings());
+}
+
 function initializeAssistantAutoAnalysis() {
   if (assistantAutoAnalysis) return assistantAutoAnalysis;
   assistantAutoAnalysis = createAutomaticAnalysisCoordinator({
@@ -284,6 +294,7 @@ function recordDetectedQuestion(question) {
 
 async function ensureBridgeForAssistant() {
   const settings = loadSettings();
+  if (isExamComplianceModeEnabled(settings)) return { ...complianceBlockedResult('Interview assistance'), settings };
   let health = await requestJson(`http://127.0.0.1:${settings.LOCAL_MEET_TRANSLATOR_PORT}/health`, settings.LOCAL_MEET_TRANSLATOR_TOKEN);
   if (!health.ok) {
     const started = startBridgeInternal();
@@ -296,6 +307,7 @@ async function ensureBridgeForAssistant() {
 }
 
 async function analyzeInterviewQuestion(questionInput, options = {}) {
+  if (examComplianceModeActive()) return complianceBlockedResult('Interview answer generation');
   const inputObject = questionInput && typeof questionInput === 'object' ? questionInput : null;
   const questionText = cleanQuestionText(typeof questionInput === 'string' ? questionInput : inputObject?.text);
   if (!questionText) return { ok:false, message:'Interview question or coding task is empty.' };
@@ -383,6 +395,7 @@ async function analyzeInterviewQuestion(questionInput, options = {}) {
 }
 
 async function analyzeCodingFollowUp(questionInput) {
+  if (examComplianceModeActive()) return complianceBlockedResult('Coding follow-up analysis');
   const question = questionInput && typeof questionInput === 'object'
     ? { ...questionInput, text: cleanQuestionText(questionInput.text) }
     : { text: cleanQuestionText(questionInput), kind: 'question' };
@@ -451,6 +464,7 @@ async function analyzeCodingFollowUp(questionInput) {
 
 
 async function applyCodingChange(changeInput = null) {
+  if (examComplianceModeActive()) return complianceBlockedResult('Coding solution revision');
   if (!assistantOverlay) return { ok: false, message: 'Interview assistant window is not initialized.' };
   const focus = assistantOverlay.codingContextSnapshot();
   if (!focus?.active || !focus.task?.text) return { ok: false, message: 'Coding Focus is not active.' };
@@ -540,6 +554,7 @@ function dismissCodingChange() {
 }
 
 async function classifyAndDispatchCodingUtterance(deliveredEvent) {
+  if (examComplianceModeActive()) return;
   if (!assistantOverlay) return;
   const initialFocus = assistantOverlay.codingContextSnapshot();
   if (!initialFocus?.active || !initialFocus.task?.text) return;
@@ -1110,14 +1125,16 @@ function startConfigServer() {
       if (!rateLimitOrReject(controlRateLimiter, `armed:${origin || 'local'}`, res)) return;
       readJsonRequest(req, 16 * 1024)
         .then(data => {
+          const visible = data.visible !== false;
           const client = rememberExtensionClient({
             clientId: data.clientId,
             url: data.url,
-            visible: true,
+            visible,
             armed: true
           });
           if (client) {
-            extensionClientRegistry.markActive(client.id);
+            if (visible) extensionClientRegistry.markActive(client.id);
+            else extensionClientRegistry.clearActive(client.id);
             const previousLog = extensionClientLogState.get(client.id) || { url:'', at:0 };
             const now = Date.now();
             if (previousLog.url !== client.url || now - previousLog.at >= 30000) {
@@ -1125,7 +1142,13 @@ function startConfigServer() {
               extensionClientLogState.set(client.id, { url: client.url, at: now });
             }
           }
-          writeJsonResponse(res, client ? 200 : 400, { ok: !!client, clientId: client ? client.id : '', url: client ? client.url : '' });
+          writeJsonResponse(res, client ? 200 : 400, {
+            ok: !!client,
+            clientId: client ? client.id : '',
+            url: client ? client.url : '',
+            visible: client ? client.visible : false,
+            active: !!(client && extensionClientRegistry.getActive()?.id === client.id)
+          });
         })
         .catch(error => writeJsonResponse(res, error.statusCode || 400, { ok: false, error: error.message || 'Invalid client status.' }));
       return;
@@ -1406,7 +1429,11 @@ ipcMain.on('assistant-overlay:hide', () => { if (assistantOverlay) assistantOver
 ipcMain.handle('interview-assistant:status', () => assistantOverlay ? assistantOverlay.snapshot() : { visible:false, status:'unavailable' });
 ipcMain.handle('interview-assistant:control', async (_event, action, payload = {}) => {
   if (!assistantOverlay) return { ok:false, message:'Interview assistant window is not initialized.' };
-  switch (String(action || '')) {
+  const normalizedAction = String(action || '');
+  if (examComplianceModeActive() && !new Set(['hide', 'clear', 'rehome']).has(normalizedAction)) {
+    return complianceBlockedResult('Interview Assistant');
+  }
+  switch (normalizedAction) {
     case 'show': return assistantOverlay.show();
     case 'hide': return assistantOverlay.hide();
     case 'toggle': return assistantOverlay.toggle();
@@ -1463,10 +1490,10 @@ ipcMain.handle('candidate-profile:reset', () => candidateProfileStore.reset());
 ipcMain.handle('candidate-profile:import', async () => {
   const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
   const options = {
-    title: 'Import candidate profile or resume text',
+    title: 'Import candidate profile or resume',
     properties: ['openFile'],
     filters: [
-      { name: 'Candidate profile / resume text', extensions: ['json', 'txt', 'md'] },
+      { name: 'Candidate profile / resume', extensions: ['json', 'txt', 'md', 'pdf', 'docx'] },
       { name: 'All files', extensions: ['*'] }
     ]
   };
@@ -1477,7 +1504,7 @@ ipcMain.handle('candidate-profile:import', async () => {
     return { ok: false, canceled: true };
   }
   try {
-    return candidateProfileStore.importFromPath(selection.filePaths[0]);
+    return await candidateProfileStore.importFromPath(selection.filePaths[0]);
   } catch (error) {
     return { ok: false, error: error.message || String(error) };
   }
@@ -1502,6 +1529,7 @@ ipcMain.handle('candidate-profile:export', async (_event, profile) => {
 ipcMain.handle('answer-library:load', () => answerLibraryStore.load());
 ipcMain.handle('answer-library:save', (_event, library) => answerLibraryStore.save(library || {}));
 ipcMain.handle('answer-library:generate-learning-aids', async (_event, entry) => {
+  if (examComplianceModeActive()) return complianceBlockedResult('AI learning-aid generation');
   const bridge = await ensureBridgeForAssistant();
   if (!bridge.ok) return { ok: false, error: bridge.message || 'Bridge is not available.' };
   const response = await requestJsonPost(
@@ -1630,8 +1658,22 @@ ipcMain.handle('interview-training:export', async (_event, format, data) => {
 ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_e, settings) => {
   const saved = saveSettings(settings);
+  if (isExamComplianceModeEnabled(saved)) {
+    assistantAnalysisGeneration += 1;
+    codingFollowUpGeneration += 1;
+    codingClassificationGeneration += 1;
+    if (assistantAutoAnalysis) assistantAutoAnalysis.clear();
+    if (assistantOverlay) assistantOverlay.clear();
+  }
   if (subtitleOverlay) subtitleOverlay.updateSettings(saved);
-  return { ok:true, settings: saved, subtitle: subtitleOverlay ? subtitleOverlay.snapshot() : null, assistant: assistantOverlay ? assistantOverlay.updateSettings(saved) : null, message: `Saved ${envPath}` };
+  return {
+    ok: true,
+    settings: saved,
+    subtitle: subtitleOverlay ? subtitleOverlay.snapshot() : null,
+    assistant: assistantOverlay ? assistantOverlay.updateSettings(saved) : null,
+    complianceMode: isExamComplianceModeEnabled(saved),
+    message: `Saved ${envPath}`
+  };
 });
 ipcMain.handle('env:open', () => { if (!fs.existsSync(envPath)) saveSettings({}); shell.openPath(envPath); return { ok:true }; });
 ipcMain.handle('extension:open', () => { shell.openPath(extensionPath); return { ok:true, message: extensionPath }; });

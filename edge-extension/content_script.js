@@ -13,6 +13,7 @@
     identityReady: false,
     pollBusy: false,
     pollStartedAt: 0,
+    lastReportedVisibility: null,
     intervals: [],
     timeouts: []
   };
@@ -53,10 +54,13 @@
           : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       }
       const nextSessionId = String(identity.sessionId || "");
+      const identitySeq = Number(identity.seq || 0) || 0;
       if (nextSessionId !== state.sessionId) {
         state.sessionId = nextSessionId;
-        state.lastSeq = 0;
+        state.lastSeq = identitySeq;
         state.lastCommandKey = "";
+      } else if (identitySeq > state.lastSeq) {
+        state.lastSeq = identitySeq;
       }
       state.identityReady = true;
       persistIdentity();
@@ -67,28 +71,44 @@
     }
   }
 
-  async function notifyDesktopArmed() {
+  function isMeetingTabVisible() {
+    return document.visibilityState === "visible" && document.hasFocus();
+  }
+
+  async function notifyDesktopVisibility(visible = isMeetingTabVisible(), force = false) {
     if (state.disposed) return { ok: false };
+    const normalizedVisible = !!visible;
+    if (!force && state.lastReportedVisibility === normalizedVisible) {
+      return { ok: true, unchanged: true, visible: normalizedVisible };
+    }
     try {
       await syncDesktopIdentity();
-      return await withTimeout(
+      const response = await withTimeout(
         chrome.runtime.sendMessage({
-          type: "DESKTOP_ARMED",
+          type: normalizedVisible ? "DESKTOP_ARMED" : "DESKTOP_BLUR_STATE",
           clientId: state.clientId,
           url: location.href,
-          visible: document.visibilityState === "visible"
+          visible: normalizedVisible
         }),
         5000,
-        "Desktop armed heartbeat timed out."
+        "Desktop visibility update timed out."
       );
+      if (response && response.ok !== false) {
+        state.lastReportedVisibility = normalizedVisible;
+      }
+      return response || { ok: false };
     } catch (_) {
       return { ok: false };
     }
   }
 
+  async function notifyDesktopArmed(force = false) {
+    return await notifyDesktopVisibility(isMeetingTabVisible(), force);
+  }
+
   async function sendCommandAck(command, result) {
     try {
-      await withTimeout(
+      const response = await withTimeout(
         chrome.runtime.sendMessage({
           type: "DESKTOP_COMMAND_ACK",
           clientId: state.clientId,
@@ -103,7 +123,10 @@
         5000,
         "Desktop ACK request timed out."
       );
-    } catch (_) {}
+      return response || { ok: false, error: "Desktop ACK returned no response." };
+    } catch (error) {
+      return { ok: false, error: String(error && (error.message || error) || error) };
+    }
   }
 
   async function pollDesktopCommand() {
@@ -121,6 +144,7 @@
     state.pollBusy = true;
     state.pollStartedAt = Date.now();
     let pendingCommand = null;
+    let pendingCommandKey = "";
     try {
       await syncDesktopIdentity();
       const data = await withTimeout(
@@ -128,8 +152,8 @@
           type: "DESKTOP_COMMAND_POLL",
           clientId: state.clientId,
           sessionId: state.sessionId,
-          lastSeq: 0,
-          visible: document.visibilityState === "visible",
+          lastSeq: state.lastSeq,
+          visible: isMeetingTabVisible(),
           url: location.href
         }),
         7000,
@@ -140,9 +164,15 @@
       const nextSessionId = String(data.sessionId || state.sessionId || "");
       if (nextSessionId !== state.sessionId) {
         state.sessionId = nextSessionId;
-        state.lastSeq = 0;
+        state.lastSeq = Number(data.lastProcessedSeq || 0) || 0;
         state.lastCommandKey = "";
         persistIdentity();
+      } else {
+        const backgroundSeq = Number(data.lastProcessedSeq || 0) || 0;
+        if (backgroundSeq > state.lastSeq) {
+          state.lastSeq = backgroundSeq;
+          persistIdentity();
+        }
       }
       if (!data.hasCommand || !data.command) return;
 
@@ -155,7 +185,9 @@
         command.issuedAt || "",
         command.micTxEnabled ? "voice" : "subtitles"
       ].join(":");
-      if (!command.seq || commandKey === state.lastCommandKey) return;
+      pendingCommandKey = commandKey;
+      const commandSeq = Number(command.seq || 0) || 0;
+      if (!commandSeq || commandSeq <= state.lastSeq || commandKey === state.lastCommandKey) return;
 
       console.info("[LMT] desktop command", {
         seq: command.seq,
@@ -196,16 +228,27 @@
         "Browser audio start/stop operation timed out."
       );
 
-      await sendCommandAck(command, result || { ok: false, error: "No response from extension background." });
-      state.lastSeq = Number(command.seq || 0);
-      state.lastCommandKey = commandKey;
-      persistIdentity();
+      const ack = await sendCommandAck(command, result || { ok: false, error: "No response from extension background." });
+      if (ack && ack.ok) {
+        state.lastSeq = Math.max(commandSeq, Number(ack.seq || 0) || 0);
+        state.lastCommandKey = commandKey;
+        persistIdentity();
+      } else {
+        // Do not advance the cursor until the desktop accepts the ACK. The
+        // same command will be offered again and can be acknowledged later.
+        state.identityReady = false;
+      }
     } catch (error) {
       if (pendingCommand && pendingCommand.seq) {
-        await sendCommandAck(pendingCommand, {
+        const ack = await sendCommandAck(pendingCommand, {
           ok: false,
           error: String(error && (error.message || error) || error)
         });
+        if (ack && ack.ok) {
+          state.lastSeq = Math.max(Number(pendingCommand.seq || 0) || 0, Number(ack.seq || 0) || 0);
+          state.lastCommandKey = pendingCommandKey;
+          persistIdentity();
+        }
       }
       // Force the next poll to reload the service-worker identity after a
       // desktop restart or extension context recovery.
@@ -222,7 +265,7 @@
     state.pollStartedAt = 0;
     state.identityReady = false;
     const identityOk = await syncDesktopIdentity(true);
-    const armed = await notifyDesktopArmed();
+    const armed = await notifyDesktopArmed(true);
     await pollDesktopCommand();
     return {
       ok: !!identityOk && !!(armed && armed.ok !== false),
@@ -232,8 +275,16 @@
   }
 
   const onFocus = () => { restart().catch(() => {}); };
-  const onVisibility = () => { if (!document.hidden) restart().catch(() => {}); };
+  const onBlur = () => { notifyDesktopVisibility(false, true).catch(() => {}); };
+  const onVisibility = () => {
+    if (document.hidden) {
+      notifyDesktopVisibility(false, true).catch(() => {});
+    } else {
+      restart().catch(() => {});
+    }
+  };
   const onPageShow = () => { restart().catch(() => {}); };
+  const onPageHide = () => { notifyDesktopVisibility(false, true).catch(() => {}); };
   const onRuntimeMessage = (msg, _sender, sendResponse) => {
     if (msg && (msg.type === "LMT_RESTART_POLLING" || msg.type === "LMT_ARMED")) {
       restart()
@@ -252,7 +303,9 @@
     state.intervals = [];
     state.timeouts = [];
     try { window.removeEventListener("focus", onFocus); } catch (_) {}
+    try { window.removeEventListener("blur", onBlur); } catch (_) {}
     try { window.removeEventListener("pageshow", onPageShow); } catch (_) {}
+    try { window.removeEventListener("pagehide", onPageHide); } catch (_) {}
     try { document.removeEventListener("visibilitychange", onVisibility); } catch (_) {}
     try { chrome.runtime.onMessage.removeListener(onRuntimeMessage); } catch (_) {}
   }
@@ -262,12 +315,14 @@
 
   try { chrome.runtime.onMessage.addListener(onRuntimeMessage); } catch (_) {}
   window.addEventListener("focus", onFocus);
+  window.addEventListener("blur", onBlur);
   window.addEventListener("pageshow", onPageShow);
+  window.addEventListener("pagehide", onPageHide);
   document.addEventListener("visibilitychange", onVisibility);
 
   state.intervals.push(setInterval(() => { pollDesktopCommand().catch(() => {}); }, 500));
   state.intervals.push(setInterval(() => {
-    if (!document.hidden) notifyDesktopArmed().catch(() => {});
+    notifyDesktopVisibility(isMeetingTabVisible(), true).catch(() => {});
   }, 3000));
   state.timeouts.push(setTimeout(() => { restart().catch(() => {}); }, 50));
 })();

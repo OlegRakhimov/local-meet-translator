@@ -181,7 +181,7 @@
     confirmedFactsDescription: "Enter one fact per line. The future assistant may use only facts explicitly marked as confirmed.",
     confirmedFactsCheckbox: "I confirm that these facts are accurate",
     lockedFactsCheckbox: "Lock these facts against automatic rewriting",
-    candidateImportHint: "Stage 3 imports JSON, TXT and MD. TXT/MD content is loaded for review; facts are never generated automatically.",
+    candidateImportHint: "Imports JSON profiles and TXT, MD, PDF or DOCX resumes. Document text is loaded for review; facts are never generated automatically.",
     saveCandidateProfile: "Save candidate profile",
     importCandidateProfile: "Import profile / resume text",
     exportCandidateProfile: "Export JSON",
@@ -214,7 +214,7 @@
     confirmedFactsDescription: "Введите по одному факту на строку. Будущий помощник сможет использовать только явно подтверждённые факты.",
     confirmedFactsCheckbox: "Я подтверждаю, что эти факты точны",
     lockedFactsCheckbox: "Запретить автоматическое переформулирование этих фактов",
-    candidateImportHint: "На этапе 3 поддерживается импорт JSON, TXT и MD. Текст TXT/MD загружается для проверки; факты автоматически не создаются.",
+    candidateImportHint: "Поддерживается импорт профиля JSON и резюме TXT, MD, PDF или DOCX. Из документа извлекается только текст для проверки; факты автоматически не создаются.",
     saveCandidateProfile: "Сохранить профиль кандидата",
     importCandidateProfile: "Импортировать профиль / текст резюме",
     exportCandidateProfile: "Экспортировать JSON",
@@ -1073,6 +1073,24 @@
     guideTroubleshootingText: "Проверьте Bridge, повторно подключите вкладку встречи, установите English expected как исходный язык, используйте наушники и сбросьте временное состояние в Диагностике.",
     pairingCodeCopied: "Код подключения скопирован.",
     pairingCodeCopyFailed: "Не удалось скопировать автоматически. Код"
+  });
+  Object.assign(S.en, {
+    examComplianceModeTitle: "Exam compliance mode",
+    examComplianceModeDescription: "Disables interview answers, automatic analysis, teleprompter and capture-protected overlays. It does not hide the application or bypass monitoring.",
+    examComplianceModeEnable: "Enable compliance mode",
+    examComplianceModeOff: "Compliance mode is off",
+    examComplianceModeOn: "Compliance mode is active: AI assistance and teleprompter are blocked",
+    examComplianceModeEnabledLog: "Compliance mode enabled. AI answer generation, teleprompter and capture protection are disabled.",
+    examComplianceModeDisabledLog: "Compliance mode disabled. Normal assistant settings are available again."
+  });
+  Object.assign(S.ru, {
+    examComplianceModeTitle: "Режим соблюдения правил экзамена",
+    examComplianceModeDescription: "Отключает подготовку ответов, автоматический анализ, телесуфлёр и защиту окон от захвата. Приложение ничего не маскирует и не обходит контроль.",
+    examComplianceModeEnable: "Включить режим соблюдения правил",
+    examComplianceModeOff: "Режим соблюдения правил выключен",
+    examComplianceModeOn: "Режим активен: ИИ-подсказки и телесуфлёр заблокированы",
+    examComplianceModeEnabledLog: "Режим соблюдения правил включён. Генерация ответов, телесуфлёр и защита окон отключены.",
+    examComplianceModeDisabledLog: "Режим соблюдения правил выключен. Обычные настройки помощника снова доступны."
   });
   for (const l of ["pl","de","es","it"]) S[l] = S.en;
   window.LMT_I18N = { lang, t: (k) => (S[lang] && S[lang][k]) || S.en[k] || k };

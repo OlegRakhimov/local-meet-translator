@@ -9,6 +9,7 @@ const {
   createTeleprompterState
 } = require('./teleprompter');
 const { createCodingFocusState } = require('./coding-focus-state');
+const { isExamComplianceModeEnabled } = require('./compliance-mode');
 
 const DEFAULT_ASSISTANT_SETTINGS = Object.freeze({
   enabled: true,
@@ -58,10 +59,12 @@ function normalizeAssistantSettings(settings = {}, platform = process.platform) 
   const level = String(settings.INTERVIEW_ASSISTANT_LANGUAGE_LEVEL ?? settings.languageLevel ?? DEFAULT_ASSISTANT_SETTINGS.languageLevel).trim().toUpperCase();
   const style = String(settings.INTERVIEW_ASSISTANT_ANSWER_STYLE ?? settings.answerStyle ?? DEFAULT_ASSISTANT_SETTINGS.answerStyle).trim().toLowerCase();
   const chunkMode = String(settings.INTERVIEW_TELEPROMPTER_CHUNK_MODE ?? settings.teleprompterChunkMode ?? DEFAULT_ASSISTANT_SETTINGS.teleprompterChunkMode).trim().toLowerCase();
+  const complianceMode = isExamComplianceModeEnabled(settings);
   return {
-    enabled: boolValue(settings.INTERVIEW_ASSISTANT_ENABLED ?? settings.enabled, DEFAULT_ASSISTANT_SETTINGS.enabled),
-    autoAnalyze: boolValue(settings.INTERVIEW_ASSISTANT_AUTO_ANALYZE ?? settings.autoAnalyze, DEFAULT_ASSISTANT_SETTINGS.autoAnalyze),
-    contentProtection: boolValue(settings.INTERVIEW_ASSISTANT_CONTENT_PROTECTION ?? settings.contentProtection, contentProtectionDefault),
+    complianceMode,
+    enabled: complianceMode ? false : boolValue(settings.INTERVIEW_ASSISTANT_ENABLED ?? settings.enabled, DEFAULT_ASSISTANT_SETTINGS.enabled),
+    autoAnalyze: complianceMode ? false : boolValue(settings.INTERVIEW_ASSISTANT_AUTO_ANALYZE ?? settings.autoAnalyze, DEFAULT_ASSISTANT_SETTINGS.autoAnalyze),
+    contentProtection: complianceMode ? false : boolValue(settings.INTERVIEW_ASSISTANT_CONTENT_PROTECTION ?? settings.contentProtection, contentProtectionDefault),
     alwaysOnTop: boolValue(settings.INTERVIEW_ASSISTANT_ALWAYS_ON_TOP ?? settings.alwaysOnTop, DEFAULT_ASSISTANT_SETTINGS.alwaysOnTop),
     clickThrough: boolValue(settings.INTERVIEW_ASSISTANT_CLICK_THROUGH ?? settings.clickThrough, DEFAULT_ASSISTANT_SETTINGS.clickThrough),
     compactOverlay: boolValue(settings.INTERVIEW_ASSISTANT_COMPACT_OVERLAY ?? settings.compactOverlay, DEFAULT_ASSISTANT_SETTINGS.compactOverlay),
@@ -72,12 +75,12 @@ function normalizeAssistantSettings(settings = {}, platform = process.platform) 
     toggleHotkey: String(settings.INTERVIEW_ASSISTANT_HOTKEY ?? settings.toggleHotkey ?? DEFAULT_ASSISTANT_SETTINGS.toggleHotkey).trim() || DEFAULT_ASSISTANT_SETTINGS.toggleHotkey,
     clickThroughHotkey: String(settings.INTERVIEW_ASSISTANT_CLICK_THROUGH_HOTKEY ?? settings.clickThroughHotkey ?? DEFAULT_ASSISTANT_SETTINGS.clickThroughHotkey).trim() || DEFAULT_ASSISTANT_SETTINGS.clickThroughHotkey,
     moveHotkey: String(settings.INTERVIEW_ASSISTANT_MOVE_HOTKEY ?? settings.moveHotkey ?? DEFAULT_ASSISTANT_SETTINGS.moveHotkey).trim() || DEFAULT_ASSISTANT_SETTINGS.moveHotkey,
-    teleprompterEnabled: boolValue(settings.INTERVIEW_TELEPROMPTER_ENABLED ?? settings.teleprompterEnabled, DEFAULT_ASSISTANT_SETTINGS.teleprompterEnabled),
+    teleprompterEnabled: complianceMode ? false : boolValue(settings.INTERVIEW_TELEPROMPTER_ENABLED ?? settings.teleprompterEnabled, DEFAULT_ASSISTANT_SETTINGS.teleprompterEnabled),
     teleprompterFrozen: boolValue(settings.INTERVIEW_TELEPROMPTER_FROZEN ?? settings.teleprompterFrozen, DEFAULT_ASSISTANT_SETTINGS.teleprompterFrozen),
     teleprompterChunkMode: CHUNK_MODES.has(chunkMode) ? chunkMode : DEFAULT_ASSISTANT_SETTINGS.teleprompterChunkMode,
     teleprompterShowKeywords: boolValue(settings.INTERVIEW_TELEPROMPTER_SHOW_KEYWORDS ?? settings.teleprompterShowKeywords, DEFAULT_ASSISTANT_SETTINGS.teleprompterShowKeywords),
     teleprompterShowPlan: boolValue(settings.INTERVIEW_TELEPROMPTER_SHOW_PLAN ?? settings.teleprompterShowPlan, DEFAULT_ASSISTANT_SETTINGS.teleprompterShowPlan),
-    teleprompterAutoStart: boolValue(settings.INTERVIEW_TELEPROMPTER_AUTO_START ?? settings.teleprompterAutoStart, DEFAULT_ASSISTANT_SETTINGS.teleprompterAutoStart),
+    teleprompterAutoStart: complianceMode ? false : boolValue(settings.INTERVIEW_TELEPROMPTER_AUTO_START ?? settings.teleprompterAutoStart, DEFAULT_ASSISTANT_SETTINGS.teleprompterAutoStart),
     teleprompterNextHotkey: String(settings.INTERVIEW_TELEPROMPTER_NEXT_HOTKEY ?? settings.teleprompterNextHotkey ?? DEFAULT_ASSISTANT_SETTINGS.teleprompterNextHotkey).trim() || DEFAULT_ASSISTANT_SETTINGS.teleprompterNextHotkey,
     teleprompterPreviousHotkey: String(settings.INTERVIEW_TELEPROMPTER_PREVIOUS_HOTKEY ?? settings.teleprompterPreviousHotkey ?? DEFAULT_ASSISTANT_SETTINGS.teleprompterPreviousHotkey).trim() || DEFAULT_ASSISTANT_SETTINGS.teleprompterPreviousHotkey,
     teleprompterFreezeHotkey: String(settings.INTERVIEW_TELEPROMPTER_FREEZE_HOTKEY ?? settings.teleprompterFreezeHotkey ?? DEFAULT_ASSISTANT_SETTINGS.teleprompterFreezeHotkey).trim() || DEFAULT_ASSISTANT_SETTINGS.teleprompterFreezeHotkey,
@@ -488,7 +491,7 @@ function createAssistantOverlayController({
   }
   function registerShortcuts() {
     unregisterShortcuts();
-    if (!globalShortcut) return;
+    if (!globalShortcut || !settings.enabled || settings.complianceMode) return;
     const register = (accelerator, handler) => {
       if (!accelerator) return;
       try {

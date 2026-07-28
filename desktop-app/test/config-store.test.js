@@ -55,8 +55,37 @@ test('config store generates security values and writes atomically', () => {
     assert.match(initial.DESKTOP_EXTENSION_PAIRING_CODE, /^[A-Z2-9]{4}(?:-[A-Z2-9]{4}){2}$/);
     assert.ok(fs.existsSync(envPath));
 
-    const saved = store.saveSettings({ OPENAI_API_KEY: 'test-key' });
+    const saved = store.saveSettings({
+      OPENAI_API_KEY: 'test-key',
+      INTERVIEW_ASSISTANT_ENABLED: 'true',
+      INTERVIEW_ASSISTANT_AUTO_ANALYZE: 'true',
+      INTERVIEW_TELEPROMPTER_ENABLED: 'true',
+      INTERVIEW_ASSISTANT_CONTENT_PROTECTION: 'true',
+      SUBTITLE_WINDOW_CONTENT_PROTECTION: 'true'
+    });
     assert.equal(saved.OPENAI_API_KEY, 'test-key');
+    const compliance = store.saveSettings({
+      EXAM_COMPLIANCE_MODE: 'true',
+      INTERVIEW_ASSISTANT_ENABLED: 'false',
+      INTERVIEW_ASSISTANT_AUTO_ANALYZE: 'false',
+      INTERVIEW_TELEPROMPTER_ENABLED: 'false',
+      INTERVIEW_ASSISTANT_CONTENT_PROTECTION: 'false',
+      SUBTITLE_WINDOW_CONTENT_PROTECTION: 'false'
+    });
+    assert.equal(compliance.EXAM_COMPLIANCE_MODE, 'true');
+    assert.equal(compliance.INTERVIEW_ASSISTANT_ENABLED, 'false');
+    assert.equal(compliance.INTERVIEW_ASSISTANT_AUTO_ANALYZE, 'false');
+    assert.equal(compliance.INTERVIEW_TELEPROMPTER_ENABLED, 'false');
+    assert.equal(compliance.INTERVIEW_ASSISTANT_CONTENT_PROTECTION, 'false');
+    assert.equal(compliance.SUBTITLE_WINDOW_CONTENT_PROTECTION, 'false');
+    const restored = store.saveSettings({ EXAM_COMPLIANCE_MODE: 'false' });
+    assert.equal(restored.EXAM_COMPLIANCE_MODE, 'false');
+    assert.equal(restored.INTERVIEW_ASSISTANT_ENABLED, 'true');
+    assert.equal(restored.INTERVIEW_ASSISTANT_AUTO_ANALYZE, 'true');
+    assert.equal(restored.INTERVIEW_TELEPROMPTER_ENABLED, 'true');
+    assert.equal(restored.INTERVIEW_ASSISTANT_CONTENT_PROTECTION, 'true');
+    assert.equal(restored.SUBTITLE_WINDOW_CONTENT_PROTECTION, 'true');
+    assert.equal(fs.readFileSync(envPath, 'utf8').includes('EXAM_COMPLIANCE_PREVIOUS_SETTINGS'), false);
     assert.equal(fs.readdirSync(userConfigDir).filter((name) => name.endsWith('.tmp')).length, 0);
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });

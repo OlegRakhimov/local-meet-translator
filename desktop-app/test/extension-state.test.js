@@ -13,6 +13,22 @@ test('extension registry prefers armed and active meeting tab', () => {
   assert.equal(registry.getActive(), null);
 });
 
+
+test('blurred armed tab loses active priority and visible tab is selected', () => {
+  let now = 2000;
+  const registry = new ExtensionClientRegistry({ clock: () => now });
+  registry.remember({ clientId: 'meeting-a', url: 'https://meet.example/a', visible: true, armed: true });
+  assert.equal(registry.getActive().id, 'meeting-a');
+  now += 10;
+  registry.remember({ clientId: 'meeting-b', url: 'https://meet.example/b', visible: true });
+  now += 10;
+  registry.remember({ clientId: 'meeting-a', url: 'https://meet.example/a', visible: false, armed: true });
+  assert.equal(registry.getActive(), null);
+  assert.equal(registry.choose().id, 'meeting-b');
+  registry.markActive('meeting-a');
+  assert.equal(registry.getActive(), null);
+});
+
 test('extension coordinator validates ack against session and sequence', async () => {
   let now = 0;
   const coordinator = new ExtensionCommandCoordinator({ sessionId: 'desktop-session', clock: () => now });

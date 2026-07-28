@@ -44,6 +44,7 @@ To build from source:
 - Node.js 20+.
 - JDK 21 with `jdeps` and `jlink`.
 - Python x64 3.11, 3.12, or 3.13.
+- Poppler for Windows with `pdftotext.exe`; the build copies its runtime into the installer, while CI installs it through Chocolatey.
 - Maven does not need to be installed: Maven Wrapper pins and downloads Maven 3.9.16.
 
 Run the complete build with one command from the project root:
@@ -52,7 +53,7 @@ Run the complete build with one command from the project root:
 BUILD_DESKTOP_WINDOWS.cmd
 ```
 
-It builds the bridge through Maven Wrapper, creates a minimal Java runtime with `jdeps`/`jlink`, packages the Python service as an `.exe` with PyInstaller, installs the exact npm dependency tree with `npm ci`, and only then starts electron-builder. `INSTALL_DESKTOP_WINDOWS.cmd` invokes the same build and then opens the output directory.
+It builds the bridge through Maven Wrapper, creates a minimal Java runtime with `jdeps`/`jlink`, packages the Python service as an `.exe` with PyInstaller, bundles the local Poppler `pdftotext.exe` runtime for PDF import, installs the exact npm dependency tree with `npm ci`, and only then starts electron-builder. `INSTALL_DESKTOP_WINDOWS.cmd` invokes the same build and then opens the output directory.
 
 Electron and electron-builder are intentionally pinned in `desktop-app/package.json`; do not bump them casually. The `desktop-app/npm-overrides/temp` shim is a temporary workaround for the old `electron-winstaller` chain so the build can avoid the deprecated `rimraf@2.6.3` path without breaking packaging.
 
@@ -74,7 +75,7 @@ desktop-app\dist\
 Run the installer named like:
 
 ```text
-Local Meet Translator-1.0.7-Setup-x64.exe
+Local Meet Translator-1.0.29-Setup-x64.exe
 ```
 
 After installation, a **Local Meet Translator** shortcut appears on the desktop and in the Start menu.
@@ -409,9 +410,7 @@ Facts have two independent flags:
 - `confirmed` — reviewed by the user and eligible for future assistant grounding;
 - `locked` — must not be automatically rewritten or replaced.
 
-This stage imports `JSON`, `TXT` and `MD`. Text documents are loaded only for manual review. The app does not automatically convert resume text into facts and does not send the profile to OpenAI when it is saved.
-
-PDF and DOCX text extraction will be added in a separate stage after the profile and answer-library workflow is stable.
+The profile imports `JSON`, `TXT`, `MD`, `PDF` and `DOCX`. TXT/MD are read directly, DOCX is parsed by a local bounded ZIP/XML reader, and PDF uses the bundled local `pdftotext.exe`. Import does not upload the document. Extracted text is loaded only for manual review and is not converted into confirmed facts automatically. Image-only scanned PDFs require OCR; OCR is intentionally not enabled in version 1.0.29.
 
 ## 16. Stage 4: focused profile and Answer Library screens
 
@@ -540,3 +539,14 @@ The Windows build writes these files to `desktop-app/dist`:
 - `RELEASE_MANIFEST.json`
 
 The diagnostics action **Reset transient subtitle and assistant state** clears only temporary questions, pending analysis and deduplication buffers. It does not delete the candidate profile, Answer Library, training history or live-interview reviews.
+
+## Stage 16: document import, compliance mode, tab visibility and reproducible release (1.0.29)
+
+Candidate Profile now imports PDF and DOCX locally. DOCX uses a bounded ZIP/XML reader, while PDF uses a bundled Poppler `pdftotext.exe` process launched without a shell and with output and timeout limits. Extracted text remains review material; no facts are created automatically. Image-only scanned PDFs require OCR, which is not included.
+
+**Exam compliance mode** disables Interview Assistant, automatic analysis, AI learning-aid generation, coding revisions, teleprompter and capture-protected overlays. Enforcement exists both in the renderer and the Electron main process. Previous assistant/protection preferences are snapshotted when the mode is enabled and restored when it is disabled. It does not hide the application, extension, processes, virtual audio devices or network activity, and it is not a proctoring bypass.
+
+The Edge extension's `DESKTOP_BLUR_STATE` is now consumed by `/extension-client/armed`. Hidden armed tabs cannot remain active; visible tabs receive first routing priority. This works together with the persisted `desktopCommandSeq` cursor to avoid routing commands to a background tab or replaying acknowledged commands.
+
+The Windows build stages and verifies Poppler, validates the packaged runtime and records component hashes in `RELEASE_MANIFEST.json`. `.github/workflows/windows-release.yml` runs the same verified build on a Windows runner and uploads the installer, SHA-256 file and release manifest.
+

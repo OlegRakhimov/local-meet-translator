@@ -163,6 +163,10 @@
 
       <section id="settingsScreen" class="appView focusedView" data-view="settings" hidden>
         <div class="screenToolbar modernToolbar"><button id="backFromSettings" class="secondary backButton" type="button" data-i18n="backToMain">← Back</button><div class="screenToolbarTitle"><p class="eyebrow" data-i18n="navSettings">Settings</p><h2 data-i18n="settingsTitleModern">Application settings</h2><p data-i18n="settingsDescriptionModern">API, models, local ports and secure extension pairing.</p></div><button id="saveSettingsTop" type="button" data-i18n="saveSettings">Save settings</button></div>
+        <section class="panel complianceModePanel">
+          <div class="sectionTitle"><span class="sectionIcon secure"><svg><use href="#icon-system"></use></svg></span><div><h3 data-i18n="examComplianceModeTitle">Exam compliance mode</h3><p data-i18n="examComplianceModeDescription">Disables interview answers, automatic analysis, teleprompter and capture-protected overlays. It does not hide the application or bypass monitoring.</p></div></div>
+          <label class="modernSwitch complianceSwitch"><span><strong data-i18n="examComplianceModeEnable">Enable compliance mode</strong><small id="examComplianceModeStatus" data-i18n="examComplianceModeOff">Compliance mode is off</small></span><input id="examComplianceMode" type="checkbox"/><i></i></label>
+        </section>
         <div class="settingsLayout">
           <section class="panel settingsMainPanel"><div class="sectionTitle"><span class="sectionIcon"><svg><use href="#icon-settings"></use></svg></span><div><h3 data-i18n="aiAndRuntime">AI and runtime</h3><p data-i18n="aiAndRuntimeHint">These values affect transcription, translation and generated interview suggestions.</p></div></div><label><span data-i18n="openaiKey">OpenAI API key</span> <input autocomplete="off" id="openaiKey" placeholder="sk-..." type="password"/></label>
 <div class="grid">
@@ -372,7 +376,7 @@
         </div>
       </details>
 
-      <p class="hint" data-i18n="candidateImportHint">Stage 3 imports JSON, TXT and MD. TXT/MD content is loaded for review; facts are never generated automatically.</p>
+      <p class="hint" data-i18n="candidateImportHint">Imports JSON profiles and TXT, MD, PDF or DOCX resumes. Document text is loaded for review; facts are never generated automatically.</p>
       <div class="buttons screenActions">
         <button id="saveCandidateProfile" type="button" data-i18n="saveCandidateProfile">Save candidate profile</button>
         <button id="importCandidateProfile" type="button" class="secondary" data-i18n="importCandidateProfile">Import profile / resume text</button>

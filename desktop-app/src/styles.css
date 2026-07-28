@@ -755,3 +755,9 @@ body.sidebarCollapsed .workspace { grid-column: 2; }
   .screenToolbar > button { width: 100%; }
   .hotkeyGrid { grid-template-columns: 1fr; }
 }
+
+
+.complianceModePanel { margin-bottom: 18px; border-color: rgba(73, 113, 182, .35); }
+.complianceModePanel .complianceSwitch { max-width: 760px; }
+#examComplianceModeStatus.active { color: var(--warning, #b36b00); font-weight: 700; }
+body.examComplianceModeActive .assistantControlCard { opacity: .72; }
