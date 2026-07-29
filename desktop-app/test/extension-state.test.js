@@ -40,3 +40,34 @@ test('extension coordinator validates ack against session and sequence', async (
   const ack = await coordinator.waitForAck(1, 10);
   assert.equal(ack.clientId, 'client');
 });
+
+test('extension coordinator ignores a conflicting duplicate ack', () => {
+  let now = 100;
+  const coordinator = new ExtensionCommandCoordinator({ sessionId: 'desktop-session', clock: () => now });
+  coordinator.issue('start', { id: 'client', url: 'https://meet.example' }, {});
+  const first = coordinator.acknowledge({
+    seq: 1,
+    action: 'start',
+    sessionId: 'desktop-session',
+    ok: true,
+    message: 'Capture ready',
+    clientId: 'client'
+  });
+  assert.equal(first.ok, true);
+  assert.equal(first.duplicate, undefined);
+
+  now += 10;
+  const duplicate = coordinator.acknowledge({
+    seq: 1,
+    action: 'start',
+    sessionId: 'desktop-session',
+    ok: false,
+    error: 'Late content-script timeout',
+    clientId: 'client'
+  });
+  assert.equal(duplicate.ok, true);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.ack.ok, true);
+  assert.equal(duplicate.ack.text, 'Capture ready');
+  assert.equal(coordinator.snapshot().lastAck.ok, true);
+});

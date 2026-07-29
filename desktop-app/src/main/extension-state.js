@@ -96,6 +96,14 @@ class ExtensionCommandCoordinator {
     if (seq !== this.command.seq || action !== this.command.action || sessionId !== this.sessionId) {
       return { ok: false, error: 'ACK does not match the active command' };
     }
+    if (
+      this.lastAck
+      && this.lastAck.seq === seq
+      && this.lastAck.action === action
+      && this.lastAck.sessionId === sessionId
+    ) {
+      return { ok: true, duplicate: true, ack: { ...this.lastAck } };
+    }
     this.lastAck = {
       seq,
       action,

@@ -9,6 +9,33 @@ let desktopCommandSeq = 0;
 
 const DESKTOP_BASE_URL = "http://127.0.0.1:18798";
 
+function normalizeCommandSeq(value) {
+  const seq = Number(value || 0);
+  return Number.isFinite(seq) && seq > 0 ? Math.floor(seq) : 0;
+}
+
+async function updateDesktopCommandCursor(sessionId, seq) {
+  const normalizedSessionId = String(sessionId || "");
+  const normalizedSeq = normalizeCommandSeq(seq);
+  const sessionChanged = !!normalizedSessionId && normalizedSessionId !== desktopSessionId;
+  const nextSessionId = normalizedSessionId || desktopSessionId;
+  const nextSeq = sessionChanged
+    ? normalizedSeq
+    : Math.max(desktopCommandSeq, normalizedSeq);
+
+  const update = {};
+  if (nextSessionId !== desktopSessionId) {
+    update.desktopExtensionSessionId = nextSessionId;
+  }
+  if (nextSeq !== desktopCommandSeq || sessionChanged) {
+    update.desktopExtensionCommandSeq = nextSeq;
+  }
+  if (Object.keys(update).length) {
+    await storeDesktopIdentity(update);
+  }
+  return { sessionId: desktopSessionId, seq: desktopCommandSeq };
+}
+
 function normalizePairingCode(code) {
   return String(code || "").trim().replace(/[\s-]+/g, "").toUpperCase();
 }
@@ -23,7 +50,7 @@ async function loadDesktopIdentity() {
   desktopExtensionToken = String(obj.desktopExtensionToken || desktopExtensionToken || "");
   desktopExtensionClientId = String(obj.desktopExtensionClientId || desktopExtensionClientId || "");
   desktopSessionId = String(obj.desktopExtensionSessionId || desktopSessionId || "");
-  desktopCommandSeq = Number(obj.desktopExtensionCommandSeq || desktopCommandSeq || 0) || 0;
+  desktopCommandSeq = normalizeCommandSeq(obj.desktopExtensionCommandSeq || desktopCommandSeq || 0);
   if (!desktopExtensionClientId) {
     desktopExtensionClientId = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
       ? crypto.randomUUID()
@@ -43,7 +70,7 @@ async function storeDesktopIdentity(next) {
   if (next.desktopExtensionToken !== undefined) desktopExtensionToken = String(next.desktopExtensionToken || "");
   if (next.desktopExtensionClientId !== undefined) desktopExtensionClientId = String(next.desktopExtensionClientId || "");
   if (next.desktopExtensionSessionId !== undefined) desktopSessionId = String(next.desktopExtensionSessionId || "");
-  if (next.desktopExtensionCommandSeq !== undefined) desktopCommandSeq = Number(next.desktopExtensionCommandSeq || 0) || 0;
+  if (next.desktopExtensionCommandSeq !== undefined) desktopCommandSeq = normalizeCommandSeq(next.desktopExtensionCommandSeq);
   await chrome.storage.local.set({
     ...(next.desktopExtensionToken !== undefined ? { desktopExtensionToken } : {}),
     ...(next.desktopExtensionClientId !== undefined ? { desktopExtensionClientId } : {}),
@@ -198,9 +225,17 @@ async function armDesktopClient(payload) {
 async function pollDesktopCommand(payload) {
   const paired = await ensureDesktopToken(false);
   if (!paired.ok) return paired;
+
+  const requestedSessionId = String(payload && payload.sessionId || "");
+  const callerLastSeq = normalizeCommandSeq(payload && payload.lastSeq);
+  const sameSession = !requestedSessionId || !desktopSessionId || requestedSessionId === desktopSessionId;
+  const effectiveLastSeq = sameSession
+    ? Math.max(callerLastSeq, desktopCommandSeq)
+    : callerLastSeq;
+
   const params = {
-    lastSeq: payload && payload.lastSeq || 0,
-    sessionId: payload && payload.sessionId || "",
+    lastSeq: effectiveLastSeq,
+    sessionId: requestedSessionId,
     clientId: payload && payload.clientId || desktopExtensionClientId || "",
     visible: !!(payload && payload.visible),
     url: payload && payload.url || ""
@@ -211,7 +246,21 @@ async function pollDesktopCommand(payload) {
     if (!repaired.ok) return repaired;
     result = await getDesktopJson("/extension-command", params);
   }
-  return result.ok ? result.data : { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Desktop command poll failed.") };
+  if (!result.ok) {
+    return { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Desktop command poll failed.") };
+  }
+
+  const responseSessionId = String(result.data && result.data.sessionId || requestedSessionId || desktopSessionId || "");
+  if (responseSessionId && responseSessionId !== desktopSessionId) {
+    await updateDesktopCommandCursor(responseSessionId, 0);
+  }
+
+  return {
+    ...(result.data || {}),
+    ok: result.data && result.data.ok === false ? false : true,
+    sessionId: responseSessionId,
+    lastProcessedSeq: desktopCommandSeq
+  };
 }
 
 async function checkDesktopHealth() {
@@ -262,7 +311,7 @@ async function ackDesktopCommand(payload) {
   const body = {
     clientId: String(payload && payload.clientId || desktopExtensionClientId || ""),
     sessionId: String(payload && payload.sessionId || desktopSessionId || ""),
-    seq: Number(payload && payload.seq || 0),
+    seq: normalizeCommandSeq(payload && payload.seq),
     action: String(payload && payload.action || ""),
     ok: !!(payload && payload.ok),
     message: String(payload && payload.message || ""),
@@ -275,7 +324,14 @@ async function ackDesktopCommand(payload) {
     if (!repaired.ok) return repaired;
     result = await postDesktopJson("/extension-command/ack", body);
   }
-  return result.ok ? { ok: true } : { ok: false, error: String(result.data && (result.data.error || result.data.message) || "ACK failed.") };
+  if (!result.ok) {
+    return { ok: false, error: String(result.data && (result.data.error || result.data.message) || "ACK failed.") };
+  }
+
+  // The cursor advances only after the desktop accepted the ACK. This keeps
+  // retries possible when the local server is temporarily unavailable.
+  await updateDesktopCommandCursor(body.sessionId, body.seq);
+  return { ok: true, sessionId: desktopSessionId, seq: desktopCommandSeq };
 }
 
 async function ensureOffscreen() {
@@ -535,23 +591,50 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
   (async () => {
     let msg = incomingMsg;
     const desktopAckInfo = msg?.type === "DESKTOP_COMMAND" ? {
-      clientId: msg.clientId || "",
-      sessionId: msg.sessionId || "",
-      seq: Number(msg.seq || 0),
+      clientId: String(msg.clientId || ""),
+      sessionId: String(msg.sessionId || ""),
+      seq: normalizeCommandSeq(msg.seq),
       action: String(msg.action || "")
     } : null;
-    async function ackDesktopFromBackground(ok, payload = {}) {
-      if (!desktopAckInfo || !desktopAckInfo.seq || !desktopAckInfo.action) return;
+
+    async function finalizeDesktopCommandResult(result) {
+      const normalized = result && typeof result === "object"
+        ? { ...result }
+        : { ok: false, error: "Desktop command returned no result." };
+      if (!desktopAckInfo || !desktopAckInfo.seq || !desktopAckInfo.action) return normalized;
       try {
-        await ackDesktopCommand({
+        const ack = await ackDesktopCommand({
           ...desktopAckInfo,
-          ok: !!ok,
-          message: payload.message || "",
-          error: payload.error || "",
-          details: payload.details || {}
+          ok: !!normalized.ok,
+          message: String(normalized.message || (normalized.already ? "already running/stopped" : "")),
+          error: String(normalized.error || ""),
+          details: normalized.details || {}
         });
-      } catch (_) {}
+        if (!ack || !ack.ok) {
+          return {
+            ...normalized,
+            acknowledged: false,
+            ackError: String(ack && (ack.error || ack.message) || "Desktop ACK was rejected.")
+          };
+        }
+        return {
+          ...normalized,
+          acknowledged: true,
+          ackSeq: normalizeCommandSeq(ack.seq || desktopAckInfo.seq)
+        };
+      } catch (error) {
+        return {
+          ...normalized,
+          acknowledged: false,
+          ackError: String(error && (error.message || error) || error)
+        };
+      }
     }
+
+    async function respond(result) {
+      sendResponse(await finalizeDesktopCommandResult(result));
+    }
+
     try {
       if (msg?.type === "ARM_CURRENT_TAB") {
         const tabId = msg.tabId;
@@ -639,19 +722,33 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         return;
       }
 
+      if (msg?.type === "DESKTOP_BLUR_STATE") {
+        sendResponse(await armDesktopClient({
+          clientId: msg.clientId,
+          url: msg.url,
+          visible: msg.visible === undefined ? false : !!msg.visible
+        }));
+        return;
+      }
+
       if (msg?.type === "DESKTOP_COMMAND_POLL") {
         sendResponse(await pollDesktopCommand(msg));
         return;
       }
 
       if (msg?.type === "DESKTOP_COMMAND_ACK") {
-        sendResponse(await ackDesktopCommand(msg));
+        // Compatibility with an already-open tab that still runs an older
+        // content script. Do not forward it: background owns the only ACK.
+        sendResponse({ ok: true, ignored: true, owner: "background" });
         return;
       }
 
       if (msg?.type === "DESKTOP_COMMAND") {
         const tabId = sender && sender.tab && sender.tab.id;
-        if (!tabId) return sendResponse({ ok:false, error:"Desktop command came without sender tab" });
+        if (!tabId) {
+          await respond({ ok: false, error: "Desktop command came without sender tab" });
+          return;
+        }
         if (msg.action === "start") {
           msg = await getStartMessageFromStorage(msg, tabId);
           status("run", "Desktop command", `start: micTx=${!!msg.micTxEnabled}; sink=${msg.ttsSinkDeviceName || "default"}; mic=${msg.micDeviceName || msg.micDeviceId || "default"}`);
@@ -672,15 +769,13 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
               const error = (updated && updated.error) || "Could not update voice mode.";
               const details = (updated && updated.details) || {};
               status("err", "Voice mode", error);
-              await ackDesktopFromBackground(false, { error, details });
-              sendResponse({ ok: false, error, details });
+              await respond({ ok: false, error, details });
               return;
             }
             const readyMessage = updated.message || (msg.micTxEnabled ? "Voice translation is ready." : "Subtitles-only mode is ready.");
             const details = updated.details || {};
             status("run", msg.micTxEnabled ? "Voice ready" : "Running", readyMessage);
-            await ackDesktopFromBackground(true, { message: readyMessage, details });
-            sendResponse({ ok: true, message: readyMessage, details });
+            await respond({ ok: true, message: readyMessage, details });
             return;
           }
 
@@ -695,8 +790,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
             const error = "Browser audio could not be armed for this meeting tab. Open the extension popup on the active meeting tab and press Connect this meeting tab once.";
             const details = { incomingReady: false, armed: false, tabId };
             status("err", "Audio capture not armed", error);
-            await ackDesktopFromBackground(false, { error, details });
-            sendResponse({ ok: false, error, details });
+            await respond({ ok: false, error, details });
             return;
           }
 
@@ -731,8 +825,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
             captureArmed = true;
             armedTabId = Number(tabId);
             status("err", "Audio activation failed", error);
-            await ackDesktopFromBackground(false, { error, details });
-            sendResponse({ ok: false, error, details });
+            await respond({ ok: false, error, details });
             return;
           }
           running = true;
@@ -741,15 +834,15 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
           const readyMessage = activated.message || "Incoming translation is ready.";
           const details = activated.details || { incomingReady: true, armed: true };
           status("run", msg.micTxEnabled ? "Voice ready" : "Running", readyMessage);
-          await ackDesktopFromBackground(true, { message: readyMessage, details });
-          sendResponse({ ok: true, message: readyMessage, details });
+          await respond({ ok: true, message: readyMessage, details });
           return;
         } else if (msg.action === "stop") {
           msg = { type: "PAUSE" };
         } else if (msg.action === "release") {
           msg = { type: "RELEASE" };
         } else {
-          return sendResponse({ ok:false, error:"Unknown desktop command: " + String(msg.action) });
+          await respond({ ok: false, error: "Unknown desktop command: " + String(msg.action) });
+          return;
         }
       }
 
@@ -790,16 +883,14 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
           const details = (offscreenResult && offscreenResult.details) || {};
           running = false;
           status("err", "Error", error);
-          await ackDesktopFromBackground(false, { error, details });
-          sendResponse({ ok: false, error, details });
+          await respond({ ok: false, error, details });
           return;
         }
         running = true;
         const readyMessage = offscreenResult.message || "Translation capture is ready.";
         const details = offscreenResult.details || {};
         status("run", "Running", readyMessage);
-        await ackDesktopFromBackground(true, { message: readyMessage, details });
-        sendResponse({ ok: true, message: readyMessage, details });
+        await respond({ ok: true, message: readyMessage, details });
         return;
       }
 
@@ -807,8 +898,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         const paused = await pauseCaptureKeepArmed();
         if (!paused || !paused.ok) {
           const error = (paused && paused.error) || "Could not pause translation capture.";
-          await ackDesktopFromBackground(false, { error });
-          sendResponse({ ok: false, error });
+          await respond({ ok: false, error });
           return;
         }
         status("ok", "Paused", paused.armed
@@ -817,24 +907,28 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         const message = paused.armed
           ? "Translation stopped. Meeting tab remains armed for a fast restart."
           : "Translation stopped.";
-        await ackDesktopFromBackground(true, { message, details: { armed: !!paused.armed, tabId: paused.tabId } });
-        sendResponse({ ok: true, message, armed: !!paused.armed, tabId: paused.tabId });
+        await respond({
+          ok: true,
+          message,
+          armed: !!paused.armed,
+          tabId: paused.tabId,
+          details: { armed: !!paused.armed, tabId: paused.tabId }
+        });
         return;
       }
 
       if (msg?.type === "RELEASE") {
         await releaseCaptureCompletely();
         status("ok", "Disconnected", "Stopped translation and released browser audio capture.");
-        await ackDesktopFromBackground(true, { message: "Browser audio capture released." });
-        sendResponse({ ok: true, message: "Browser audio capture released." });
+        await respond({ ok: true, message: "Browser audio capture released." });
         return;
       }
 
       if (msg?.type === "STOP") {
         if (!running && !captureArmed) {
           await closeOffscreenIfPossible();
-          await ackDesktopFromBackground(true, { message: "Already stopped." });
-          return sendResponse({ ok: true, already: true });
+          await respond({ ok: true, already: true, message: "Already stopped." });
+          return;
         }
         try {
           await sendRuntimeMessageWithTimeout({ type: "OFFSCREEN_RELEASE" }, 8000);
@@ -842,8 +936,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
           await closeOffscreenIfPossible();
         }
         status("ok", "Stopped", "Stopped capture.");
-        await ackDesktopFromBackground(true, { message: "Stopped capture." });
-        sendResponse({ ok: true });
+        await respond({ ok: true, message: "Stopped capture." });
         return;
       }
 
@@ -856,9 +949,8 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
     } catch (e) {
       running = false;
       const error = friendlyError(e);
-      try { await ackDesktopFromBackground(false, { error }); } catch (_) {}
       status("err", "Error", error);
-      sendResponse({ ok: false, error });
+      await respond({ ok: false, error });
     }
   })();
   return true;
@@ -887,8 +979,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
-// Last payload is kept briefly so a newly-created side panel can request it
-// after its JavaScript listener has finished loading.
+// Keep the latest payload until a newly-created side panel finishes loading.
 let pendingSidePanelTranslation = null;
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
@@ -898,11 +989,10 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   if (!tabId) return;
 
   try {
-    // A keyboard command is a user gesture, so Chrome permits opening the panel.
+    // The keyboard command is a user gesture, so Chromium permits opening the panel.
     await chrome.sidePanel.open({ tabId });
 
-    // This reads the current selection without Clipboard API calls, synthetic
-    // keyboard events, or any changes to the page DOM.
+    // Read only the selection: no Clipboard API, synthetic events, or DOM writes.
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => window.getSelection().toString()
@@ -920,8 +1010,6 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
     };
   }
 
-  // If the panel is already loaded, it receives the text immediately. A new
-  // panel also sends LMT_SIDE_PANEL_READY and receives the same payload below.
   chrome.runtime.sendMessage(pendingSidePanelTranslation).catch(() => {});
 });
 

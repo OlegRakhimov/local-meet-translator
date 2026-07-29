@@ -590,6 +590,51 @@ async function updateRunningCaptureMode(msg) {
 chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
   (async () => {
     let msg = incomingMsg;
+    const desktopAckInfo = msg?.type === "DESKTOP_COMMAND" ? {
+      clientId: String(msg.clientId || ""),
+      sessionId: String(msg.sessionId || ""),
+      seq: normalizeCommandSeq(msg.seq),
+      action: String(msg.action || "")
+    } : null;
+
+    async function finalizeDesktopCommandResult(result) {
+      const normalized = result && typeof result === "object"
+        ? { ...result }
+        : { ok: false, error: "Desktop command returned no result." };
+      if (!desktopAckInfo || !desktopAckInfo.seq || !desktopAckInfo.action) return normalized;
+      try {
+        const ack = await ackDesktopCommand({
+          ...desktopAckInfo,
+          ok: !!normalized.ok,
+          message: String(normalized.message || (normalized.already ? "already running/stopped" : "")),
+          error: String(normalized.error || ""),
+          details: normalized.details || {}
+        });
+        if (!ack || !ack.ok) {
+          return {
+            ...normalized,
+            acknowledged: false,
+            ackError: String(ack && (ack.error || ack.message) || "Desktop ACK was rejected.")
+          };
+        }
+        return {
+          ...normalized,
+          acknowledged: true,
+          ackSeq: normalizeCommandSeq(ack.seq || desktopAckInfo.seq)
+        };
+      } catch (error) {
+        return {
+          ...normalized,
+          acknowledged: false,
+          ackError: String(error && (error.message || error) || error)
+        };
+      }
+    }
+
+    async function respond(result) {
+      sendResponse(await finalizeDesktopCommandResult(result));
+    }
+
     try {
       if (msg?.type === "ARM_CURRENT_TAB") {
         const tabId = msg.tabId;
@@ -692,13 +737,18 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
       }
 
       if (msg?.type === "DESKTOP_COMMAND_ACK") {
-        sendResponse(await ackDesktopCommand(msg));
+        // Compatibility with an already-open tab that still runs an older
+        // content script. Do not forward it: background owns the only ACK.
+        sendResponse({ ok: true, ignored: true, owner: "background" });
         return;
       }
 
       if (msg?.type === "DESKTOP_COMMAND") {
         const tabId = sender && sender.tab && sender.tab.id;
-        if (!tabId) return sendResponse({ ok:false, error:"Desktop command came without sender tab" });
+        if (!tabId) {
+          await respond({ ok: false, error: "Desktop command came without sender tab" });
+          return;
+        }
         if (msg.action === "start") {
           msg = await getStartMessageFromStorage(msg, tabId);
           status("run", "Desktop command", `start: micTx=${!!msg.micTxEnabled}; sink=${msg.ttsSinkDeviceName || "default"}; mic=${msg.micDeviceName || msg.micDeviceId || "default"}`);
@@ -719,13 +769,13 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
               const error = (updated && updated.error) || "Could not update voice mode.";
               const details = (updated && updated.details) || {};
               status("err", "Voice mode", error);
-              sendResponse({ ok: false, error, details });
+              await respond({ ok: false, error, details });
               return;
             }
             const readyMessage = updated.message || (msg.micTxEnabled ? "Voice translation is ready." : "Subtitles-only mode is ready.");
             const details = updated.details || {};
             status("run", msg.micTxEnabled ? "Voice ready" : "Running", readyMessage);
-            sendResponse({ ok: true, message: readyMessage, details });
+            await respond({ ok: true, message: readyMessage, details });
             return;
           }
 
@@ -740,7 +790,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
             const error = "Browser audio could not be armed for this meeting tab. Open the extension popup on the active meeting tab and press Connect this meeting tab once.";
             const details = { incomingReady: false, armed: false, tabId };
             status("err", "Audio capture not armed", error);
-            sendResponse({ ok: false, error, details });
+            await respond({ ok: false, error, details });
             return;
           }
 
@@ -775,7 +825,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
             captureArmed = true;
             armedTabId = Number(tabId);
             status("err", "Audio activation failed", error);
-            sendResponse({ ok: false, error, details });
+            await respond({ ok: false, error, details });
             return;
           }
           running = true;
@@ -784,14 +834,15 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
           const readyMessage = activated.message || "Incoming translation is ready.";
           const details = activated.details || { incomingReady: true, armed: true };
           status("run", msg.micTxEnabled ? "Voice ready" : "Running", readyMessage);
-          sendResponse({ ok: true, message: readyMessage, details });
+          await respond({ ok: true, message: readyMessage, details });
           return;
         } else if (msg.action === "stop") {
           msg = { type: "PAUSE" };
         } else if (msg.action === "release") {
           msg = { type: "RELEASE" };
         } else {
-          return sendResponse({ ok:false, error:"Unknown desktop command: " + String(msg.action) });
+          await respond({ ok: false, error: "Unknown desktop command: " + String(msg.action) });
+          return;
         }
       }
 
@@ -832,14 +883,14 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
           const details = (offscreenResult && offscreenResult.details) || {};
           running = false;
           status("err", "Error", error);
-          sendResponse({ ok: false, error, details });
+          await respond({ ok: false, error, details });
           return;
         }
         running = true;
         const readyMessage = offscreenResult.message || "Translation capture is ready.";
         const details = offscreenResult.details || {};
         status("run", "Running", readyMessage);
-        sendResponse({ ok: true, message: readyMessage, details });
+        await respond({ ok: true, message: readyMessage, details });
         return;
       }
 
@@ -847,7 +898,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         const paused = await pauseCaptureKeepArmed();
         if (!paused || !paused.ok) {
           const error = (paused && paused.error) || "Could not pause translation capture.";
-          sendResponse({ ok: false, error });
+          await respond({ ok: false, error });
           return;
         }
         status("ok", "Paused", paused.armed
@@ -856,21 +907,28 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
         const message = paused.armed
           ? "Translation stopped. Meeting tab remains armed for a fast restart."
           : "Translation stopped.";
-        sendResponse({ ok: true, message, armed: !!paused.armed, tabId: paused.tabId });
+        await respond({
+          ok: true,
+          message,
+          armed: !!paused.armed,
+          tabId: paused.tabId,
+          details: { armed: !!paused.armed, tabId: paused.tabId }
+        });
         return;
       }
 
       if (msg?.type === "RELEASE") {
         await releaseCaptureCompletely();
         status("ok", "Disconnected", "Stopped translation and released browser audio capture.");
-        sendResponse({ ok: true, message: "Browser audio capture released." });
+        await respond({ ok: true, message: "Browser audio capture released." });
         return;
       }
 
       if (msg?.type === "STOP") {
         if (!running && !captureArmed) {
           await closeOffscreenIfPossible();
-          return sendResponse({ ok: true, already: true });
+          await respond({ ok: true, already: true, message: "Already stopped." });
+          return;
         }
         try {
           await sendRuntimeMessageWithTimeout({ type: "OFFSCREEN_RELEASE" }, 8000);
@@ -878,7 +936,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
           await closeOffscreenIfPossible();
         }
         status("ok", "Stopped", "Stopped capture.");
-        sendResponse({ ok: true });
+        await respond({ ok: true, message: "Stopped capture." });
         return;
       }
 
@@ -892,7 +950,7 @@ chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
       running = false;
       const error = friendlyError(e);
       status("err", "Error", error);
-      sendResponse({ ok: false, error });
+      await respond({ ok: false, error });
     }
   })();
   return true;
@@ -931,7 +989,7 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   if (!tabId) return;
 
   try {
-    // The keyboard command is a user gesture, so Edge permits opening the panel.
+    // The keyboard command is a user gesture, so Chromium permits opening the panel.
     await chrome.sidePanel.open({ tabId });
 
     // Read only the selection: no Clipboard API, synthetic events, or DOM writes.

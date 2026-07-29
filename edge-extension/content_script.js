@@ -106,29 +106,6 @@
     return await notifyDesktopVisibility(isMeetingTabVisible(), force);
   }
 
-  async function sendCommandAck(command, result) {
-    try {
-      const response = await withTimeout(
-        chrome.runtime.sendMessage({
-          type: "DESKTOP_COMMAND_ACK",
-          clientId: state.clientId,
-          sessionId: state.sessionId,
-          seq: Number(command.seq || 0),
-          action: String(command.action || ""),
-          ok: !!(result && result.ok),
-          message: String(result && (result.message || (result.already ? "already running/stopped" : "")) || ""),
-          error: String(result && result.error || ""),
-          details: result && result.details
-        }),
-        5000,
-        "Desktop ACK request timed out."
-      );
-      return response || { ok: false, error: "Desktop ACK returned no response." };
-    } catch (error) {
-      return { ok: false, error: String(error && (error.message || error) || error) };
-    }
-  }
-
   async function pollDesktopCommand() {
     if (state.disposed) return;
     if (state.pollBusy) {
@@ -143,8 +120,6 @@
 
     state.pollBusy = true;
     state.pollStartedAt = Date.now();
-    let pendingCommand = null;
-    let pendingCommandKey = "";
     try {
       await syncDesktopIdentity();
       const data = await withTimeout(
@@ -177,7 +152,6 @@
       if (!data.hasCommand || !data.command) return;
 
       const command = data.command;
-      pendingCommand = command;
       const commandKey = [
         data.sessionId || state.sessionId || "",
         command.seq || 0,
@@ -185,7 +159,6 @@
         command.issuedAt || "",
         command.micTxEnabled ? "voice" : "subtitles"
       ].join(":");
-      pendingCommandKey = commandKey;
       const commandSeq = Number(command.seq || 0) || 0;
       if (!commandSeq || commandSeq <= state.lastSeq || commandKey === state.lastCommandKey) return;
 
@@ -228,30 +201,17 @@
         "Browser audio start/stop operation timed out."
       );
 
-      const ack = await sendCommandAck(command, result || { ok: false, error: "No response from extension background." });
-      if (ack && ack.ok) {
-        state.lastSeq = Math.max(commandSeq, Number(ack.seq || 0) || 0);
-        state.lastCommandKey = commandKey;
-        persistIdentity();
-      } else {
-        // Do not advance the cursor until the desktop accepts the ACK. The
-        // same command will be offered again and can be acknowledged later.
-        state.identityReady = false;
+      if (!result || result.acknowledged === false) {
+        throw new Error(String(result && (result.ackError || result.error) || "Extension background did not acknowledge the desktop command."));
       }
+      state.lastSeq = Math.max(commandSeq, Number(result.ackSeq || 0) || 0);
+      state.lastCommandKey = commandKey;
+      persistIdentity();
     } catch (error) {
-      if (pendingCommand && pendingCommand.seq) {
-        const ack = await sendCommandAck(pendingCommand, {
-          ok: false,
-          error: String(error && (error.message || error) || error)
-        });
-        if (ack && ack.ok) {
-          state.lastSeq = Math.max(Number(pendingCommand.seq || 0) || 0, Number(ack.seq || 0) || 0);
-          state.lastCommandKey = pendingCommandKey;
-          persistIdentity();
-        }
-      }
-      // Force the next poll to reload the service-worker identity after a
-      // desktop restart or extension context recovery.
+      console.warn("[LMT] desktop command was not finalized", String(error && (error.message || error) || error));
+      // Force the next poll to reload the durable background cursor. If the
+      // background delivered the ACK but its response was lost, the next poll
+      // advances from lastProcessedSeq without executing the command twice.
       state.identityReady = false;
     } finally {
       state.pollBusy = false;

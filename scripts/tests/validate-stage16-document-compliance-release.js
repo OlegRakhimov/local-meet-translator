@@ -63,6 +63,8 @@ assert(build.includes('Running the complete desktop unit and architecture test s
 const workflow = read('.github/workflows/windows-release.yml');
 assert(workflow.includes('BUILD_DESKTOP_WINDOWS.cmd'), 'Windows CI does not invoke the verified release build.');
 assert(workflow.includes('actions/upload-artifact@v4'), 'Windows CI does not publish build artifacts.');
-assert(workflow.includes('choco install poppler'), 'Windows CI does not install the PDF extraction runtime.');
+assert(workflow.includes('scripts\\windows\\install-poppler.ps1'), 'Windows CI does not invoke the Poppler installer script.');
+const popplerInstaller = read('scripts/windows/install-poppler.ps1');
+assert(popplerInstaller.includes('poppler-windows') && popplerInstaller.includes('pdftotext.exe'), 'Windows CI Poppler installer is incomplete.');
 
 console.log('Stage 16 document import, compliance mode, visibility routing and release build validation: OK');

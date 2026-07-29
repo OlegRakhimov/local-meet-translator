@@ -1226,10 +1226,12 @@ function startConfigServer() {
             writeJsonResponse(res, 400, { ok: false, error: ackResult.error });
             return;
           }
-          if (ok && action === 'start' && clientId) extensionClientRegistry.markActive(clientId);
-          if (action === 'stop') extensionClientRegistry.clearActive(clientId);
-          sendLog(`Extension ${ok ? 'ACK' : 'ERROR'} for ${action} #${seq}${text ? ': ' + text : ''}`);
-          writeJsonResponse(res, 200, { ok:true });
+          if (!ackResult.duplicate) {
+            if (ok && action === 'start' && clientId) extensionClientRegistry.markActive(clientId);
+            if (action === 'stop' || action === 'release') extensionClientRegistry.clearActive(clientId);
+            sendLog(`Extension ${ok ? 'ACK' : 'ERROR'} for ${action} #${seq}${text ? ': ' + text : ''}`);
+          }
+          writeJsonResponse(res, 200, { ok: true, duplicate: !!ackResult.duplicate });
         })
         .catch(error => writeJsonResponse(res, error.statusCode || 400, { ok: false, error: error.message || 'Invalid command acknowledgement.' }));
       return;
