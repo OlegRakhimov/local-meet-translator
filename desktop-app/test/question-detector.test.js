@@ -4,6 +4,7 @@ const {
   looksLikeQuestion,
   looksLikeCodingTask,
   classifyInterviewUtterance,
+  looksLikeAnswerEcho,
   createQuestionDetector
 } = require('../src/main/question-detector');
 
@@ -23,6 +24,21 @@ test('recognizes coding tasks even without a question mark', () => {
   assert.equal(looksLikeCodingTask('Write a Java method that finds duplicate numbers in an array.'), true);
   assert.equal(looksLikeCodingTask('Given an integer array, find all duplicate values'), true);
   assert.equal(classifyInterviewUtterance('Implement reverse linked list in Java').kind, 'coding-task');
+});
+
+
+test('recognizes candidate speech that closely matches the locked answer', () => {
+  const candidates = [
+    'I would use a hash map to store previously seen values and their indexes.'
+  ];
+  assert.equal(
+    looksLikeAnswerEcho('I would use a hash map to store previously seen values', candidates),
+    true
+  );
+  assert.equal(
+    looksLikeAnswerEcho('Why did you choose a hash map for this solution?', candidates),
+    false
+  );
 });
 
 test('detects incoming questions and suppresses close repeats', () => {

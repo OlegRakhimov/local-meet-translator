@@ -39,7 +39,7 @@ test('controller applies content protection and keeps question local', async () 
   assert.ok(calls.some(call => call[0] === 'assistant-overlay:state'));
 });
 
-test('frozen assistant queues a different answer until the user loads it', () => {
+test('ready assistant answer stays pinned until the user loads a different answer', () => {
   class FakeWindow {
     constructor() { this.visible=false; this.destroyed=false; this.protected=false; this.webContents={ isDestroyed:()=>false, send:()=>{}, on:()=>{} }; }
     setAlwaysOnTop(){} setContentProtection(v){this.protected=v;} isContentProtected(){return this.protected;}
@@ -56,7 +56,7 @@ test('frozen assistant queues a different answer until the user loads it', () =>
   controller.initialize();
   controller.setQuestion({id:'q1',text:'First question?'});
   controller.setSuggestion({question:'First question?',answer:'First answer.',firstSentence:'First answer.'});
-  controller.setFrozen(true);
+  assert.equal(controller.snapshot().teleprompter.answerLocked, true);
   controller.setQuestion({id:'q2',text:'Second question?'});
   controller.setSuggestion({question:'Second question?',answer:'Second answer.',firstSentence:'Second answer.'});
   assert.equal(controller.snapshot().suggestion.question, 'First question?');

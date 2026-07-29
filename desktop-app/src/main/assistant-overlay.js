@@ -298,7 +298,7 @@ function createAssistantOverlayController({
     if (!incoming) return snapshot();
     const tpBefore = teleprompter.snapshot();
     teleprompter.noteQuestion(incoming);
-    if (tpBefore.frozen && tpBefore.current) {
+    if ((tpBefore.answerLocked || tpBefore.frozen) && tpBefore.current) {
       if (settings.enabled) show(); else sendState();
       return snapshot();
     }
@@ -313,7 +313,7 @@ function createAssistantOverlayController({
   }
   function setAnalyzing(value = true) {
     const tp = teleprompter.snapshot();
-    if (value && tp.frozen && tp.current && tp.pendingQuestion) {
+    if (value && (tp.answerLocked || tp.frozen) && tp.current && tp.pendingQuestion) {
       teleprompter.setPendingAnalyzing(true);
       error = '';
       sendState();
@@ -345,7 +345,13 @@ function createAssistantOverlayController({
   }
   function setError(value) {
     const tp = teleprompter.snapshot();
-    if (tp.frozen && tp.current && tp.pendingQuestion) teleprompter.setPendingAnalyzing(false);
+    if ((tp.answerLocked || tp.frozen) && tp.current && tp.pendingQuestion) {
+      teleprompter.setPendingAnalyzing(false);
+      status = suggestion ? 'ready' : 'question';
+      error = '';
+      sendState();
+      return snapshot();
+    }
     status = 'error';
     error = cleanText(value, 3000);
     sendState();
@@ -378,13 +384,7 @@ function createAssistantOverlayController({
   }
   function setFrozen(enabled) {
     settings = { ...settings, teleprompterFrozen: !!enabled };
-    const result = teleprompter.setFrozen(!!enabled);
-    if (result.loadedPending && result.current) {
-      question = result.current.question ? { ...result.current.question } : question;
-      suggestion = result.current.suggestion ? { ...result.current.suggestion } : suggestion;
-      status = suggestion ? 'ready' : question ? 'question' : 'idle';
-      error = '';
-    }
+    teleprompter.setFrozen(!!enabled);
     if (typeof saveSettings === 'function') saveSettings({ INTERVIEW_TELEPROMPTER_FROZEN: settings.teleprompterFrozen ? 'true' : 'false' });
     sendState();
     return { ok: true, ...snapshot() };

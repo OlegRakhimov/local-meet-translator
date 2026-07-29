@@ -915,6 +915,7 @@ function renderTeleprompterState(teleprompter = {}) {
   if ($('assistantPreviousChunk')) $('assistantPreviousChunk').disabled = activeIndex <= 0;
   if ($('assistantNextChunk')) $('assistantNextChunk').disabled = !chunks.length || activeIndex >= chunks.length - 1;
   if ($('assistantToggleFreeze')) $('assistantToggleFreeze').textContent = teleprompter.frozen ? t('teleprompterUnfreeze') : t('teleprompterFreeze');
+  if ($('assistantFinishAnswer')) $('assistantFinishAnswer').disabled = !teleprompter.current;
   if ($('assistantTeleprompterFrozen')) $('assistantTeleprompterFrozen').checked = !!teleprompter.frozen;
   const pendingQuestion = teleprompter.pendingQuestion?.text || teleprompter.pending?.question?.text || '';
   if ($('assistantTeleprompterPending')) {
@@ -1051,7 +1052,10 @@ try {
 try {
   window.lmt.onInterviewQuestion(question => {
     rememberDetectedQuestion(question);
-    renderAssistantState({ ...assistantState, question, status: 'question', suggestion: null, error: '' });
+    const currentAnswerLocked = !!(assistantState.teleprompter?.answerLocked && assistantState.teleprompter?.current);
+    if (!currentAnswerLocked) {
+      renderAssistantState({ ...assistantState, question, status: 'question', suggestion: null, error: '' });
+    }
   });
   window.lmt.onInterviewAssistantState(renderAssistantState);
   if (typeof window.lmt.onLiveInterviewState === 'function') {
@@ -2117,6 +2121,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   };
   if ($('assistantPreviousChunk')) $('assistantPreviousChunk').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('previousChunk'));
+  if ($('assistantFinishAnswer')) $('assistantFinishAnswer').onclick = async () => {
+    renderAssistantState(await window.lmt.interviewAssistantControl('finishAnswer'));
+    if ($('assistantQuestionInput')) $('assistantQuestionInput').value = '';
+  };
   if ($('assistantNextChunk')) $('assistantNextChunk').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('nextChunk'));
   if ($('assistantToggleFreeze')) $('assistantToggleFreeze').onclick = async () => {
     const enabled = !(assistantState.teleprompter?.frozen);

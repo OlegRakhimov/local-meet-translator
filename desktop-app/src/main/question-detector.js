@@ -57,6 +57,26 @@ function tokenSimilarity(left, right) {
   return intersection / Math.max(a.size, b.size);
 }
 
+function looksLikeAnswerEcho(value, candidates = [], options = {}) {
+  const utteranceTokens = new Set(questionTokens(value));
+  const minTokens = Number.isFinite(Number(options.minTokens))
+    ? Math.max(3, Number(options.minTokens))
+    : 5;
+  const threshold = Number.isFinite(Number(options.threshold))
+    ? Math.max(0.5, Math.min(1, Number(options.threshold)))
+    : 0.82;
+  if (utteranceTokens.size < minTokens) return false;
+
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    const candidateTokens = new Set(questionTokens(candidate));
+    if (candidateTokens.size < minTokens) continue;
+    let intersection = 0;
+    for (const token of utteranceTokens) if (candidateTokens.has(token)) intersection += 1;
+    if (intersection >= minTokens && intersection / utteranceTokens.size >= threshold) return true;
+  }
+  return false;
+}
+
 function detectCodingLanguage(value) {
   const text = cleanQuestionText(value).toLowerCase();
   if (/\bkotlin\b/.test(text)) return 'kotlin';
@@ -256,6 +276,7 @@ module.exports = {
   normalizeQuestionText,
   questionTokens,
   tokenSimilarity,
+  looksLikeAnswerEcho,
   detectCodingLanguage,
   looksLikeCodingContinuation,
   NEW_CODING_TASK_OPENERS,

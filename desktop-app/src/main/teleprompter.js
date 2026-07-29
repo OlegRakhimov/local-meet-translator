@@ -162,11 +162,13 @@ function createTeleprompterState(initialSettings = {}) {
   let pending = null;
   let pendingQuestion = null;
   let pendingAnalyzing = false;
+  let answerLocked = false;
 
   function snapshot() {
     return {
       settings: { ...settings },
       frozen: !!settings.frozen,
+      answerLocked,
       current: cloneEntry(current),
       pending: cloneEntry(pending),
       pendingQuestion: pendingQuestion ? { ...pendingQuestion } : null,
@@ -189,26 +191,16 @@ function createTeleprompterState(initialSettings = {}) {
   }
 
   function setFrozen(value) {
-    const wasFrozen = !!settings.frozen;
     settings = { ...settings, frozen: !!value };
-    let loadedPending = false;
-    if (wasFrozen && !settings.frozen && pending) {
-      current = pending;
-      pending = null;
-      pendingQuestion = null;
-      pendingAnalyzing = false;
-      loadedPending = true;
-    } else if (!settings.frozen && !pending) {
-      pendingQuestion = null;
-      pendingAnalyzing = false;
-    }
-    return { loadedPending, ...snapshot() };
+    return { loadedPending: false, ...snapshot() };
   }
 
   function noteQuestion(question) {
     const value = question ? { ...question, text: cleanText(question.text, 2000) } : null;
     if (!value) return snapshot();
-    if (settings.frozen && current) {
+    const currentQuestion = cleanText(current?.question?.text, 2000).toLowerCase();
+    if (currentQuestion && currentQuestion === value.text.toLowerCase()) return snapshot();
+    if ((answerLocked || settings.frozen) && current) {
       pendingQuestion = value;
     } else {
       pending = null;
@@ -240,13 +232,14 @@ function createTeleprompterState(initialSettings = {}) {
         : 0,
       loadedAt: Date.now()
     };
-    if (settings.frozen && current && currentQuestion && newQuestion && currentQuestion !== newQuestion) {
+    if ((answerLocked || settings.frozen) && current && currentQuestion && newQuestion && currentQuestion !== newQuestion) {
       pending = entry;
       pendingQuestion = entry.question;
       pendingAnalyzing = false;
       return { disposition: 'pending', ...snapshot() };
     }
     current = entry;
+    answerLocked = true;
     pending = null;
     pendingQuestion = null;
     pendingAnalyzing = false;
@@ -256,6 +249,7 @@ function createTeleprompterState(initialSettings = {}) {
   function loadPending() {
     if (!pending) return { loaded: false, ...snapshot() };
     current = pending;
+    answerLocked = true;
     pending = null;
     pendingQuestion = null;
     pendingAnalyzing = false;
@@ -284,6 +278,7 @@ function createTeleprompterState(initialSettings = {}) {
     pending = null;
     pendingQuestion = null;
     pendingAnalyzing = false;
+    answerLocked = false;
     return snapshot();
   }
 

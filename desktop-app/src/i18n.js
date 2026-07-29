@@ -512,7 +512,8 @@
     teleprompterFreeze: "Freeze",
     teleprompterUnfreeze: "Unfreeze",
     teleprompterLoadPending: "Load pending",
-    teleprompterPendingQuestion: "Pending question"
+    teleprompterPendingQuestion: "Pending question",
+    finishAssistantAnswer: "Finish answer and wait for a new question"
   });
   Object.assign(S.ru, {
     teleprompterSettingsTitle: "Английский телесуфлёр",
@@ -536,7 +537,8 @@
     teleprompterFreeze: "Зафиксировать",
     teleprompterUnfreeze: "Снять фиксацию",
     teleprompterLoadPending: "Загрузить ожидающий",
-    teleprompterPendingQuestion: "Ожидающий вопрос"
+    teleprompterPendingQuestion: "Ожидающий вопрос",
+    finishAssistantAnswer: "Завершить ответ и ждать новый вопрос"
   });
   Object.assign(S.en, {
     assistantMoveHotkey: "Move window hotkey",

@@ -28,7 +28,7 @@ button { font: inherit; }
 .firstSentenceBlock p { margin:7px 0 0; font-size:calc(var(--assistant-font-size) * 1.06); font-weight:800; line-height:1.38; color:#fff; }
 .activeChunkBlock { margin-top:14px; border-radius:13px; background:#07101e; border:1px solid rgba(126,166,231,.2); padding:16px; }
 .activeChunkBlock p { margin:8px 0 0; white-space:pre-wrap; font-size:calc(var(--assistant-font-size) * 1.23); line-height:1.48; font-weight:720; color:#f5f8ff; text-wrap:pretty; }
-.teleprompterControls { display:grid; grid-template-columns:1fr 1fr 1fr; gap:9px; margin-top:12px; }
+.teleprompterControls { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:9px; margin-top:12px; }
 .teleprompterGuidance { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:15px; padding-top:14px; border-top:1px solid rgba(148,163,184,.14); }
 .teleprompterGuidance ul { margin-bottom:0; }
 .keywordChips { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }

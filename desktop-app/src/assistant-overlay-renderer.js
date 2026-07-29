@@ -31,7 +31,9 @@ const codingUi = overlayLanguage === 'ru'
       keepCurrent: 'Оставить текущее решение',
       applied: 'Применено',
       dismissed: 'Оставлено без изменений',
-      classifierReason: 'Почему так распознано'
+      classifierReason: 'Почему так распознано',
+      finishAnswer: 'Завершить ответ',
+      answerLocked: 'ОТВЕТ ЗАКРЕПЛЁН'
     }
   : {
       task: 'TASK',
@@ -61,7 +63,9 @@ const codingUi = overlayLanguage === 'ru'
       keepCurrent: 'Keep current solution',
       applied: 'Applied',
       dismissed: 'Kept without changes',
-      classifierReason: 'Why it was classified this way'
+      classifierReason: 'Why it was classified this way',
+      finishAnswer: 'Finish answer',
+      answerLocked: 'ANSWER LOCKED'
     };
 
 function text(id, value) { const el = $(id); if (el) el.textContent = value || ''; }
@@ -238,13 +242,17 @@ function render(state = {}) {
   text('statusBadge', statuses[state.status] || state.status || 'Waiting');
 
   const frozen = !!teleprompter.frozen;
-  $('freezeBadge').hidden = !frozen;
+  const answerLocked = !!teleprompter.answerLocked;
+  $('freezeBadge').hidden = !(frozen || answerLocked);
+  text('freezeBadge', frozen ? 'FROZEN' : codingUi.answerLocked);
   $('moveBadge').hidden = !state.moveMode;
   text('moveAssistantOverlay', state.moveMode ? '✓' : '↔');
   text('freezeTeleprompter', frozen ? 'Unfreeze' : 'Freeze');
+  text('finishCurrentAnswer', codingUi.finishAnswer);
+  $('finishCurrentAnswer').disabled = !teleprompter.current;
 
   const pendingQuestion = teleprompter.pendingQuestion?.text || teleprompter.pending?.question?.text || '';
-  $('pendingBlock').hidden = !(pendingQuestion && (teleprompter.frozen || teleprompter.pending));
+  $('pendingBlock').hidden = !(pendingQuestion && (answerLocked || teleprompter.frozen || teleprompter.pending));
   text('pendingQuestionText', pendingQuestion);
   text('loadPendingAnswer', teleprompter.pendingAnalyzing ? 'Analyzing pending…' : 'Load pending');
   $('loadPendingAnswer').disabled = !teleprompter.pending;
@@ -299,6 +307,7 @@ $('moveAssistantOverlay').onclick = () => window.lmtAssistantOverlay.control('mo
 $('previousChunk').onclick = () => window.lmtAssistantOverlay.control('previousChunk');
 $('nextChunk').onclick = () => window.lmtAssistantOverlay.control('nextChunk');
 $('freezeTeleprompter').onclick = () => window.lmtAssistantOverlay.control('freezeTeleprompter', { enabled: !(latestState.teleprompter?.frozen) });
+$('finishCurrentAnswer').onclick = () => window.lmtAssistantOverlay.control('finishAnswer');
 $('loadPendingAnswer').onclick = () => window.lmtAssistantOverlay.control('loadPending');
 
 $('clearCodingContext').onclick = () => window.lmtAssistantOverlay.control('clearCodingContext');

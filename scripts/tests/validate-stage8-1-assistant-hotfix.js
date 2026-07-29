@@ -34,10 +34,11 @@ assert(main.includes('initializeAssistantAutoAnalysis().queue(questionDecision.q
 assert(main.indexOf('assistantOverlay.setAnalyzing(true)') < main.indexOf('await ensureBridgeForAssistant()'), 'Analyzing state must be visible while the bridge is starting.');
 assert(coordinator.includes('lastCompletedKey'), 'Coordinator must suppress already completed duplicate questions.');
 assert(coordinator.includes('running = { ...next }'), 'Coordinator must serialize analysis requests.');
-assert(teleprompter.includes('loadedPending'), 'Unfreezing must explicitly handle pending answers.');
-assert(overlay.includes('result.loadedPending'), 'Assistant overlay must synchronize after pending answer promotion.');
+assert(teleprompter.includes('answerLocked'), 'A ready answer must be locked until an explicit user action.');
+assert(teleprompter.includes('loadedPending: false'), 'Unfreezing must not replace the current answer automatically.');
+assert(main.includes("case 'finishAnswer'"), 'The user must be able to finish the current answer and reset transient state.');
 assert(renderer.includes('Automatic AI analysis is enabled.'), 'Overlay guidance must reflect enabled automatic analysis.');
-assert(renderer.includes('teleprompter.frozen || teleprompter.pending'), 'Pending block must not show stale state while unfrozen.');
+assert(renderer.includes('answerLocked || teleprompter.frozen || teleprompter.pending'), 'Pending questions must stay visible while the current answer is locked.');
 assert(isVersionAtLeast(pkg.version, '1.0.15'), 'Desktop version must be 1.0.15 or newer.');
 
 console.log('Stage 8.1 automatic assistant analysis hotfix validation: OK');

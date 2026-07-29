@@ -29,10 +29,10 @@ test('builds a teleprompter document from an existing grounded suggestion only',
   assert.match(document.chunks.join(' '), /complete applications/);
 });
 
-test('freeze keeps the current answer and queues a new answer', () => {
+test('a ready answer locks automatically and queues a new answer', () => {
   const state = createTeleprompterState({ frozen: false, chunkMode: 'short' });
   state.loadSuggestion({ question: 'Question one?', answer: 'First answer. It stays visible.', firstSentence: 'First answer.' });
-  state.setFrozen(true);
+  assert.equal(state.snapshot().answerLocked, true);
   state.noteQuestion({ id: 'q2', text: 'Question two?' });
   const result = state.loadSuggestion({ question: 'Question two?', answer: 'Second answer.', firstSentence: 'Second answer.' });
   assert.equal(result.disposition, 'pending');
@@ -42,6 +42,18 @@ test('freeze keeps the current answer and queues a new answer', () => {
   const loaded = state.loadPending();
   assert.equal(loaded.loaded, true);
   assert.equal(state.snapshot().current.suggestion.question, 'Question two?');
+  assert.equal(state.snapshot().answerLocked, true);
+});
+
+test('clearing releases the answer lock and removes pending state', () => {
+  const state = createTeleprompterState({ frozen: false });
+  state.loadSuggestion({ question: 'Question one?', answer: 'First answer.', firstSentence: 'First answer.' });
+  state.noteQuestion({ text: 'Question two?' });
+  const cleared = state.clear();
+  assert.equal(cleared.answerLocked, false);
+  assert.equal(cleared.current, null);
+  assert.equal(cleared.pending, null);
+  assert.equal(cleared.pendingQuestion, null);
 });
 
 test('next and previous controls stay within chunk boundaries', () => {

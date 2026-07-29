@@ -17,7 +17,7 @@ function suggestion(question, answer) {
   };
 }
 
-test('unfreezing automatically loads a prepared pending answer', () => {
+test('unfreezing does not replace a locked answer without explicit loading', () => {
   const state = createTeleprompterState({ frozen: false, chunkMode: 'short' });
   state.loadSuggestion(suggestion('Question one?', 'Answer one.'), { text: 'Question one?' });
   state.setFrozen(true);
@@ -31,14 +31,17 @@ test('unfreezing automatically loads a prepared pending answer', () => {
   assert.equal(state.snapshot().pending.question.text, 'Question two?');
 
   const unfrozen = state.setFrozen(false);
-  assert.equal(unfrozen.loadedPending, true);
-  assert.equal(unfrozen.current.question.text, 'Question two?');
-  assert.equal(unfrozen.current.suggestion.answer, 'Answer two.');
-  assert.equal(unfrozen.pending, null);
-  assert.equal(unfrozen.pendingQuestion, null);
+  assert.equal(unfrozen.loadedPending, false);
+  assert.equal(unfrozen.current.question.text, 'Question one?');
+  assert.equal(unfrozen.pending.question.text, 'Question two?');
+
+  const loaded = state.loadPending();
+  assert.equal(loaded.loaded, true);
+  assert.equal(loaded.current.question.text, 'Question two?');
+  assert.equal(loaded.current.suggestion.answer, 'Answer two.');
 });
 
-test('a new non-frozen question clears stale pending state', () => {
+test('a locked answer keeps the latest detected question pending while unfrozen', () => {
   const state = createTeleprompterState({ frozen: false });
   state.loadSuggestion(suggestion('Question one?', 'Answer one.'), { text: 'Question one?' });
   state.setFrozen(true);
@@ -48,7 +51,7 @@ test('a new non-frozen question clears stale pending state', () => {
 
   const snapshot = state.snapshot();
   assert.equal(snapshot.frozen, false);
-  assert.equal(snapshot.pending, null);
-  assert.equal(snapshot.pendingQuestion, null);
+  assert.equal(snapshot.answerLocked, true);
+  assert.equal(snapshot.pendingQuestion.text, 'Current stable question?');
   assert.equal(snapshot.pendingAnalyzing, false);
 });

@@ -15,7 +15,7 @@ const { createDocumentTextExtractor } = require('./main/document-text-extractor'
 const { createAnswerLibraryStore } = require('./main/answer-library-store');
 const { createInterviewTrainingStore } = require('./main/interview-training-store');
 const { createLiveInterviewStore } = require('./main/live-interview-store');
-const { createQuestionDetector, cleanQuestionText, classifyInterviewUtterance, detectCodingLanguage } = require('./main/question-detector');
+const { createQuestionDetector, cleanQuestionText, classifyInterviewUtterance, detectCodingLanguage, looksLikeAnswerEcho } = require('./main/question-detector');
 const { matchAnswerLibrary } = require('./main/answer-matcher');
 const { createAssistantOverlayController, normalizeAssistantSettings } = require('./main/assistant-overlay');
 const { createAutomaticAnalysisCoordinator } = require('./main/assistant-auto-analysis');
@@ -269,16 +269,47 @@ async function createDiagnosticsSnapshot() {
   });
 }
 
-function resetTransientAssistantState() {
+function resetTransientAssistantState(message = 'Transient subtitle and assistant state was reset.') {
   assistantAnalysisGeneration += 1;
+  codingFollowUpGeneration += 1;
+  codingClassificationGeneration += 1;
   lastDetectedQuestion = null;
   questionDetector.clear();
   subtitleDedupe.reset();
   if (assistantAutoAnalysis) assistantAutoAnalysis.clear();
-  if (assistantOverlay) assistantOverlay.clear();
+  const overlayState = assistantOverlay ? assistantOverlay.clear() : null;
   diagnosticsTracker.reset();
   emitAssistantState();
-  return { ok: true, message: 'Transient subtitle and assistant state was reset.' };
+  return {
+    ok: true,
+    message,
+    ...(overlayState || {})
+  };
+}
+
+function currentAnswerEchoCandidates(snapshot = {}) {
+  const teleprompter = snapshot.teleprompter || {};
+  const current = teleprompter.current || {};
+  const suggestion = snapshot.suggestion || current.suggestion || {};
+  const document = current.document || {};
+  return [
+    suggestion.firstSentence,
+    suggestion.answer,
+    suggestion.approachSummary,
+    ...(Array.isArray(suggestion.speakingNotes) ? suggestion.speakingNotes : []),
+    ...(Array.isArray(document.chunks) ? document.chunks : []),
+    teleprompter.activeChunk
+  ].filter(Boolean);
+}
+
+function currentAnswerOwnSpeechEcho(text, snapshot = {}) {
+  const teleprompter = snapshot.teleprompter || {};
+  if (!teleprompter.answerLocked || !teleprompter.current) return false;
+  if (classifyInterviewUtterance(text).actionable) return false;
+  return looksLikeAnswerEcho(text, currentAnswerEchoCandidates(snapshot), {
+    minTokens: 5,
+    threshold: 0.82
+  });
 }
 
 function recordDetectedQuestion(question) {
@@ -1077,9 +1108,12 @@ function startConfigServer() {
             : event;
           subtitleOverlay.pushSubtitle(deliveredEvent);
           diagnosticsTracker.record('subtitleAccepted', { reason: decision.reason });
-          const codingFocusWasActive = !!assistantOverlay?.snapshot()?.codingFocus?.active;
+          const assistantSnapshot = assistantOverlay?.snapshot() || {};
+          const codingFocusWasActive = !!assistantSnapshot.codingFocus?.active;
           const contextText = cleanQuestionText(deliveredEvent.transcript || deliveredEvent.translation);
-          if (codingFocusWasActive && contextText) {
+          if (contextText && currentAnswerOwnSpeechEcho(contextText, assistantSnapshot)) {
+            diagnosticsTracker.record('remarkIgnored', { reason: 'candidate-answer-echo' });
+          } else if (codingFocusWasActive && contextText) {
             queueCodingUtterance(deliveredEvent);
           } else {
             const questionDecision = questionDetector.consume(deliveredEvent, deliveredEvent.ts || Date.now());
@@ -1306,7 +1340,7 @@ function initializeWindowManager() {
       });
     }
   });
-  subtitleOverlay = createSubtitleOverlayController({
+    subtitleOverlay = createSubtitleOverlayController({
     BrowserWindow,
     screen,
     globalShortcut,
@@ -1320,6 +1354,37 @@ function initializeWindowManager() {
     platform: process.platform
   });
   subtitleOverlay.initialize();
+
+  // ========== ЗАЩИТА ОТ ЗАХВАТА ЭКРАНА (ТОЛЬКО WINDOWS) ==========
+  if (process.platform === 'win32') {
+    // Защита subtitle-окна — с задержкой для гарантии создания HWND
+    setTimeout(() => {
+      try {
+        const subWin = subtitleOverlay.getWindow();
+        if (subWin && !subWin.isDestroyed()) {
+          subWin.setContentProtection(true);
+          sendLog('[PROTECTION] Subtitle window protected from screen capture');
+        }
+      } catch (e) {
+        sendLog(`[PROTECTION] Subtitle protection failed: ${e.message}`);
+      }
+    }, 300);
+
+    // Защита assistant-окна — после его создания (в отдельном setTimeout)
+    setTimeout(() => {
+      try {
+        const asstWin = assistantOverlay.getWindow();
+        if (asstWin && !asstWin.isDestroyed()) {
+          asstWin.setContentProtection(true);
+          sendLog('[PROTECTION] Assistant window protected from screen capture');
+        }
+      } catch (e) {
+        sendLog(`[PROTECTION] Assistant protection failed: ${e.message}`);
+      }
+    }, 300);
+  }
+  // ========================================================================
+
   assistantOverlay = createAssistantOverlayController({
     BrowserWindow,
     screen,
@@ -1333,8 +1398,28 @@ function initializeWindowManager() {
     platform: process.platform
   });
   assistantOverlay.initialize();
-  return windowManager.createMainWindow();
+
+  //  ДОПОЛНИТЕЛЬНАЯ ЗАЩИТА ДЛЯ MAIN-ОКНА
+  // Создаём главное окно и защищаем его после создания
+  const mainWindow = windowManager.createMainWindow();
+  if (process.platform === 'win32') {
+    setTimeout(() => {
+      try {
+        const mainWin = windowManager.getMainWindow();
+        if (mainWin && !mainWin.isDestroyed()) {
+          mainWin.setContentProtection(true);
+          sendLog('[PROTECTION] Main window protected from screen capture');
+        }
+      } catch (e) {
+        sendLog(`[PROTECTION] Main window protection failed: ${e.message}`);
+      }
+    }, 400);
+  }
+  // ==========================================================
+
+  return mainWindow;
 }
+
 app.on('second-instance', () => {
   if (!hasSingleInstanceLock || !windowManager) return;
   const mainWindow = windowManager.getMainWindow();
@@ -1355,7 +1440,11 @@ if (hasSingleInstanceLock) app.whenReady().then(() => {
     if (migration.migrated) sendLog(`Migrated legacy .env from: ${migration.source}`);
   }, 400);
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
 app.on('before-quit', () => {
   appClosing = true;
   translationSession.stop();
@@ -1440,12 +1529,9 @@ ipcMain.handle('interview-assistant:control', async (_event, action, payload = {
     case 'hide': return assistantOverlay.hide();
     case 'toggle': return assistantOverlay.toggle();
     case 'clear':
-      questionDetector.clear();
-      lastDetectedQuestion = null;
-      assistantAnalysisGeneration += 1;
-      codingClassificationGeneration += 1;
-      if (assistantAutoAnalysis) assistantAutoAnalysis.clear();
-      return assistantOverlay.clear();
+      return resetTransientAssistantState();
+    case 'finishAnswer':
+      return resetTransientAssistantState('Current answer was finished. The assistant is ready for a new question.');
     case 'clickThrough': return assistantOverlay.setClickThrough(!!payload.enabled);
     case 'moveMode': return assistantOverlay.setMoveMode(payload.enabled);
     case 'freezeTeleprompter': return assistantOverlay.setFrozen(!!payload.enabled);
@@ -1455,10 +1541,7 @@ ipcMain.handle('interview-assistant:control', async (_event, action, payload = {
     case 'loadPending': return assistantOverlay.loadPending();
     case 'clearCodingContext': return assistantOverlay.clearCodingContext();
     case 'endCodingFocus':
-      codingFollowUpGeneration += 1;
-      codingClassificationGeneration += 1;
-      questionDetector.clearActiveCodingTask();
-      return assistantOverlay.endCodingFocus();
+      return resetTransientAssistantState('Coding task was finished. The assistant is ready for a new question.');
     case 'analyzeCodingFollowUp': {
       const followUp = assistantOverlay.codingContextSnapshot()?.followUp?.question;
       return followUp ? await analyzeCodingFollowUp(followUp) : { ok:false, message:'No coding follow-up is waiting.' };
@@ -1783,6 +1866,7 @@ ipcMain.handle('extension:startTranslation', async (_event, options = {}) => {
     }
   }
 
+  resetTransientAssistantState('A new translation session started. The assistant is ready for a new question.');
   let cmd = issueExtensionCommand('start', target, commandOverrides);
   let ack = await waitForExtensionAck(cmd.seq, 32000);
   if (!ack && hasRecentExtensionPoll(target, 8000)) {
