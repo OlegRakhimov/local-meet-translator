@@ -232,7 +232,8 @@ function createTeleprompterState(initialSettings = {}) {
         : 0,
       loadedAt: Date.now()
     };
-    if ((answerLocked || settings.frozen) && current && currentQuestion && newQuestion && currentQuestion !== newQuestion) {
+    const queuedAfterFinishedAnswer = !current && pendingQuestion && cleanText(pendingQuestion.text, 2000).toLowerCase() === newQuestion;
+    if (queuedAfterFinishedAnswer || ((answerLocked || settings.frozen) && current && currentQuestion && newQuestion && currentQuestion !== newQuestion)) {
       pending = entry;
       pendingQuestion = entry.question;
       pendingAnalyzing = false;
@@ -254,6 +255,20 @@ function createTeleprompterState(initialSettings = {}) {
     pendingQuestion = null;
     pendingAnalyzing = false;
     return { loaded: true, ...snapshot() };
+  }
+
+  function clearPending() {
+    pending = null;
+    pendingQuestion = null;
+    pendingAnalyzing = false;
+    return snapshot();
+  }
+
+  function finishCurrent() {
+    current = null;
+    answerLocked = false;
+    pendingAnalyzing = false;
+    return snapshot();
   }
 
   function nextChunk() {
@@ -290,6 +305,8 @@ function createTeleprompterState(initialSettings = {}) {
     setPendingAnalyzing,
     loadSuggestion,
     loadPending,
+    clearPending,
+    finishCurrent,
     nextChunk,
     previousChunk,
     firstChunk,

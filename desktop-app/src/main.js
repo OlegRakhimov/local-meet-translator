@@ -19,7 +19,7 @@ const { createQuestionDetector, cleanQuestionText, classifyInterviewUtterance, d
 const { matchAnswerLibrary } = require('./main/answer-matcher');
 const { createAssistantOverlayController, normalizeAssistantSettings } = require('./main/assistant-overlay');
 const { createAutomaticAnalysisCoordinator } = require('./main/assistant-auto-analysis');
-const { normalizeClassification, fallbackClassifyUtterance, isAutomaticChange, previewActiveInputs } = require('./main/utterance-classifier');
+const { normalizeClassification, fallbackClassifyUtterance, previewActiveInputs } = require('./main/utterance-classifier');
 const { buildCodingRequestParts } = require('./main/interview-context');
 const { constantTimeEqual, createSlidingWindowRateLimiter, isJsonRequest, applyLocalSecurityHeaders } = require('./main/security-guard');
 const { createDiagnosticsTracker, buildDiagnosticsReport, diagnosticsToMarkdown } = require('./main/diagnostics');
@@ -105,8 +105,8 @@ function initializeAssistantAutoAnalysis() {
     delayMs: 1200,
     analyze: async question => {
       const settings = normalizeAssistantSettings(loadSettings(), process.platform);
-      if (!settings.enabled || !settings.autoAnalyze) {
-        return { ok: false, skipped: true, message: 'Automatic analysis is disabled.' };
+      if (!settings.enabled) {
+        return { ok: false, skipped: true, message: 'Interview assistant is disabled.' };
       }
       return analyzeInterviewQuestion(question, { source: 'automatic' });
     },
@@ -205,6 +205,87 @@ function emitLiveInterviewState(result = null) {
   windowManager.send('interview:session-state', payload);
 }
 
+function ensureCurrentLiveInterviewSession() {
+  const loaded = liveInterviewStore.load();
+  const active = loaded.data?.sessions?.find(session => session.id === loaded.data.activeSessionId && session.status === 'active');
+  if (active) return loaded;
+  const now = new Date();
+  const result = liveInterviewStore.startSession({
+    title: `Автоматическая сессия ${now.toLocaleString('ru-RU')}`
+  });
+  emitLiveInterviewState(result);
+  return result;
+}
+
+function recordQuestionInCurrentSession(question) {
+  ensureCurrentLiveInterviewSession();
+  const recorded = liveInterviewStore.recordQuestion(question || {});
+  if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+  return recorded;
+}
+
+function recordSuggestionInCurrentSession(questionText, suggestion) {
+  ensureCurrentLiveInterviewSession();
+  liveInterviewStore.recordQuestion({ text: questionText, normalized: cleanQuestionText(questionText).toLowerCase() });
+  const recorded = liveInterviewStore.recordSuggestion(questionText, suggestion);
+  if (recorded && recorded.recorded) {
+    if (assistantOverlay) assistantOverlay.setSessionSaveStatus('saved', 'Сохранено в текущую сессию');
+    emitLiveInterviewState(recorded);
+  } else if (assistantOverlay) {
+    assistantOverlay.setSessionSaveStatus('error', 'Не удалось сохранить ответ в текущую сессию');
+  }
+  return recorded;
+}
+
+function saveCurrentAnswerToLibrary() {
+  if (!assistantOverlay) return { ok: false, message: 'Окно помощника не инициализировано.' };
+  const state = assistantOverlay.snapshot();
+  const suggestion = state.suggestion || state.teleprompter?.current?.suggestion || null;
+  const questionText = cleanQuestionText(suggestion?.question || state.question?.text || state.codingFocus?.task?.text);
+  if (!suggestion || !questionText) {
+    assistantOverlay.setLibrarySaveStatus('error', 'Нет готового ответа для сохранения');
+    return { ok: false, message: 'Нет готового ответа для сохранения.', ...assistantOverlay.snapshot() };
+  }
+  assistantOverlay.setLibrarySaveStatus('saving', 'Сохраняю в Answer Library…');
+  try {
+    const loaded = answerLibraryStore.load();
+    const library = loaded.library || { entries: [] };
+    const normalized = questionText.toLocaleLowerCase('ru-RU').replace(/\s+/g, ' ').trim();
+    const entries = Array.isArray(library.entries) ? [...library.entries] : [];
+    const index = entries.findIndex(entry => String(entry.question || '').toLocaleLowerCase('ru-RU').replace(/\s+/g, ' ').trim() === normalized);
+    const settings = normalizeAssistantSettings(loadSettings(), process.platform);
+    const now = new Date().toISOString();
+    const entry = {
+      ...(index >= 0 ? entries[index] : {}),
+      question: questionText,
+      intent: index >= 0 ? entries[index].intent : '',
+      level: settings.languageLevel,
+      style: settings.answerStyle,
+      answer: suggestion.answer || suggestion.firstSentence || '',
+      firstSentence: suggestion.firstSentence || '',
+      keywords: Array.isArray(suggestion.keywords) ? suggestion.keywords : [],
+      usefulPhrases: Array.isArray(suggestion.speakingNotes) ? suggestion.speakingNotes : [],
+      groundingFacts: Array.isArray(suggestion.basis) ? suggestion.basis : [],
+      locked: index >= 0 ? entries[index].locked === true : false,
+      createdAt: index >= 0 ? entries[index].createdAt : now,
+      updatedAt: now,
+      order: index >= 0 ? entries[index].order : entries.length
+    };
+    if (index >= 0 && entries[index].locked === true) {
+      assistantOverlay.setLibrarySaveStatus('saved', 'Ответ уже сохранён и закреплён в Answer Library');
+      return { ok: true, duplicate: true, locked: true, ...assistantOverlay.snapshot() };
+    }
+    if (index >= 0) entries[index] = entry; else entries.push(entry);
+    const saved = answerLibraryStore.save({ ...library, entries });
+    assistantOverlay.setLibrarySaveStatus('saved', 'Сохранено в Answer Library');
+    return { ok: true, library: saved.library, ...assistantOverlay.snapshot() };
+  } catch (cause) {
+    const message = `Не удалось сохранить ответ: ${cause?.message || String(cause)}`;
+    assistantOverlay.setLibrarySaveStatus('error', message);
+    return { ok: false, message, ...assistantOverlay.snapshot() };
+  }
+}
+
 function safeOverlayDiagnostics(snapshot = {}) {
   return {
     visible: snapshot.visible === true,
@@ -269,7 +350,7 @@ async function createDiagnosticsSnapshot() {
   });
 }
 
-function resetTransientAssistantState(message = 'Transient subtitle and assistant state was reset.') {
+function resetAssistantForNewSession(message = 'Transient subtitle and assistant state was reset.') {
   assistantAnalysisGeneration += 1;
   codingFollowUpGeneration += 1;
   codingClassificationGeneration += 1;
@@ -278,13 +359,42 @@ function resetTransientAssistantState(message = 'Transient subtitle and assistan
   subtitleDedupe.reset();
   if (assistantAutoAnalysis) assistantAutoAnalysis.clear();
   const overlayState = assistantOverlay ? assistantOverlay.clear() : null;
-  diagnosticsTracker.reset();
   emitAssistantState();
   return {
     ok: true,
     message,
     ...(overlayState || {})
   };
+}
+
+function finishAnswer(message = 'Current answer was finished. The assistant is ready for a new question.') {
+  lastDetectedQuestion = null;
+  questionDetector.clearHistory();
+  if (assistantAutoAnalysis) assistantAutoAnalysis.forgetCompleted();
+  const overlayState = assistantOverlay ? assistantOverlay.finishAnswer() : null;
+  emitAssistantState();
+  return { ok: true, message, ...(overlayState || {}) };
+}
+
+function finishCodingTask(message = 'Coding task was finished. The assistant is ready for a new question.') {
+  assistantAnalysisGeneration += 1;
+  codingFollowUpGeneration += 1;
+  codingClassificationGeneration += 1;
+  lastDetectedQuestion = null;
+  questionDetector.clearHistory();
+  questionDetector.clearActiveCodingTask();
+  if (assistantAutoAnalysis) {
+    assistantAutoAnalysis.cancelPending();
+    assistantAutoAnalysis.forgetCompleted();
+  }
+  const overlayState = assistantOverlay ? assistantOverlay.finishCodingTask() : null;
+  emitAssistantState();
+  return { ok: true, message, ...(overlayState || {}) };
+}
+
+function resetDiagnostics() {
+  diagnosticsTracker.reset();
+  return { ok: true };
 }
 
 function currentAnswerEchoCandidates(snapshot = {}) {
@@ -316,8 +426,8 @@ function recordDetectedQuestion(question) {
   lastDetectedQuestion = question ? { ...question } : null;
   if (assistantOverlay && question) assistantOverlay.setQuestion(question);
   if (question) {
-    const recorded = liveInterviewStore.recordQuestion(question);
-    if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+    if (assistantOverlay) assistantOverlay.setSessionSaveStatus('saving', 'Сохраняю вопрос в текущую сессию…');
+    recordQuestionInCurrentSession(question);
   }
   if (windowManager && question) windowManager.send('interview:question-detected', { ...question });
   emitAssistantState();
@@ -370,8 +480,7 @@ async function analyzeInterviewQuestion(questionInput, options = {}) {
   if (localMatch.matched && localMatch.suggestion) {
     const suggestion = { ...localMatch.suggestion, question: questionText };
     if (assistantOverlay && generation === assistantAnalysisGeneration) assistantOverlay.setSuggestion(suggestion);
-    const recorded = liveInterviewStore.recordSuggestion(questionText, suggestion);
-    if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+    recordSuggestionInCurrentSession(questionText, suggestion);
     emitAssistantState();
     return { ok:true, source:'library', suggestion, matchScore:localMatch.score };
   }
@@ -419,8 +528,7 @@ async function analyzeInterviewQuestion(questionInput, options = {}) {
   }
   const suggestion = { ...(response.json.suggestion || response.json), source:'ai', question:questionText };
   if (assistantOverlay) assistantOverlay.setSuggestion(suggestion);
-  const recorded = liveInterviewStore.recordSuggestion(questionText, suggestion);
-  if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+  recordSuggestionInCurrentSession(questionText, suggestion);
   emitAssistantState();
   return { ok:true, source:'ai', suggestion, requestId:response.requestId };
 }
@@ -487,8 +595,7 @@ async function analyzeCodingFollowUp(questionInput) {
 
   const suggestion = { ...(response.json.suggestion || response.json), source: 'ai', question: question.text };
   assistantOverlay.setCodingFollowUpSuggestion(suggestion);
-  const recorded = liveInterviewStore.recordSuggestion(question.text, suggestion);
-  if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+  recordSuggestionInCurrentSession(question.text, suggestion);
   emitAssistantState();
   return { ok: true, suggestion, requestId: response.requestId };
 }
@@ -566,8 +673,7 @@ async function applyCodingChange(changeInput = null) {
     normalizedInput: classification.normalizedInput,
     classification
   });
-  const recorded = liveInterviewStore.recordSuggestion(focus.task.text, suggestion);
-  if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+  recordSuggestionInCurrentSession(focus.task.text, suggestion);
   emitAssistantState();
   return { ok: true, suggestion, classification, activeInputs: proposedInputs, requestId: response.requestId };
 }
@@ -654,6 +760,11 @@ async function classifyAndDispatchCodingUtterance(deliveredEvent) {
     normalizedInput: classification.normalizedInput,
     classification
   });
+  assistantOverlay.updateUtterance(deliveredEvent.id, {
+    text: effectiveText,
+    translation: deliveredEvent.translation,
+    kind: classification.type
+  });
 
   if (classification.type === 'remark' || classification.action === 'ignore') {
     diagnosticsTracker.record('remarkIgnored', { reason: 'semantic-classifier' });
@@ -673,10 +784,9 @@ async function classifyAndDispatchCodingUtterance(deliveredEvent) {
       detectedAt: Number(deliveredEvent.ts || Date.now())
     };
     assistantOverlay.setCodingFollowUp(question);
-    const recorded = liveInterviewStore.recordQuestion(question);
-    if (recorded && recorded.recorded) emitLiveInterviewState(recorded);
+    recordQuestionInCurrentSession(question);
     const settings = normalizeAssistantSettings(loadSettings(), process.platform);
-    if (settings.enabled && settings.autoAnalyze) void analyzeCodingFollowUp(question);
+    if (settings.enabled) void analyzeCodingFollowUp(question);
     emitAssistantState();
     return;
   }
@@ -714,12 +824,7 @@ async function classifyAndDispatchCodingUtterance(deliveredEvent) {
     error: ''
   };
   assistantOverlay.setPendingCodingChange(pendingChange);
-  const settings = normalizeAssistantSettings(loadSettings(), process.platform);
-  if (isAutomaticChange(classification, settings.autoAnalyze)) {
-    await applyCodingChange(pendingChange);
-  } else {
-    emitAssistantState();
-  }
+  emitAssistantState();
 }
 
 function queueCodingUtterance(deliveredEvent) {
@@ -1114,6 +1219,13 @@ function startConfigServer() {
           if (contextText && currentAnswerOwnSpeechEcho(contextText, assistantSnapshot)) {
             diagnosticsTracker.record('remarkIgnored', { reason: 'candidate-answer-echo' });
           } else if (codingFocusWasActive && contextText) {
+            assistantOverlay.addUtterance({
+              id: deliveredEvent.id,
+              text: contextText,
+              translation: deliveredEvent.translation,
+              kind: 'utterance',
+              ts: deliveredEvent.ts
+            });
             queueCodingUtterance(deliveredEvent);
           } else {
             const questionDecision = questionDetector.consume(deliveredEvent, deliveredEvent.ts || Date.now());
@@ -1121,6 +1233,13 @@ function startConfigServer() {
             if (questionDecision.accepted && questionDecision.question) {
               const relation = questionDecision.reason || questionDecision.question.relation || '';
               diagnosticsTracker.record(questionDecision.question.kind === 'coding-task' ? 'codingTaskDetected' : 'questionDetected', { reason: relation });
+              assistantOverlay.addUtterance({
+                id: deliveredEvent.id,
+                text: questionDecision.question.utterance || contextText,
+                translation: deliveredEvent.translation,
+                kind: questionDecision.question.kind === 'coding-task' ? 'task' : 'question',
+                ts: deliveredEvent.ts
+              });
               recordDetectedQuestion(questionDecision.question);
               if (questionDecision.question.kind === 'coding-task') {
                 assistantOverlay.addCodingContext({
@@ -1131,11 +1250,26 @@ function startConfigServer() {
                   ts: deliveredEvent.ts
                 });
               }
-              if (assistantSettings.enabled && assistantSettings.autoAnalyze) {
+              if (assistantSettings.enabled) {
                 initializeAssistantAutoAnalysis().queue(questionDecision.question);
               }
             } else if (questionDecision.reason === 'remark') {
+              assistantOverlay.addUtterance({
+                id: deliveredEvent.id,
+                text: contextText,
+                translation: deliveredEvent.translation,
+                kind: 'remark',
+                ts: deliveredEvent.ts
+              });
               diagnosticsTracker.record('remarkIgnored', { reason: 'remark' });
+            } else if (contextText) {
+              assistantOverlay.addUtterance({
+                id: deliveredEvent.id,
+                text: contextText,
+                translation: deliveredEvent.translation,
+                kind: 'utterance',
+                ts: deliveredEvent.ts
+              });
             }
           }
           writeJsonResponse(res, 200, {
@@ -1473,7 +1607,11 @@ ipcMain.handle('diagnostics:run', async () => {
     }
   };
 });
-ipcMain.handle('diagnostics:reset-transient', () => resetTransientAssistantState());
+ipcMain.handle('diagnostics:reset-transient', () => {
+  const result = resetAssistantForNewSession();
+  resetDiagnostics();
+  return result;
+});
 ipcMain.handle('diagnostics:export', async (_event, format = 'json') => {
   const report = await createDiagnosticsSnapshot();
   const normalizedFormat = String(format || 'json').toLowerCase() === 'md' ? 'md' : 'json';
@@ -1529,19 +1667,31 @@ ipcMain.handle('interview-assistant:control', async (_event, action, payload = {
     case 'hide': return assistantOverlay.hide();
     case 'toggle': return assistantOverlay.toggle();
     case 'clear':
-      return resetTransientAssistantState();
+      return resetAssistantForNewSession();
     case 'finishAnswer':
-      return resetTransientAssistantState('Current answer was finished. The assistant is ready for a new question.');
+      return finishAnswer();
     case 'clickThrough': return assistantOverlay.setClickThrough(!!payload.enabled);
     case 'moveMode': return assistantOverlay.setMoveMode(payload.enabled);
+    case 'decreaseWindowSize': return assistantOverlay.resizeWindow(-1);
+    case 'increaseWindowSize': return assistantOverlay.resizeWindow(1);
     case 'freezeTeleprompter': return assistantOverlay.setFrozen(!!payload.enabled);
     case 'nextChunk': return assistantOverlay.nextChunk();
     case 'previousChunk': return assistantOverlay.previousChunk();
     case 'firstChunk': return assistantOverlay.firstChunk();
-    case 'loadPending': return assistantOverlay.loadPending();
+    case 'loadPending':
+    case 'nextQuestion': return assistantOverlay.nextQuestion();
+    case 'retryPending': {
+      const pendingQuestion = assistantOverlay.snapshot().teleprompter?.pendingQuestion;
+      return pendingQuestion
+        ? await analyzeInterviewQuestion(pendingQuestion, { source: 'pending-retry' })
+        : { ok:false, message:'No pending question is waiting.' };
+    }
+    case 'dismissPending': return assistantOverlay.dismissPending();
+    case 'saveCurrentToLibrary': return saveCurrentAnswerToLibrary();
+    case 'clearUtteranceFeed': return assistantOverlay.clearUtteranceFeed();
     case 'clearCodingContext': return assistantOverlay.clearCodingContext();
     case 'endCodingFocus':
-      return resetTransientAssistantState('Coding task was finished. The assistant is ready for a new question.');
+      return finishCodingTask();
     case 'analyzeCodingFollowUp': {
       const followUp = assistantOverlay.codingContextSnapshot()?.followUp?.question;
       return followUp ? await analyzeCodingFollowUp(followUp) : { ok:false, message:'No coding follow-up is waiting.' };
@@ -1866,7 +2016,6 @@ ipcMain.handle('extension:startTranslation', async (_event, options = {}) => {
     }
   }
 
-  resetTransientAssistantState('A new translation session started. The assistant is ready for a new question.');
   let cmd = issueExtensionCommand('start', target, commandOverrides);
   let ack = await waitForExtensionAck(cmd.seq, 32000);
   if (!ack && hasRecentExtensionPoll(target, 8000)) {
@@ -1911,6 +2060,7 @@ ipcMain.handle('extension:startTranslation', async (_event, options = {}) => {
     if (subtitleOverlay) { subtitleOverlay.setStatus('error'); subtitleOverlay.show(); }
     return { ok:false, state:'extension-error', message, details:ack.details || {}, meetingUrl:target.url };
   }
+  resetAssistantForNewSession('A new translation session started. The assistant is ready for a new question.');
   translationSession.transition(SESSION_STATES.LISTENING);
   if (subtitleOverlay) { subtitleOverlay.setStatus('listening'); subtitleOverlay.show(); }
   return { ok:true, state:'running', message:ack.text || 'Translation is running.', details:ack.details || {}, meetingUrl:target.url };

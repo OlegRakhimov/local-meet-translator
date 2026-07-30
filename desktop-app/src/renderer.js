@@ -216,7 +216,7 @@ function syncHomeControlsFromSettings() {
   if ($('homeSubtitleAlwaysOnTop') && $('subtitleAlwaysOnTop')) $('homeSubtitleAlwaysOnTop').checked = $('subtitleAlwaysOnTop').checked;
   if ($('homeSubtitleShowOriginal') && $('subtitleShowOriginal')) $('homeSubtitleShowOriginal').checked = $('subtitleShowOriginal').checked;
   if ($('homeSubtitleShowTranslation') && $('subtitleShowTranslation')) $('homeSubtitleShowTranslation').checked = $('subtitleShowTranslation').checked;
-  if ($('homeAssistantAutoAnalyze') && $('assistantAutoAnalyze')) $('homeAssistantAutoAnalyze').checked = $('assistantAutoAnalyze').checked;
+  if ($('homeAssistantAutoAnalyze')) { $('homeAssistantAutoAnalyze').checked = true; $('homeAssistantAutoAnalyze').disabled = true; }
   if ($('homeAssistantEnabled') && $('assistantEnabled')) $('homeAssistantEnabled').checked = $('assistantEnabled').checked;
 }
 
@@ -231,7 +231,7 @@ function applyHomePreferenceControls() {
   if ($('homeSubtitleAlwaysOnTop') && $('subtitleAlwaysOnTop')) $('subtitleAlwaysOnTop').checked = checked('homeSubtitleAlwaysOnTop');
   if ($('homeSubtitleShowOriginal') && $('subtitleShowOriginal')) $('subtitleShowOriginal').checked = checked('homeSubtitleShowOriginal');
   if ($('homeSubtitleShowTranslation') && $('subtitleShowTranslation')) $('subtitleShowTranslation').checked = checked('homeSubtitleShowTranslation');
-  if ($('homeAssistantAutoAnalyze') && $('assistantAutoAnalyze')) $('assistantAutoAnalyze').checked = checked('homeAssistantAutoAnalyze');
+  if ($('assistantAutoAnalyze')) $('assistantAutoAnalyze').checked = true;
   if ($('homeAssistantEnabled') && $('assistantEnabled')) $('assistantEnabled').checked = checked('homeAssistantEnabled');
 }
 
@@ -367,7 +367,7 @@ function apply(s) {
   if ($('subtitleMaxLines')) $('subtitleMaxLines').value = s.SUBTITLE_WINDOW_MAX_LINES || '3';
   if ($('subtitleHotkey')) $('subtitleHotkey').value = s.SUBTITLE_WINDOW_HOTKEY || 'CommandOrControl+Shift+S';
   if ($('assistantEnabled')) $('assistantEnabled').checked = String(s.INTERVIEW_ASSISTANT_ENABLED || 'true') === 'true';
-  if ($('assistantAutoAnalyze')) $('assistantAutoAnalyze').checked = String(s.INTERVIEW_ASSISTANT_AUTO_ANALYZE || 'false') === 'true';
+  if ($('assistantAutoAnalyze')) { $('assistantAutoAnalyze').checked = true; $('assistantAutoAnalyze').disabled = true; }
   if ($('assistantContentProtection')) $('assistantContentProtection').checked = String(s.INTERVIEW_ASSISTANT_CONTENT_PROTECTION || 'true') === 'true';
   if ($('assistantAlwaysOnTop')) $('assistantAlwaysOnTop').checked = String(s.INTERVIEW_ASSISTANT_ALWAYS_ON_TOP || 'true') === 'true';
   if ($('assistantClickThrough')) $('assistantClickThrough').checked = String(s.INTERVIEW_ASSISTANT_CLICK_THROUGH || 'false') === 'true';
@@ -435,7 +435,7 @@ function readSettings() {
     SUBTITLE_WINDOW_MAX_LINES: val('subtitleMaxLines') || '3',
     SUBTITLE_WINDOW_HOTKEY: val('subtitleHotkey') || 'CommandOrControl+Shift+S',
     INTERVIEW_ASSISTANT_ENABLED: $('assistantEnabled') && checked('assistantEnabled') ? 'true' : 'false',
-    INTERVIEW_ASSISTANT_AUTO_ANALYZE: $('assistantAutoAnalyze') && checked('assistantAutoAnalyze') ? 'true' : 'false',
+    INTERVIEW_ASSISTANT_AUTO_ANALYZE: 'true',
     INTERVIEW_ASSISTANT_CONTENT_PROTECTION: $('assistantContentProtection') && checked('assistantContentProtection') ? 'true' : 'false',
     INTERVIEW_ASSISTANT_ALWAYS_ON_TOP: $('assistantAlwaysOnTop') && checked('assistantAlwaysOnTop') ? 'true' : 'false',
     INTERVIEW_ASSISTANT_CLICK_THROUGH: $('assistantClickThrough') && checked('assistantClickThrough') ? 'true' : 'false',
@@ -905,7 +905,7 @@ function renderAssistantSuggestion(suggestion) {
   if ($('assistantResultEdgeCases')) $('assistantResultEdgeCases').value = Array.isArray(value.edgeCases) ? value.edgeCases.join('\n') : '';
 }
 
-function renderTeleprompterState(teleprompter = {}) {
+function renderTeleprompterState(teleprompter = {}, pendingError = '') {
   const current = teleprompter.current || {};
   const document = current.document || {};
   const chunks = Array.isArray(document.chunks) ? document.chunks : [];
@@ -923,11 +923,27 @@ function renderTeleprompterState(teleprompter = {}) {
     $('assistantTeleprompterPending').textContent = pendingQuestion ? `${t('teleprompterPendingQuestion')}: ${pendingQuestion}` : '';
   }
   if ($('assistantLoadPending')) $('assistantLoadPending').disabled = !teleprompter.pending;
+  if ($('assistantPendingError')) $('assistantPendingError').hidden = !pendingError;
+  if ($('assistantPendingErrorText')) {
+    $('assistantPendingErrorText').textContent = pendingError ? `${t('pendingAnswerFailed')}: ${pendingError}` : '';
+  }
 }
 
 function renderAssistantState(state = {}) {
   assistantState = { ...assistantState, ...(state || {}) };
   const status = assistantState.status || 'idle';
+  const modeLabels = {
+    WAITING: 'ЖДУ ВОПРОС',
+    ANSWERING: 'ОТВЕЧАЮ',
+    NEXT_QUESTION_READY: 'СЛЕДУЮЩИЙ ВОПРОС ГОТОВ',
+    CODING: 'ЗАДАЧА С КОДОМ',
+    CODING_CHANGE_READY: 'НОВОЕ УСЛОВИЕ',
+    NEW_CODING_TASK_READY: 'НОВАЯ ЗАДАЧА'
+  };
+  if ($('assistantModeChip')) $('assistantModeChip').textContent = modeLabels[assistantState.mode] || modeLabels.WAITING;
+  if ($('assistantSessionSaveStatus')) $('assistantSessionSaveStatus').textContent = assistantState.sessionSave?.message || '';
+  if ($('assistantLibrarySaveStatus')) $('assistantLibrarySaveStatus').textContent = assistantState.librarySave?.message || '';
+  if ($('assistantSaveToLibrary')) $('assistantSaveToLibrary').disabled = !(assistantState.suggestion || assistantState.teleprompter?.current?.suggestion);
   const visible = !!assistantState.visible;
   const protection = assistantState.protection || {};
   if ($('liveAssistantDot')) dot('liveAssistantDot', status !== 'error', visible || status === 'analyzing');
@@ -971,7 +987,7 @@ function renderAssistantState(state = {}) {
   if ($('moveAssistantWindow')) $('moveAssistantWindow').textContent = assistantState.moveMode ? t('finishMovingAssistantWindow') : t('moveAssistantWindow');
   if (assistantState.question) rememberDetectedQuestion(assistantState.question);
   renderAssistantSuggestion(assistantState.suggestion || assistantState.teleprompter?.current?.suggestion);
-  renderTeleprompterState(assistantState.teleprompter || {});
+  renderTeleprompterState(assistantState.teleprompter || {}, assistantState.pendingError || '');
 }
 
 async function refreshAssistantStatus() {
@@ -2130,7 +2146,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     const enabled = !(assistantState.teleprompter?.frozen);
     renderAssistantState(await window.lmt.interviewAssistantControl('freezeTeleprompter', { enabled }));
   };
-  if ($('assistantLoadPending')) $('assistantLoadPending').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('loadPending'));
+  if ($('assistantLoadPending')) $('assistantLoadPending').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('nextQuestion'));
+  if ($('assistantRetryPending')) $('assistantRetryPending').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('retryPending'));
+  if ($('assistantDismissPending')) $('assistantDismissPending').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('dismissPending'));
+  if ($('assistantSaveToLibrary')) $('assistantSaveToLibrary').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('saveCurrentToLibrary'));
   if ($('assistantTeleprompterFrozen')) $('assistantTeleprompterFrozen').onchange = async () => {
     renderAssistantState(await window.lmt.interviewAssistantControl('freezeTeleprompter', { enabled: checked('assistantTeleprompterFrozen') }));
   };

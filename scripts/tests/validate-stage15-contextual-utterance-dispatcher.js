@@ -46,7 +46,7 @@ for (const id of ['pendingCodingChangeBlock', 'applyCodingChange', 'dismissCodin
   assert(html.includes(`id="${id}"`), `Contextual dispatcher UI is missing: ${id}`);
 }
 const renderer = read('desktop-app/src/assistant-overlay-renderer.js');
-assert(renderer.includes('codingUi.recommendation'), 'Recommendation label is missing.');
+assert(renderer.includes("recommendation: 'РЕКОМЕНДАЦИЯ'"), 'Recommendation label is missing.');
 assert(renderer.includes("control('applyCodingChange')"), 'Apply contextual change control is not wired.');
 assert(renderer.includes("control('dismissCodingChange')"), 'Dismiss contextual change control is not wired.');
 

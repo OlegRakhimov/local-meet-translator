@@ -14,6 +14,8 @@ button { font: inherit; }
 .questionBlock p { margin:7px 0 0; font-size:calc(var(--assistant-font-size) * .95); font-weight:700; line-height:1.35; }
 .pendingBlock { padding:13px 14px; display:flex; align-items:center; justify-content:space-between; gap:14px; border-color:#71511b; background:#251d0b; }
 .pendingBlock p { margin:5px 0 0; color:#ffe0a0; line-height:1.35; }
+.pendingAnswerError { color:#fecaca !important; }
+.pendingAnswerActions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
 .pendingBlock button,.teleprompterControls button { -webkit-app-region:no-drag; border:1px solid rgba(148,163,184,.22); border-radius:10px; padding:9px 12px; background:#172841; color:#e7effc; cursor:pointer; font-weight:700; }
 .pendingBlock button:hover,.teleprompterControls button:hover { background:#244064; }
 .pendingBlock button:disabled,.teleprompterControls button:disabled { opacity:.45; cursor:default; }
@@ -41,7 +43,7 @@ button { font: inherit; }
 .columns { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; }
 ul { margin:7px 0 0; padding-left:18px; color:#c7d4e7; } li { margin:5px 0; line-height:1.35; }
 .emptyState,.errorState { padding:16px; color:#9db0ca; line-height:1.45; }.errorState{color:#ffb4c0;border-color:#713141;}
-.windowActions{display:flex;align-items:center;gap:8px;-webkit-app-region:no-drag}.windowActions button{width:30px;height:30px;border:0;border-radius:9px;background:#1a2942;color:#dce7f7;font-size:20px;line-height:1;cursor:pointer}.windowActions button:hover{background:#2a3e60}
+.windowActions{display:flex;align-items:center;gap:7px;-webkit-app-region:no-drag}.windowActions button{width:32px;height:32px;border:0;border-radius:9px;background:#1a2942;color:#dce7f7;font-size:20px;font-weight:800;line-height:1;cursor:pointer}.windowActions button:hover{background:#2a3e60}.windowActions button:active{transform:translateY(1px)}
 @media (max-width:560px){.columns,.teleprompterGuidance{grid-template-columns:1fr}.assistantRoot{padding:12px}.teleprompterControls{grid-template-columns:1fr}.pendingBlock{align-items:flex-start;flex-direction:column}}
 .taskTypeBadge { padding:6px 9px; border-radius:999px; font-size:10px; font-weight:900; letter-spacing:.08em; background:#2b1d4a; color:#d8b8ff; }
 .codingSolutionBlock { margin-top:14px; border:1px solid rgba(73,197,154,.34); border-radius:16px; background:linear-gradient(160deg,rgba(10,43,38,.96),rgba(6,23,28,.97)); padding:15px; }
@@ -211,3 +213,70 @@ ul { margin:7px 0 0; padding-left:18px; color:#c7d4e7; } li { margin:5px 0; line
 .compactOverlay .pendingCodingChangeReason { display:none; }
 .compactOverlay .activeCodingInputsBlock { padding:8px; }
 @media (max-width:560px){.pendingCodingChangeBlock{grid-template-columns:1fr}.pendingChangeActions{flex-direction:row;min-width:0;flex-wrap:wrap}}
+
+/* Simplified Russian assistant workflow */
+.modePanel,.utterancePanel {
+  margin-top: 10px;
+  border: 1px solid rgba(148,163,184,.2);
+  border-radius: 14px;
+  background: rgba(10,20,35,var(--assistant-panel-opacity));
+  padding: 12px 14px;
+}
+.modePanel { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.modePanel strong { display:block; margin-top:4px; color:#e9f2ff; font-size:14px; letter-spacing:.04em; }
+.modePanel p { margin:0; max-width:390px; color:#a9bad1; font-size:12px; line-height:1.4; text-align:right; }
+.modePanel[data-mode="ANSWERING"] { border-color:rgba(91,140,255,.45); }
+.modePanel[data-mode="NEXT_QUESTION_READY"] { border-color:rgba(245,158,11,.55); background:rgba(48,35,10,var(--assistant-panel-opacity)); }
+.modePanel[data-mode="CODING"],.modePanel[data-mode="CODING_CHANGE_READY"],.modePanel[data-mode="NEW_CODING_TASK_READY"] { border-color:rgba(53,199,154,.48); }
+.sectionHeaderRow,.saveStatusRow { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.sectionHeaderRow strong { display:block; margin-top:4px; font-size:13px; color:#dce8f7; }
+.secondaryButton {
+  -webkit-app-region:no-drag;
+  border:1px solid rgba(148,163,184,.25);
+  border-radius:9px;
+  padding:8px 10px;
+  background:rgba(30,41,59,.8);
+  color:#dce7f5;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:800;
+}
+.secondaryButton:hover { background:rgba(51,65,85,.95); }
+.secondaryButton:disabled { opacity:.5; cursor:default; }
+.utterancePanel .liveContextFeed { max-height:150px; }
+.contextKind.question { background:#25345b; color:#c6d5ff; }
+.contextKind.utterance { background:#1c3232; color:#a9d8d0; }
+.saveStatusRow { margin-bottom:10px; padding:9px 10px; border-radius:10px; background:rgba(6,13,24,.62); border:1px solid rgba(148,163,184,.12); }
+.saveStatus { color:#9fb0c6; font-size:12px; }
+.saveStatus.saving { color:#fbd38d; }
+.saveStatus.saved { color:#86efac; }
+.saveStatus.error { color:#fda4af; }
+.librarySaveStatus { margin:0 0 10px; color:#a7f3d0; font-size:12px; }
+.librarySaveStatus.error { color:#fda4af; }
+.teleprompterControls { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.solutionDetailsPanel { margin-top:14px; border-top:1px solid rgba(125,230,193,.18); padding-top:12px; }
+.solutionDetailsPanel summary { cursor:pointer; color:#9edec8; font-weight:800; }
+.solutionDetailsPanel[open] summary { margin-bottom:10px; }
+.activeCodingInputsBlock summary { cursor:pointer; color:#9edec8; font-weight:800; }
+.hiddenCompatibilityButton { display:none !important; }
+.codingFocusPanel { order: 10; }
+
+.compactOverlay .modePanel,.compactOverlay .utterancePanel {
+  margin-top:7px;
+  padding:9px 10px;
+  background:rgba(8,15,27,var(--assistant-panel-opacity));
+  box-shadow:none;
+  backdrop-filter:blur(7px);
+  -webkit-backdrop-filter:blur(7px);
+}
+.compactOverlay .modePanel p { display:none; }
+.compactOverlay .utterancePanel .sectionHeaderRow strong { display:none; }
+.compactOverlay .utterancePanel .liveContextFeed { max-height:104px; }
+.compactOverlay .saveStatusRow { padding:7px 8px; }
+.compactOverlay .solutionDetailsPanel:not([open]),.compactOverlay .detailsPanel:not([open]) { padding-top:8px; }
+
+@media (max-width:560px) {
+  .modePanel,.sectionHeaderRow,.saveStatusRow { align-items:flex-start; flex-direction:column; }
+  .modePanel p { text-align:left; }
+  .teleprompterControls { grid-template-columns:1fr; }
+}

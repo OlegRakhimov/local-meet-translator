@@ -43,9 +43,10 @@ assert(assistantMain.includes('INTERVIEW_ASSISTANT_COMPACT_OVERLAY'), 'Compact a
 assert(assistantMain.includes('transparent: true'), 'Assistant BrowserWindow is not transparent.');
 assert(assistantMain.includes('assistantWindow.setOpacity(1)'), 'Assistant text opacity is still reduced with the whole window.');
 assert(assistantRenderer.includes("' compactOverlay'"), 'Compact assistant class is not rendered.');
-assert(assistantRenderer.includes("remark: 'КОММЕНТАРИЙ'"), 'Coding feed labels are not explained in Russian.');
+assert(assistantRenderer.includes("remark: 'РЕПЛИКА'"), 'Utterance feed labels are not explained in Russian.');
 assert(assistantCss.includes('.assistantRoot.compactOverlay'), 'Compact transparent assistant styling is missing.');
-assert(assistantHtml.includes('codingFocusLegend'), 'Coding Focus legend is missing.');
+assert(assistantHtml.includes('id="liveContextFeed"'), 'The general interviewer utterance feed is missing.');
+assert(assistantHtml.includes('id="modeBadge"'), 'The explicit assistant mode indicator is missing.');
 assert(index.includes('id="assistantCompactOverlay"'), 'Compact assistant checkbox is missing.');
 assert(renderer.includes('INTERVIEW_ASSISTANT_COMPACT_OVERLAY'), 'Compact assistant setting is not persisted.');
 

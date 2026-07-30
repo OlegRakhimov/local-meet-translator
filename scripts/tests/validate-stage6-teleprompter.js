@@ -25,6 +25,8 @@ assert.match(controller, /teleprompter\.loadSuggestion/);
 assert.match(controller, /setContentProtection/);
 assert.match(controller, /CommandOrControl\+Shift\+Right/);
 assert.match(controller, /CommandOrControl\+Shift\+F/);
+assert.match(controller, /function resizeWindow\(direction\)/);
+assert.match(controller, /compactWidth: 760/);
 
 const html = read('desktop-app/src/index.html');
 assert.match(html, /id="assistantTeleprompterChunkMode"/);
@@ -33,15 +35,21 @@ assert.match(html, /id="assistantLoadPending"/);
 assert.match(html, /id="assistantFinishAnswer"/);
 
 const overlay = read('desktop-app/src/assistant-overlay.html');
-assert.match(overlay, /ENGLISH TELEPROMPTER/);
+assert.match(overlay, /ПОДСКАЗКА ДЛЯ ОТВЕТА/);
 assert.match(overlay, /id="activeChunk"/);
 assert.match(overlay, /id="pendingBlock"/);
 assert.match(overlay, /id="finishCurrentAnswer"/);
+assert.match(overlay, /Следующий вопрос/);
+assert.match(overlay, /Подробности решения/);
+assert.match(overlay, /id="decreaseAssistantOverlay"/);
+assert.match(overlay, /id="increaseAssistantOverlay"/);
 
 const main = read('desktop-app/src/main.js');
 assert.match(main, /case 'nextChunk'/);
 assert.match(main, /case 'freezeTeleprompter'/);
 assert.match(main, /case 'finishAnswer'/);
+assert.match(main, /case 'decreaseWindowSize'/);
+assert.match(main, /case 'increaseWindowSize'/);
 assert.doesNotMatch(main, /ttsAudio\([^)]*teleprompter/i, 'Teleprompter must not auto-speak answers.');
 
-console.log('Stage 6 English Teleprompter validation: OK');
+console.log('Stage 6 Russian assistant teleprompter validation: OK');

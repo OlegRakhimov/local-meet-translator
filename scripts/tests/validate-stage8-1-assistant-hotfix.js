@@ -37,8 +37,23 @@ assert(coordinator.includes('running = { ...next }'), 'Coordinator must serializ
 assert(teleprompter.includes('answerLocked'), 'A ready answer must be locked until an explicit user action.');
 assert(teleprompter.includes('loadedPending: false'), 'Unfreezing must not replace the current answer automatically.');
 assert(main.includes("case 'finishAnswer'"), 'The user must be able to finish the current answer and reset transient state.');
-assert(renderer.includes('Automatic AI analysis is enabled.'), 'Overlay guidance must reflect enabled automatic analysis.');
-assert(renderer.includes('answerLocked || teleprompter.frozen || teleprompter.pending'), 'Pending questions must stay visible while the current answer is locked.');
+assert(main.includes('function finishAnswer('), 'Finish answer must have a narrow operation separate from session reset.');
+assert(main.includes('function finishCodingTask('), 'Finishing a coding task must be separate from finishing an answer.');
+assert(main.includes('function resetDiagnostics('), 'Diagnostics reset must be a separate operation.');
+assert(overlay.includes('pendingError'), 'Pending answer failures must be represented separately from the current answer error.');
+assert(overlay.includes('dismissPending'), 'The user must be able to dismiss a failed pending answer.');
+const startHandler = main.indexOf("ipcMain.handle('extension:startTranslation'");
+const failedAckGuard = main.indexOf('if (!ack.ok)', startHandler);
+const confirmedStartReset = main.indexOf("resetAssistantForNewSession('A new translation session started.", startHandler);
+assert(startHandler >= 0 && failedAckGuard > startHandler && confirmedStartReset > failedAckGuard,
+  'Assistant state must reset only after the extension confirms startup.');
+assert(renderer.includes('автоматически подготовит ответ'), 'Overlay guidance must reflect enabled automatic analysis in Russian.');
+assert(renderer.includes("const mode = state.mode || 'WAITING'"), 'The overlay must render an explicit assistant mode.');
+assert(renderer.includes("control('nextQuestion')"), 'The next-question action must replace the old load-pending wording.');
+assert(overlay.includes('ASSISTANT_MODES'), 'The assistant controller must expose explicit workflow modes.');
+assert(overlay.includes('function finishCodingTask()'), 'Coding task completion must be a narrow overlay operation.');
+assert(main.includes('ensureCurrentLiveInterviewSession'), 'Detected questions must be saved in an automatically created session.');
+assert(main.includes('saveCurrentAnswerToLibrary'), 'The current answer must be saveable to Answer Library.');
 assert(isVersionAtLeast(pkg.version, '1.0.15'), 'Desktop version must be 1.0.15 or newer.');
 
 console.log('Stage 8.1 automatic assistant analysis hotfix validation: OK');

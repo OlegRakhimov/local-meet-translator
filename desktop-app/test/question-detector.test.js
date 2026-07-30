@@ -107,3 +107,12 @@ test('marks a new coding task as pending context instead of replacing the active
   assert.equal(nextTask.reason, 'new-coding-task');
   assert.match(detector.snapshot().activeCodingTask.text, /Two Sum/);
 });
+
+test('finishing an answer clears only recent question deduplication and preserves coding focus', () => {
+  const detector = createQuestionDetector({ dedupeWindowMs: 60_000, contextWindowMs: 60_000 });
+  detector.consume({ channel:'incoming', transcript:'Write a Java method for Two Sum.' }, 1_000);
+  detector.clearHistory();
+  assert.match(detector.snapshot().activeCodingTask.text, /Two Sum/);
+  const repeated = detector.consume({ channel:'incoming', transcript:'Write a Java method for Two Sum.' }, 2_000);
+  assert.equal(repeated.accepted, true);
+});

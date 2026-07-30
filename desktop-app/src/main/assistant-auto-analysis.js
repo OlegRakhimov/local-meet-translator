@@ -117,9 +117,15 @@ function createAutomaticAnalysisCoordinator({
     return snapshot();
   }
 
+  function forgetCompleted() {
+    lastCompletedKey = '';
+    emit('completed-forgotten');
+    return snapshot();
+  }
+
   function clear() {
     cancelPending();
-    lastCompletedKey = '';
+    forgetCompleted();
     emit('cleared');
     return snapshot();
   }
@@ -131,7 +137,7 @@ function createAutomaticAnalysisCoordinator({
     return snapshot();
   }
 
-  return { queue, cancelPending, clear, stop, snapshot, runLatest };
+  return { queue, cancelPending, forgetCompleted, clear, stop, snapshot, runLatest };
 }
 
 module.exports = {

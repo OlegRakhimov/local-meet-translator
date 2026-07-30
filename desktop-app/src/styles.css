@@ -320,6 +320,8 @@ body.focusedMode .wrap { max-width: 1180px; }
 .teleprompterPreviewHeader { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
 .teleprompterPreviewCard textarea { font-size:18px; font-weight:700; line-height:1.45; background:#07101d; border-color:rgba(112,159,226,.25); }
 .pendingText { margin:10px 0; padding:10px 12px; border:1px solid #8a621c; border-radius:10px; background:rgba(126,86,14,.16); color:#f2c96f; font-size:12px; line-height:1.4; }
+.pendingAnswerError { margin:10px 0; padding:10px 12px; border:1px solid rgba(239,68,68,.45); border-radius:10px; background:rgba(127,29,29,.18); color:#fecaca; }
+.pendingAnswerError p { margin:0 0 8px; }
 
 /* Stage 7: interview trainer and movable teleprompter */
 .trainerWorkspaceGrid { display:grid; grid-template-columns:minmax(300px,.72fr) minmax(460px,1.28fr); gap:18px; align-items:start; }
@@ -761,3 +763,24 @@ body.sidebarCollapsed .workspace { grid-column: 2; }
 .complianceModePanel .complianceSwitch { max-width: 760px; }
 #examComplianceModeStatus.active { color: var(--warning, #b36b00); font-weight: 700; }
 body.examComplianceModeActive .assistantControlCard { opacity: .72; }
+
+.assistantQuestionHeader,
+.assistantSaveRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.assistantSaveRow { margin: 12px 0; justify-content: flex-start; }
+.assistantSolutionDetails {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.assistantSolutionDetails summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.assistantSolutionDetails[open] summary { margin-bottom: 12px; }

@@ -56,6 +56,19 @@ test('clearing releases the answer lock and removes pending state', () => {
   assert.equal(cleared.pendingQuestion, null);
 });
 
+test('clearing a pending question keeps the current answer locked', () => {
+  const state = createTeleprompterState({ frozen: false });
+  state.loadSuggestion({ question: 'Question one?', answer: 'First answer.', firstSentence: 'First answer.' });
+  state.noteQuestion({ text: 'Question two?' });
+  state.setPendingAnalyzing(true);
+  const cleared = state.clearPending();
+  assert.equal(cleared.current.suggestion.question, 'Question one?');
+  assert.equal(cleared.answerLocked, true);
+  assert.equal(cleared.pending, null);
+  assert.equal(cleared.pendingQuestion, null);
+  assert.equal(cleared.pendingAnalyzing, false);
+});
+
 test('next and previous controls stay within chunk boundaries', () => {
   const state = createTeleprompterState({ chunkMode: 'short' });
   state.loadSuggestion({
@@ -85,4 +98,30 @@ test('coding solution teleprompter uses speaking notes instead of reading code a
   assert.deepEqual(document.plan, ['Create the input array', 'Compare each pair', 'Print duplicates']);
   assert.match(document.chunks.join(' '), /First, I create the input array/);
   assert.doesNotMatch(document.chunks.join(' '), /public class Main/);
+});
+
+
+test('finishing the current answer preserves a prepared next answer', () => {
+  const state = createTeleprompterState({ frozen: false });
+  state.loadSuggestion({ question: 'Question one?', answer: 'First answer.', firstSentence: 'First answer.' });
+  state.noteQuestion({ text: 'Question two?' });
+  state.loadSuggestion({ question: 'Question two?', answer: 'Second answer.', firstSentence: 'Second answer.' });
+  const finished = state.finishCurrent();
+  assert.equal(finished.current, null);
+  assert.equal(finished.pending.suggestion.question, 'Question two?');
+  assert.equal(finished.pendingQuestion.text, 'Question two?');
+  const loaded = state.loadPending();
+  assert.equal(loaded.current.suggestion.question, 'Question two?');
+});
+
+test('an answer that finishes while the next answer is analyzing remains queued for explicit loading', () => {
+  const state = createTeleprompterState({ frozen: false });
+  state.loadSuggestion({ question: 'Question one?', answer: 'First answer.', firstSentence: 'First answer.' });
+  state.noteQuestion({ text: 'Question two?' });
+  state.setPendingAnalyzing(true);
+  state.finishCurrent();
+  const result = state.loadSuggestion({ question: 'Question two?', answer: 'Second answer.', firstSentence: 'Second answer.' });
+  assert.equal(result.disposition, 'pending');
+  assert.equal(state.snapshot().current, null);
+  assert.equal(state.snapshot().pending.suggestion.question, 'Question two?');
 });

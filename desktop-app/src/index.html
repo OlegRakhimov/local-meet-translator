@@ -144,7 +144,7 @@
               <label class="modernSwitch"><span><strong data-i18n="subtitleAlwaysOnTop">Always on top</strong><small data-i18n="subtitleWindowTitle">Subtitle window</small></span><input id="homeSubtitleAlwaysOnTop" type="checkbox"/><i></i></label>
               <label class="modernSwitch"><span><strong data-i18n="subtitleShowOriginal">Show original speech</strong><small data-i18n="bilingualView">Bilingual view</small></span><input id="homeSubtitleShowOriginal" type="checkbox"/><i></i></label>
               <label class="modernSwitch"><span><strong data-i18n="subtitleShowTranslation">Show translation</strong><small data-i18n="primarySubtitle">Primary subtitle</small></span><input id="homeSubtitleShowTranslation" type="checkbox"/><i></i></label>
-              <label class="modernSwitch"><span><strong data-i18n="automaticAnalysisOn">Automatic AI analysis</strong><small data-i18n="interviewQuestionsOnly">Interview questions only</small></span><input id="homeAssistantAutoAnalyze" type="checkbox"/><i></i></label>
+              <label class="modernSwitch"><span><strong data-i18n="automaticAnalysisOn">Automatic AI analysis</strong><small data-i18n="interviewQuestionsOnly">Interview questions only</small></span><input id="homeAssistantAutoAnalyze" type="checkbox" checked disabled/><i></i></label>
               <label class="modernSwitch"><span><strong data-i18n="assistantEnabledLabel">Interview Assistant</strong><small data-i18n="groundedAnswers">Grounded answers</small></span><input id="homeAssistantEnabled" type="checkbox"/><i></i></label>
             </div>
             <button id="openTranslationFromHome" class="wideSecondary" type="button" data-i18n="openTranslationControl">Open full translation control</button>
@@ -424,7 +424,7 @@
           <h3 data-i18n="assistantWindowSettings">Assistant window and analysis</h3>
           <div class="grid">
             <label class="check"><input id="assistantEnabled" type="checkbox" /> <span data-i18n="assistantEnabled">Enable Live Assistant</span></label>
-            <label class="check"><input id="assistantAutoAnalyze" type="checkbox" /> <span data-i18n="assistantAutoAnalyze">Analyze detected questions automatically</span></label>
+            <label class="check"><input id="assistantAutoAnalyze" type="checkbox" checked disabled /> <span data-i18n="assistantAutoAnalyze">Ответы готовятся автоматически</span></label>
             <label class="check"><input id="assistantContentProtection" type="checkbox" /> <span data-i18n="assistantContentProtection">Protect assistant window from screen capture</span></label>
             <label class="check"><input id="assistantAlwaysOnTop" type="checkbox" /> <span data-i18n="assistantAlwaysOnTop">Keep assistant window on top</span></label>
             <label class="check"><input id="assistantClickThrough" type="checkbox" /> <span data-i18n="assistantClickThrough">Click-through mode</span></label>
@@ -483,7 +483,10 @@
         </section>
 
         <section class="card assistantQuestionCard">
-          <h3 data-i18n="currentInterviewQuestion">Current interview question</h3>
+          <div class="assistantQuestionHeader">
+            <h3 data-i18n="currentInterviewQuestion">Текущий вопрос</h3>
+            <span id="assistantModeChip" class="summaryChip">ЖДУ ВОПРОС</span>
+          </div>
           <textarea id="assistantQuestionInput" rows="5" placeholder="Tell me about yourself"></textarea>
           <div class="buttons">
             <button id="analyzeAssistantQuestion" type="button" data-i18n="analyzeQuestion">Analyze question</button>
@@ -500,31 +503,44 @@
               </div>
               <textarea id="assistantTeleprompterChunk" rows="5" readonly></textarea>
               <p id="assistantTeleprompterPending" class="pendingText" hidden></p>
+              <div id="assistantPendingError" class="pendingAnswerError" hidden>
+                <p id="assistantPendingErrorText"></p>
+                <div class="buttons">
+                  <button id="assistantRetryPending" type="button" class="secondary" data-i18n="retryPendingAnswer">Retry</button>
+                  <button id="assistantDismissPending" type="button" class="secondary" data-i18n="dismissPendingAnswer">Dismiss</button>
+                </div>
+              </div>
               <div class="buttons">
                 <button id="assistantPreviousChunk" type="button" class="secondary" data-i18n="teleprompterPrevious">Previous</button>
                 <button id="assistantToggleFreeze" type="button" class="secondary" data-i18n="teleprompterFreeze">Freeze</button>
                 <button id="assistantFinishAnswer" type="button" class="secondary" data-i18n="finishAssistantAnswer">Finish answer</button>
                 <button id="assistantNextChunk" type="button" class="secondary" data-i18n="teleprompterNext">Next</button>
-                <button id="assistantLoadPending" type="button" class="secondary" data-i18n="teleprompterLoadPending">Load pending</button>
+                <button id="assistantLoadPending" type="button" class="secondary" data-i18n="teleprompterLoadPending">Следующий вопрос</button>
               </div>
             </div>
-            <label><span data-i18n="assistantSuggestedAnswer">Suggested answer</span><textarea id="assistantResultAnswer" rows="10" readonly></textarea></label>
+            <div class="assistantSaveRow">
+              <button id="assistantSaveToLibrary" type="button" class="secondary">Сохранить в Answer Library</button>
+              <span id="assistantSessionSaveStatus" class="hint"></span>
+              <span id="assistantLibrarySaveStatus" class="hint"></span>
+            </div>
+            <label><span data-i18n="assistantSuggestedAnswer">Предлагаемый ответ</span><textarea id="assistantResultAnswer" rows="10" readonly></textarea></label>
             <section id="assistantCodingResult" class="assistantCodingResult" hidden>
               <div class="assistantCodingHeader">
                 <strong data-i18n="codingSolutionTitle">Coding solution</strong>
                 <span id="assistantResultCodeLanguage" class="summaryChip">Java</span>
               </div>
-              <label><span data-i18n="codingApproach">Brief approach</span><textarea id="assistantResultApproach" rows="4" readonly></textarea></label>
-              <div class="grid">
-                <label><span data-i18n="codingImplementationPlan">Implementation plan</span><textarea id="assistantResultPlan" rows="7" readonly></textarea></label>
-                <label><span data-i18n="codingComplexity">Complexity</span><textarea id="assistantResultComplexity" rows="7" readonly></textarea></label>
-              </div>
-              <label><span data-i18n="codingCode">Code</span><textarea id="assistantResultCode" class="codeTextarea" rows="18" readonly spellcheck="false"></textarea></label>
-              <div class="grid">
-                <label><span data-i18n="codingLineByLine">Line-by-line explanation</span><textarea id="assistantResultWalkthrough" rows="12" readonly></textarea></label>
-                <label><span data-i18n="codingSpeakingNotes">What to say while coding</span><textarea id="assistantResultSpeakingNotes" rows="12" readonly></textarea></label>
-              </div>
-              <label><span data-i18n="codingEdgeCases">Edge cases</span><textarea id="assistantResultEdgeCases" rows="6" readonly></textarea></label>
+              <label><span data-i18n="codingSpeakingNotes">Что говорить сейчас</span><textarea id="assistantResultSpeakingNotes" rows="7" readonly></textarea></label>
+              <label><span data-i18n="codingCode">Код</span><textarea id="assistantResultCode" class="codeTextarea" rows="18" readonly spellcheck="false"></textarea></label>
+              <details class="assistantSolutionDetails">
+                <summary data-i18n="codingSolutionDetails">Подробности решения</summary>
+                <label><span data-i18n="codingApproach">Краткая идея решения</span><textarea id="assistantResultApproach" rows="4" readonly></textarea></label>
+                <div class="grid">
+                  <label><span data-i18n="codingImplementationPlan">План реализации</span><textarea id="assistantResultPlan" rows="7" readonly></textarea></label>
+                  <label><span data-i18n="codingComplexity">Сложность</span><textarea id="assistantResultComplexity" rows="7" readonly></textarea></label>
+                </div>
+                <label><span data-i18n="codingLineByLine">Объяснение кода по строкам</span><textarea id="assistantResultWalkthrough" rows="12" readonly></textarea></label>
+                <label><span data-i18n="codingEdgeCases">Граничные случаи</span><textarea id="assistantResultEdgeCases" rows="6" readonly></textarea></label>
+              </details>
             </section>
             <div class="grid">
               <label><span data-i18n="assistantKeyPoints">Key points</span><textarea id="assistantResultKeyPoints" rows="6" readonly></textarea></label>

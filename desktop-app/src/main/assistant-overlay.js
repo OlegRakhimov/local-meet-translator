@@ -13,7 +13,7 @@ const { isExamComplianceModeEnabled } = require('./compliance-mode');
 
 const DEFAULT_ASSISTANT_SETTINGS = Object.freeze({
   enabled: true,
-  autoAnalyze: false,
+  autoAnalyze: true,
   contentProtection: true,
   alwaysOnTop: true,
   clickThrough: false,
@@ -39,6 +39,26 @@ const DEFAULT_ASSISTANT_SETTINGS = Object.freeze({
 
 const LEVELS = new Set(['A2', 'B1', 'B2']);
 const STYLES = new Set(['simple', 'technical', 'star', 'general']);
+const ASSISTANT_WINDOW = Object.freeze({
+  minWidth: 520,
+  minHeight: 500,
+  compactWidth: 760,
+  compactHeight: 820,
+  regularWidth: 840,
+  regularHeight: 900,
+  widthStep: 100,
+  heightStep: 80,
+  displayMargin: 24
+});
+
+const ASSISTANT_MODES = Object.freeze({
+  WAITING: 'WAITING',
+  ANSWERING: 'ANSWERING',
+  NEXT_QUESTION_READY: 'NEXT_QUESTION_READY',
+  CODING: 'CODING',
+  CODING_CHANGE_READY: 'CODING_CHANGE_READY',
+  NEW_CODING_TASK_READY: 'NEW_CODING_TASK_READY'
+});
 
 function boolValue(value, fallback) {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -60,10 +80,12 @@ function normalizeAssistantSettings(settings = {}, platform = process.platform) 
   const style = String(settings.INTERVIEW_ASSISTANT_ANSWER_STYLE ?? settings.answerStyle ?? DEFAULT_ASSISTANT_SETTINGS.answerStyle).trim().toLowerCase();
   const chunkMode = String(settings.INTERVIEW_TELEPROMPTER_CHUNK_MODE ?? settings.teleprompterChunkMode ?? DEFAULT_ASSISTANT_SETTINGS.teleprompterChunkMode).trim().toLowerCase();
   const complianceMode = isExamComplianceModeEnabled(settings);
+  const enabled = complianceMode ? false : boolValue(settings.INTERVIEW_ASSISTANT_ENABLED ?? settings.enabled, DEFAULT_ASSISTANT_SETTINGS.enabled);
+  const autoAnalyzeRequested = boolValue(settings.INTERVIEW_ASSISTANT_AUTO_ANALYZE ?? settings.autoAnalyze, DEFAULT_ASSISTANT_SETTINGS.autoAnalyze);
   return {
     complianceMode,
-    enabled: complianceMode ? false : boolValue(settings.INTERVIEW_ASSISTANT_ENABLED ?? settings.enabled, DEFAULT_ASSISTANT_SETTINGS.enabled),
-    autoAnalyze: complianceMode ? false : boolValue(settings.INTERVIEW_ASSISTANT_AUTO_ANALYZE ?? settings.autoAnalyze, DEFAULT_ASSISTANT_SETTINGS.autoAnalyze),
+    enabled,
+    autoAnalyze: enabled && (autoAnalyzeRequested || DEFAULT_ASSISTANT_SETTINGS.autoAnalyze),
     contentProtection: complianceMode ? false : boolValue(settings.INTERVIEW_ASSISTANT_CONTENT_PROTECTION ?? settings.contentProtection, contentProtectionDefault),
     alwaysOnTop: boolValue(settings.INTERVIEW_ASSISTANT_ALWAYS_ON_TOP ?? settings.alwaysOnTop, DEFAULT_ASSISTANT_SETTINGS.alwaysOnTop),
     clickThrough: boolValue(settings.INTERVIEW_ASSISTANT_CLICK_THROUGH ?? settings.clickThrough, DEFAULT_ASSISTANT_SETTINGS.clickThrough),
@@ -142,6 +164,10 @@ function createAssistantOverlayController({
   let question = null;
   let suggestion = null;
   let error = '';
+  let pendingError = '';
+  let sessionSave = { status: 'idle', message: '' };
+  let librarySave = { status: 'idle', message: '' };
+  let utteranceFeed = [];
   let saveTimer = null;
   let registeredShortcuts = [];
   let moveMode = false;
@@ -163,15 +189,30 @@ function createAssistantOverlayController({
     } catch (_) {}
     return { requested: settings.contentProtection, supported, applied, platform };
   }
+  function currentMode() {
+    const focus = codingFocus.snapshot();
+    const tp = teleprompter.snapshot();
+    if (focus.pendingTask?.text) return ASSISTANT_MODES.NEW_CODING_TASK_READY;
+    if (focus.pendingChange?.classification) return ASSISTANT_MODES.CODING_CHANGE_READY;
+    if (focus.active) return ASSISTANT_MODES.CODING;
+    if (tp.pending) return ASSISTANT_MODES.NEXT_QUESTION_READY;
+    if (tp.current || suggestion) return ASSISTANT_MODES.ANSWERING;
+    return ASSISTANT_MODES.WAITING;
+  }
   function snapshot() {
     return {
       visible: !!(assistantWindow && !assistantWindow.isDestroyed() && assistantWindow.isVisible()),
       status,
+      mode: currentMode(),
       question: question ? { ...question } : null,
       suggestion: suggestion ? { ...suggestion } : null,
       teleprompter: teleprompter.snapshot(),
       codingFocus: codingFocus.snapshot(),
+      utteranceFeed: utteranceFeed.map(item => ({ ...item })),
+      sessionSave: { ...sessionSave },
+      librarySave: { ...librarySave },
       error,
+      pendingError,
       settings: { ...settings },
       moveMode,
       protection: protectionState()
@@ -190,7 +231,7 @@ function createAssistantOverlayController({
     saveTimer = setTimeout(() => {
       try {
         writeStateFileAtomic(statePath, {
-          schemaVersion: 2,
+          schemaVersion: 3,
           bounds: assistantWindow.getNormalBounds(),
           updatedAt: new Date().toISOString()
         });
@@ -203,19 +244,26 @@ function createAssistantOverlayController({
     const saved = readStateFile(statePath);
     const primary = screen.getPrimaryDisplay();
     const area = primary.workArea;
-    const preferredWidth = settings.compactOverlay ? 600 : 680;
-    const preferredHeight = settings.compactOverlay ? 690 : 780;
+    const preferredWidth = settings.compactOverlay ? ASSISTANT_WINDOW.compactWidth : ASSISTANT_WINDOW.regularWidth;
+    const preferredHeight = settings.compactOverlay ? ASSISTANT_WINDOW.compactHeight : ASSISTANT_WINDOW.regularHeight;
+    const maxWidth = Math.max(ASSISTANT_WINDOW.minWidth, area.width - ASSISTANT_WINDOW.displayMargin);
+    const maxHeight = Math.max(ASSISTANT_WINDOW.minHeight, area.height - ASSISTANT_WINDOW.displayMargin);
     const fallback = {
-      x: Math.round(area.x + area.width - Math.min(preferredWidth, area.width) - 34),
+      x: Math.round(area.x + area.width - Math.min(preferredWidth, maxWidth) - 34),
       y: Math.round(area.y + 50),
-      width: Math.min(preferredWidth, area.width),
-      height: Math.min(preferredHeight, Math.max(460, area.height - 100))
+      width: Math.min(preferredWidth, maxWidth),
+      height: Math.min(preferredHeight, maxHeight)
     };
-    const savedBounds = saved.bounds && typeof saved.bounds === 'object'
+    const rawSavedBounds = saved.bounds && typeof saved.bounds === 'object' ? saved.bounds : null;
+    const savedBounds = rawSavedBounds
       ? {
-          ...saved.bounds,
-          width: settings.compactOverlay ? Math.min(Number(saved.bounds.width || preferredWidth), 620) : saved.bounds.width,
-          height: settings.compactOverlay ? Math.min(Number(saved.bounds.height || preferredHeight), 720) : saved.bounds.height
+          ...rawSavedBounds,
+          width: Number(saved.schemaVersion || 0) >= 3
+            ? Number(rawSavedBounds.width || preferredWidth)
+            : Math.max(Number(rawSavedBounds.width || 0), preferredWidth),
+          height: Number(saved.schemaVersion || 0) >= 3
+            ? Number(rawSavedBounds.height || preferredHeight)
+            : Math.max(Number(rawSavedBounds.height || 0), preferredHeight)
         }
       : null;
     return clampBoundsToDisplays(savedBounds || fallback, screen.getAllDisplays(), primary);
@@ -251,6 +299,9 @@ function createAssistantOverlayController({
       title: 'Local Meet Translator — Interview Assistant',
       skipTaskbar: false,
       resizable: true,
+      minWidth: ASSISTANT_WINDOW.minWidth,
+      minHeight: ASSISTANT_WINDOW.minHeight,
+      thickFrame: true,
       minimizable: true,
       maximizable: false,
       webPreferences: {
@@ -276,6 +327,31 @@ function createAssistantOverlayController({
     assistantWindow.webContents.on('did-finish-load', sendState);
     return assistantWindow;
   }
+  function resizeWindow(direction) {
+    const win = ensureWindow();
+    const delta = Number(direction) >= 0 ? 1 : -1;
+    const current = win.getNormalBounds();
+    const display = typeof screen.getDisplayMatching === 'function'
+      ? screen.getDisplayMatching(current)
+      : screen.getPrimaryDisplay();
+    const area = display?.workArea || screen.getPrimaryDisplay().workArea;
+    const maxWidth = Math.max(ASSISTANT_WINDOW.minWidth, area.width - ASSISTANT_WINDOW.displayMargin);
+    const maxHeight = Math.max(ASSISTANT_WINDOW.minHeight, area.height - ASSISTANT_WINDOW.displayMargin);
+    const width = Math.max(ASSISTANT_WINDOW.minWidth, Math.min(maxWidth, current.width + delta * ASSISTANT_WINDOW.widthStep));
+    const height = Math.max(ASSISTANT_WINDOW.minHeight, Math.min(maxHeight, current.height + delta * ASSISTANT_WINDOW.heightStep));
+    const next = clampBoundsToDisplays({
+      ...current,
+      x: current.x + Math.round((current.width - width) / 2),
+      y: current.y + Math.round((current.height - height) / 2),
+      width,
+      height
+    }, screen.getAllDisplays(), display || screen.getPrimaryDisplay());
+    win.setBounds(next);
+    persistBounds();
+    sendState();
+    return { ok: true, bounds: win.getNormalBounds(), ...snapshot() };
+  }
+
   function show() {
     if (!settings.enabled) return { ok: false, message: 'Interview assistant is disabled.', ...snapshot() };
     const win = ensureWindow();
@@ -290,7 +366,38 @@ function createAssistantOverlayController({
   }
   function toggle() { return snapshot().visible ? hide() : show(); }
   function clear() {
-    status = 'idle'; question = null; suggestion = null; error = ''; teleprompter.clear(); codingFocus.stop(); sendState();
+    status = 'idle'; question = null; suggestion = null; error = ''; pendingError = '';
+    sessionSave = { status: 'idle', message: '' };
+    librarySave = { status: 'idle', message: '' };
+    utteranceFeed = [];
+    teleprompter.clear();
+    codingFocus.stop();
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function finishAnswer() {
+    const codingActive = codingFocus.snapshot().active;
+    teleprompter.finishCurrent();
+    error = '';
+    pendingError = '';
+    librarySave = { status: 'idle', message: '' };
+    if (!codingActive) {
+      question = null;
+      suggestion = null;
+      status = 'idle';
+    } else {
+      question = codingFocus.snapshot().task || question;
+      status = suggestion ? 'ready' : 'question';
+    }
+    if (settings.enabled) show(); else sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function finishCodingTask() {
+    status = 'idle'; question = null; suggestion = null; error = ''; pendingError = '';
+    librarySave = { status: 'idle', message: '' };
+    teleprompter.clear();
+    codingFocus.stop();
+    if (settings.enabled) show(); else sendState();
     return { ok: true, ...snapshot() };
   }
   function setQuestion(value) {
@@ -299,11 +406,14 @@ function createAssistantOverlayController({
     const tpBefore = teleprompter.snapshot();
     teleprompter.noteQuestion(incoming);
     if ((tpBefore.answerLocked || tpBefore.frozen) && tpBefore.current) {
+      pendingError = '';
       if (settings.enabled) show(); else sendState();
       return snapshot();
     }
     question = incoming;
     suggestion = null;
+    sessionSave = { status: 'saving', message: 'Сохраняю вопрос в текущую сессию…' };
+    librarySave = { status: 'idle', message: '' };
     if (incoming.kind === 'coding-task') codingFocus.start(incoming);
     else if (!codingFocus.snapshot().active) codingFocus.stop();
     error = '';
@@ -313,8 +423,9 @@ function createAssistantOverlayController({
   }
   function setAnalyzing(value = true) {
     const tp = teleprompter.snapshot();
-    if (value && (tp.answerLocked || tp.frozen) && tp.current && tp.pendingQuestion) {
+    if (value && tp.pendingQuestion && (((tp.answerLocked || tp.frozen) && tp.current) || !tp.current)) {
       teleprompter.setPendingAnalyzing(true);
+      pendingError = '';
       error = '';
       sendState();
       return snapshot();
@@ -329,6 +440,7 @@ function createAssistantOverlayController({
     const result = teleprompter.loadSuggestion(sanitized, sanitized.question ? { text: sanitized.question } : question);
     if (result.disposition === 'pending') {
       status = suggestion ? 'ready' : 'question';
+      pendingError = '';
       error = '';
       if (settings.enabled) show(); else sendState();
       return snapshot();
@@ -345,14 +457,16 @@ function createAssistantOverlayController({
   }
   function setError(value) {
     const tp = teleprompter.snapshot();
-    if ((tp.answerLocked || tp.frozen) && tp.current && tp.pendingQuestion) {
+    if (tp.pendingQuestion && (((tp.answerLocked || tp.frozen) && tp.current) || !tp.current)) {
       teleprompter.setPendingAnalyzing(false);
       status = suggestion ? 'ready' : 'question';
+      pendingError = cleanText(value, 3000);
       error = '';
       sendState();
       return snapshot();
     }
     status = 'error';
+    pendingError = '';
     error = cleanText(value, 3000);
     sendState();
     return snapshot();
@@ -398,8 +512,63 @@ function createAssistantOverlayController({
       question = result.current.question ? { ...result.current.question } : question;
       suggestion = result.current.suggestion ? { ...result.current.suggestion } : suggestion;
       status = suggestion ? 'ready' : question ? 'question' : 'idle';
+      pendingError = '';
       error = '';
     }
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function dismissPending() {
+    teleprompter.clearPending();
+    pendingError = '';
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function setSessionSaveStatus(nextStatus = 'idle', message = '') {
+    sessionSave = { status: cleanText(nextStatus, 40) || 'idle', message: cleanText(message, 500) };
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function setLibrarySaveStatus(nextStatus = 'idle', message = '') {
+    librarySave = { status: cleanText(nextStatus, 40) || 'idle', message: cleanText(message, 500) };
+    sendState();
+    return { ok: true, ...snapshot() };
+  }
+  function addUtterance(entry = {}) {
+    const text = cleanText(entry.text || entry.transcript || entry.translation, 2400);
+    if (!text) return snapshot();
+    const id = cleanText(entry.id, 160) || `utterance-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const next = {
+      id,
+      text,
+      translation: cleanText(entry.translation, 2400),
+      kind: cleanText(entry.kind, 40) || 'utterance',
+      ts: Number(entry.ts || Date.now())
+    };
+    const index = utteranceFeed.findIndex(item => item.id === id);
+    if (index >= 0) utteranceFeed[index] = { ...utteranceFeed[index], ...next };
+    else utteranceFeed.push(next);
+    if (utteranceFeed.length > 20) utteranceFeed.splice(0, utteranceFeed.length - 20);
+    sendState();
+    return snapshot();
+  }
+  function updateUtterance(id, patch = {}) {
+    const cleanId = cleanText(id, 160);
+    const index = utteranceFeed.findIndex(item => item.id === cleanId);
+    if (index < 0) return snapshot();
+    utteranceFeed[index] = {
+      ...utteranceFeed[index],
+      ...patch,
+      id: cleanId,
+      text: cleanText(patch.text ?? utteranceFeed[index].text, 2400),
+      translation: cleanText(patch.translation ?? utteranceFeed[index].translation, 2400),
+      kind: cleanText(patch.kind ?? utteranceFeed[index].kind, 40) || 'utterance'
+    };
+    sendState();
+    return snapshot();
+  }
+  function clearUtteranceFeed() {
+    utteranceFeed = [];
     sendState();
     return { ok: true, ...snapshot() };
   }
@@ -527,12 +696,14 @@ function createAssistantOverlayController({
     moveMode = false;
   }
   return {
-    initialize, ensureWindow, show, hide, toggle, clear, setQuestion, setAnalyzing, setSuggestion,
+    initialize, ensureWindow, show, hide, toggle, clear, finishAnswer, finishCodingTask, setQuestion, setAnalyzing, setSuggestion,
     setError, updateSettings, setClickThrough, setMoveMode, setFrozen, nextChunk, previousChunk, firstChunk,
-    loadPending, addCodingContext, updateCodingContext, setCodingFollowUp, setCodingFollowUpAnalyzing, setCodingFollowUpSuggestion,
+    loadPending, nextQuestion: loadPending, dismissPending, setSessionSaveStatus, setLibrarySaveStatus,
+    addUtterance, updateUtterance, clearUtteranceFeed,
+    addCodingContext, updateCodingContext, setCodingFollowUp, setCodingFollowUpAnalyzing, setCodingFollowUpSuggestion,
     setCodingFollowUpError, setPendingCodingTask, takePendingCodingTask, endCodingFocus, clearCodingContext,
     setPendingCodingChange, setPendingCodingChangeStatus, clearPendingCodingChange, commitCodingInputs, removeCodingInput,
-    codingContextSnapshot, rehome, snapshot, destroy, getWindow: () => assistantWindow
+    codingContextSnapshot, resizeWindow, rehome, snapshot, destroy, getWindow: () => assistantWindow
   };
 }
 
@@ -540,6 +711,7 @@ module.exports = {
   DEFAULT_ASSISTANT_SETTINGS,
   LEVELS,
   STYLES,
+  ASSISTANT_MODES,
   normalizeAssistantSettings,
   sanitizeSuggestion,
   createAssistantOverlayController

@@ -73,3 +73,25 @@ test('completed question is not analyzed twice', async () => {
   assert.equal(duplicate.accepted, false);
   assert.equal(duplicate.reason, 'duplicate');
 });
+
+test('finishing an answer allows the same question to be analyzed again without dropping queued work', async () => {
+  let count = 0;
+  const coordinator = createAutomaticAnalysisCoordinator({
+    delayMs: 60_000,
+    analyze: async () => {
+      count += 1;
+      return { ok: true };
+    }
+  });
+
+  coordinator.queue({ text: 'Tell me about yourself?' });
+  await coordinator.runLatest();
+  coordinator.queue({ text: 'A different queued question?' });
+  coordinator.forgetCompleted();
+  assert.equal(coordinator.snapshot().queued.text, 'A different queued question?');
+  await coordinator.runLatest();
+  const repeated = coordinator.queue({ text: 'Tell me about yourself?' });
+  assert.equal(repeated.accepted, true);
+  await coordinator.runLatest();
+  assert.equal(count, 3);
+});

@@ -38,7 +38,7 @@ mustInclude(main, 'codingLanguage', 'Coding language routing');
 mustInclude(overlay, 'codeWalkthrough', 'Protected coding suggestion sanitizer');
 mustInclude(overlayHtml, 'id="codingSolutionBlock"', 'Protected coding solution UI');
 mustInclude(overlayHtml, 'id="codeText"', 'Protected code display');
-mustInclude(overlayRenderer, "suggestion.responseType === 'coding_solution'", 'Coding UI renderer');
+mustInclude(overlayRenderer, "suggestion?.responseType === 'coding_solution'", 'Coding UI renderer');
 mustInclude(teleprompter, 'speakingNotes', 'Coding teleprompter speaking notes');
 mustInclude(request, 'String taskKind', 'Java coding request contract');
 mustInclude(request, 'String codingLanguage', 'Java coding language contract');

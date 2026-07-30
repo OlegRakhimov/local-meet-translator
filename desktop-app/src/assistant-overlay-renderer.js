@@ -1,210 +1,208 @@
 const $ = id => document.getElementById(id);
 let latestState = {};
 
-const overlayLanguage = String(navigator.language || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en';
-const codingUi = overlayLanguage === 'ru'
-  ? {
-      task: 'ЗАДАЧА',
-      remark: 'КОММЕНТАРИЙ',
-      followUp: 'ВОПРОС ПО РЕШЕНИЮ',
-      recommendation: 'РЕКОМЕНДАЦИЯ',
-      request: 'ПРОСЬБА',
-      constraint: 'ОБЯЗАТЕЛЬНОЕ УСЛОВИЕ',
-      correction: 'ИСПРАВЛЕНИЕ',
-      newInput: 'НОВАЯ ВВОДНАЯ',
-      newTask: 'НОВАЯ ЗАДАЧА',
-      ambiguous: 'НУЖНО УТОЧНЕНИЕ',
-      analyzingType: 'АНАЛИЗИРУЮ',
-      clearFeed: 'Очистить реплики',
-      endFocus: 'Завершить задачу',
-      analyzeFollowUp: 'Подготовить ответ',
-      analyzing: 'Анализирую…',
-      followUpReady: 'Короткий ответ готов.',
-      followUpWaiting: 'Новый вопрос готов к анализу. Решение задачи остаётся закреплённым.',
-      followUpAnalyzing: 'Готовлю короткий ответ, не заменяя решение задачи…',
-      pendingTask: 'Обнаружена новая задача',
-      openTask: 'Открыть новую задачу',
-      activeInputs: 'Учитываемые вводные',
-      pendingChange: 'Как обработать новую реплику',
-      applyChange: 'Применить к решению',
-      applyingChange: 'Обновляю решение…',
-      keepCurrent: 'Оставить текущее решение',
-      applied: 'Применено',
-      dismissed: 'Оставлено без изменений',
-      classifierReason: 'Почему так распознано',
-      finishAnswer: 'Завершить ответ',
-      answerLocked: 'ОТВЕТ ЗАКРЕПЛЁН'
-    }
-  : {
-      task: 'TASK',
-      remark: 'COMMENT',
-      followUp: 'QUESTION ABOUT SOLUTION',
-      recommendation: 'RECOMMENDATION',
-      request: 'REQUEST',
-      constraint: 'MANDATORY CONDITION',
-      correction: 'CORRECTION',
-      newInput: 'NEW INPUT',
-      newTask: 'NEW TASK',
-      ambiguous: 'NEEDS CONFIRMATION',
-      analyzingType: 'ANALYZING',
-      clearFeed: 'Clear utterances',
-      endFocus: 'Finish task',
-      analyzeFollowUp: 'Prepare answer',
-      analyzing: 'Analyzing…',
-      followUpReady: 'Short answer ready.',
-      followUpWaiting: 'A new question is ready for analysis. The coding solution remains pinned.',
-      followUpAnalyzing: 'Preparing a short answer without replacing the coding solution…',
-      pendingTask: 'New coding task detected',
-      openTask: 'Open new task',
-      activeInputs: 'Active interviewer inputs',
-      pendingChange: 'How to handle the new utterance',
-      applyChange: 'Apply to solution',
-      applyingChange: 'Updating solution…',
-      keepCurrent: 'Keep current solution',
-      applied: 'Applied',
-      dismissed: 'Kept without changes',
-      classifierReason: 'Why it was classified this way',
-      finishAnswer: 'Finish answer',
-      answerLocked: 'ANSWER LOCKED'
-    };
+const MODE_UI = Object.freeze({
+  WAITING: {
+    title: 'ЖДУ ВОПРОС',
+    description: 'Помощник слушает собеседника и автоматически подготовит ответ.'
+  },
+  ANSWERING: {
+    title: 'ОТВЕЧАЮ',
+    description: 'Текущий ответ закреплён. Новая реплика не заменит его автоматически.'
+  },
+  NEXT_QUESTION_READY: {
+    title: 'СЛЕДУЮЩИЙ ВОПРОС ГОТОВ',
+    description: 'Закончите текущий ответ и нажмите «Следующий вопрос».'
+  },
+  CODING: {
+    title: 'РАБОТАЮ НАД КОДОМ',
+    description: 'Текущая задача и код закреплены. Новые условия применяются только после подтверждения.'
+  },
+  CODING_CHANGE_READY: {
+    title: 'НОВОЕ УСЛОВИЕ ЖДЁТ ПОДТВЕРЖДЕНИЯ',
+    description: 'Выберите: применить условие к решению или оставить текущий код.'
+  },
+  NEW_CODING_TASK_READY: {
+    title: 'НОВАЯ ЗАДАЧА ЖДЁТ ПЕРЕКЛЮЧЕНИЯ',
+    description: 'Текущая задача сохранена. Перейдите к новой задаче только когда будете готовы.'
+  }
+});
 
-function text(id, value) { const el = $(id); if (el) el.textContent = value || ''; }
+const KIND_LABELS = Object.freeze({
+  task: 'ЗАДАЧА',
+  question: 'ВОПРОС',
+  remark: 'РЕПЛИКА',
+  utterance: 'РЕПЛИКА',
+  'follow-up': 'ВОПРОС ПО РЕШЕНИЮ',
+  recommendation: 'РЕКОМЕНДАЦИЯ',
+  request: 'ПРОСЬБА',
+  constraint: 'ОБЯЗАТЕЛЬНОЕ УСЛОВИЕ',
+  correction: 'ИСПРАВЛЕНИЕ',
+  'new-input': 'НОВАЯ ВВОДНАЯ',
+  'new-task': 'НОВАЯ ЗАДАЧА',
+  ambiguous: 'НУЖНО УТОЧНЕНИЕ',
+  analyzing: 'АНАЛИЗИРУЮ'
+});
+
+function text(id, value) {
+  const element = $(id);
+  if (element) element.textContent = value || '';
+}
+
 function renderList(id, items) {
-  const el = $(id); if (!el) return;
-  el.innerHTML = '';
+  const element = $(id);
+  if (!element) return;
+  element.innerHTML = '';
   for (const item of Array.isArray(items) ? items : []) {
-    const li = document.createElement('li'); li.textContent = item; el.appendChild(li);
+    const li = document.createElement('li');
+    li.textContent = item;
+    element.appendChild(li);
   }
 }
+
 function renderKeywords(items) {
-  const el = $('keywordChips');
-  if (!el) return;
-  el.innerHTML = '';
+  const element = $('keywordChips');
+  if (!element) return;
+  element.innerHTML = '';
   for (const item of Array.isArray(items) ? items : []) {
-    const span = document.createElement('span');
-    span.className = 'keywordChip';
-    span.textContent = item;
-    el.appendChild(span);
+    const chip = document.createElement('span');
+    chip.className = 'keywordChip';
+    chip.textContent = item;
+    element.appendChild(chip);
   }
 }
 
-function renderCodingContext(state = {}) {
-  const focus = state.codingFocus || {};
-  const active = !!focus.active;
-  $('codingFocusPanel').hidden = !active;
-  if (!active) return;
+function renderMode(state = {}) {
+  const mode = state.mode || 'WAITING';
+  const ui = MODE_UI[mode] || MODE_UI.WAITING;
+  text('modeBadge', ui.title);
+  text('modeDescription', ui.description);
+  const modePanel = $('modeBadge')?.closest('.modePanel');
+  if (modePanel) modePanel.dataset.mode = mode;
+}
 
+function renderUtteranceFeed(state = {}) {
   const feed = $('liveContextFeed');
+  if (!feed) return;
   feed.innerHTML = '';
-  const entries = Array.isArray(focus.liveContext) ? focus.liveContext : [];
-  $('liveContextEmpty').hidden = entries.length > 0;
-  const kindLabels = {
-    task: codingUi.task,
-    remark: codingUi.remark,
-    'follow-up': codingUi.followUp,
-    recommendation: codingUi.recommendation,
-    request: codingUi.request,
-    constraint: codingUi.constraint,
-    correction: codingUi.correction,
-    'new-input': codingUi.newInput,
-    'new-task': codingUi.newTask,
-    ambiguous: codingUi.ambiguous,
-    analyzing: codingUi.analyzingType
-  };
+  const entries = Array.isArray(state.utteranceFeed) ? state.utteranceFeed : [];
+  if ($('liveContextEmpty')) $('liveContextEmpty').hidden = entries.length > 0;
   for (const entry of entries) {
     const item = document.createElement('div');
-    item.className = `liveContextItem ${entry.status || ''}`;
+    item.className = 'liveContextItem';
+
     const meta = document.createElement('div');
     meta.className = 'liveContextMeta';
     const badge = document.createElement('span');
-    badge.className = `contextKind ${entry.kind || 'remark'}`;
-    badge.textContent = kindLabels[entry.kind] || String(entry.kind || 'remark').toUpperCase();
+    badge.className = `contextKind ${entry.kind || 'utterance'}`;
+    badge.textContent = KIND_LABELS[entry.kind] || 'РЕПЛИКА';
     const time = document.createElement('span');
     time.className = 'liveContextTime';
     const date = new Date(Number(entry.ts || Date.now()));
-    time.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    time.textContent = Number.isNaN(date.getTime()) ? '' : date.toLocaleTimeString('ru-RU', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
     meta.append(badge, time);
-    if (entry.status === 'applied' || entry.status === 'dismissed') {
-      const stateBadge = document.createElement('span');
-      stateBadge.className = `contextResolution ${entry.status}`;
-      stateBadge.textContent = entry.status === 'applied' ? codingUi.applied : codingUi.dismissed;
-      meta.appendChild(stateBadge);
-    }
+
     const content = document.createElement('div');
     content.className = 'liveContextContent';
     const body = document.createElement('p');
     body.className = 'liveContextText';
     body.textContent = entry.text || entry.translation || '';
     content.appendChild(body);
-    const original = String(entry.text || '').trim().toLocaleLowerCase();
+
+    const original = String(entry.text || '').trim().toLocaleLowerCase('ru-RU');
     const translated = String(entry.translation || '').trim();
-    if (translated && translated.toLocaleLowerCase() !== original) {
+    if (translated && translated.toLocaleLowerCase('ru-RU') !== original) {
       const translation = document.createElement('p');
       translation.className = 'liveContextTranslation';
       translation.textContent = translated;
       content.appendChild(translation);
     }
-    if (entry.reason) {
-      const reason = document.createElement('p');
-      reason.className = 'liveContextReason';
-      reason.textContent = `${codingUi.classifierReason}: ${entry.reason}`;
-      content.appendChild(reason);
-    }
+
     item.append(meta, content);
     feed.appendChild(item);
   }
   feed.scrollTop = feed.scrollHeight;
+}
+
+function renderCodingContext(state = {}) {
+  const focus = state.codingFocus || {};
+  const active = !!focus.active;
+  if ($('codingFocusPanel')) $('codingFocusPanel').hidden = !active;
+  if (!active) return;
 
   const activeInputs = Array.isArray(focus.activeInputs) ? focus.activeInputs : [];
-  $('activeCodingInputsBlock').hidden = activeInputs.length === 0;
-  text('activeCodingInputsLabel', codingUi.activeInputs);
+  if ($('activeCodingInputsBlock')) $('activeCodingInputsBlock').hidden = activeInputs.length === 0;
   const inputHost = $('activeCodingInputs');
-  inputHost.innerHTML = '';
-  for (const item of activeInputs) {
-    const chip = document.createElement('span');
-    chip.className = 'activeCodingInput';
-    chip.textContent = item.normalizedInput || item.sourceText || '';
-    inputHost.appendChild(chip);
+  if (inputHost) {
+    inputHost.innerHTML = '';
+    for (const item of activeInputs) {
+      const chip = document.createElement('span');
+      chip.className = 'activeCodingInput';
+      chip.textContent = item.normalizedInput || item.sourceText || '';
+      inputHost.appendChild(chip);
+    }
   }
 
   const pendingChange = focus.pendingChange || null;
-  $('pendingCodingChangeBlock').hidden = !pendingChange?.classification;
+  if ($('pendingCodingChangeBlock')) $('pendingCodingChangeBlock').hidden = !pendingChange?.classification;
   if (pendingChange?.classification) {
     const type = pendingChange.classification.type || 'ambiguous';
-    text('pendingCodingChangeLabel', codingUi.pendingChange);
-    text('pendingCodingChangeType', kindLabels[type] || String(type).toUpperCase());
+    text('pendingCodingChangeType', KIND_LABELS[type] || 'НОВОЕ УСЛОВИЕ');
     text('pendingCodingChangeText', pendingChange.utterance?.text || pendingChange.classification.normalizedInput || '');
     text('pendingCodingChangeReason', pendingChange.classification.reason || '');
     const error = pendingChange.error || '';
-    $('pendingCodingChangeError').hidden = !error;
+    if ($('pendingCodingChangeError')) $('pendingCodingChangeError').hidden = !error;
     text('pendingCodingChangeError', error);
     const applying = pendingChange.status === 'applying';
-    $('applyCodingChange').disabled = applying;
-    $('dismissCodingChange').disabled = applying;
-    text('applyCodingChange', applying ? codingUi.applyingChange : codingUi.applyChange);
-    text('dismissCodingChange', codingUi.keepCurrent);
+    if ($('applyCodingChange')) $('applyCodingChange').disabled = applying;
+    if ($('dismissCodingChange')) $('dismissCodingChange').disabled = applying;
+    text('applyCodingChange', applying ? 'Обновляю решение…' : 'Применить к решению');
   }
 
   const followUp = focus.followUp || null;
-  $('codingFollowUpBlock').hidden = !followUp?.question?.text;
+  if ($('codingFollowUpBlock')) $('codingFollowUpBlock').hidden = !followUp?.question?.text;
   text('codingFollowUpQuestion', followUp?.question?.text || '');
   const followUpStatuses = {
-    question: codingUi.followUpWaiting,
-    analyzing: codingUi.followUpAnalyzing,
-    ready: codingUi.followUpReady,
-    error: followUp?.error || 'Follow-up analysis failed.'
+    question: 'Вопрос готов. Текущая задача и код остаются закреплёнными.',
+    analyzing: 'Готовлю короткий ответ…',
+    ready: 'Короткий ответ готов.',
+    error: followUp?.error || 'Не удалось подготовить ответ.'
   };
   text('codingFollowUpStatus', followUpStatuses[followUp?.status] || '');
-  $('codingFollowUpStatus').className = `codingFollowUpStatus ${followUp?.status === 'error' ? 'error' : ''}`;
-  $('analyzeCodingFollowUp').disabled = followUp?.status === 'analyzing';
-  $('analyzeCodingFollowUp').textContent = followUp?.status === 'analyzing' ? codingUi.analyzing : codingUi.analyzeFollowUp;
+  if ($('codingFollowUpStatus')) $('codingFollowUpStatus').className = `codingFollowUpStatus ${followUp?.status === 'error' ? 'error' : ''}`;
+  if ($('analyzeCodingFollowUp')) {
+    $('analyzeCodingFollowUp').disabled = followUp?.status === 'analyzing';
+    $('analyzeCodingFollowUp').textContent = followUp?.status === 'analyzing' ? 'Готовлю ответ…' : 'Подготовить ответ';
+  }
   const followSuggestion = followUp?.suggestion || null;
-  $('codingFollowUpAnswerBlock').hidden = !followSuggestion;
+  if ($('codingFollowUpAnswerBlock')) $('codingFollowUpAnswerBlock').hidden = !followSuggestion;
   text('codingFollowUpFirstSentence', followSuggestion?.firstSentence || '');
   text('codingFollowUpAnswer', followSuggestion?.answer || '');
 
-  $('pendingCodingTaskBlock').hidden = !focus.pendingTask?.text;
+  if ($('pendingCodingTaskBlock')) $('pendingCodingTaskBlock').hidden = !focus.pendingTask?.text;
   text('pendingCodingTaskText', focus.pendingTask?.text || '');
+}
+
+function renderSaveStatus(state = {}, hasSuggestion = false) {
+  const session = state.sessionSave || { status: 'idle', message: '' };
+  const fallback = hasSuggestion ? 'Ответ сохраняется в текущую сессию автоматически' : 'Жду готовый ответ';
+  text('sessionSaveStatus', session.message || fallback);
+  if ($('sessionSaveStatus')) $('sessionSaveStatus').className = `saveStatus ${session.status || 'idle'}`;
+
+  const library = state.librarySave || { status: 'idle', message: '' };
+  if ($('librarySaveStatus')) {
+    $('librarySaveStatus').hidden = !library.message;
+    $('librarySaveStatus').className = `librarySaveStatus ${library.status || 'idle'}`;
+  }
+  text('librarySaveStatus', library.message || '');
+  if ($('saveAnswerToLibrary')) {
+    $('saveAnswerToLibrary').disabled = !hasSuggestion || library.status === 'saving';
+    $('saveAnswerToLibrary').textContent = library.status === 'saving'
+      ? 'Сохраняю…'
+      : 'Сохранить в Answer Library';
+  }
 }
 
 function render(state = {}) {
@@ -214,65 +212,71 @@ function render(state = {}) {
   root.className = `assistantRoot ${state.status || 'idle'}${state.moveMode ? ' moveMode' : ''}${compactOverlay ? ' compactOverlay' : ''}`;
   root.style.setProperty('--assistant-font-size', `${state.settings?.fontSize || 20}px`);
   const configuredOpacity = Number(state.settings?.backgroundOpacity || 0.94);
-  const panelOpacity = compactOverlay ? Math.min(configuredOpacity, 0.56) : configuredOpacity;
+  const panelOpacity = compactOverlay ? Math.min(configuredOpacity, 0.68) : configuredOpacity;
   root.style.setProperty('--assistant-panel-opacity', String(Math.max(0.15, Math.min(1, panelOpacity))));
-  text('clearCodingContext', codingUi.clearFeed);
-  text('endCodingFocus', codingUi.endFocus);
-  text('pendingCodingTaskLabel', codingUi.pendingTask);
-  text('openPendingCodingTask', codingUi.openTask);
-  const questionKind = state.question?.kind || '';
-  text('questionLabel', questionKind === 'coding-task' ? 'Coding task' : 'Question');
-  text('questionText', state.question?.text || 'Waiting for an interview question or coding task…');
+
+  renderMode(state);
+  renderUtteranceFeed(state);
   renderCodingContext(state);
+
+  const focus = state.codingFocus || {};
+  const questionKind = state.question?.kind || '';
+  text('questionLabel', focus.active || questionKind === 'coding-task' ? 'Текущая задача' : 'Текущий вопрос');
+  text('questionText', state.question?.text || focus.task?.text || 'Жду вопрос или задачу по программированию…');
 
   const teleprompter = state.teleprompter || {};
   const current = teleprompter.current || null;
   const document = current?.document || null;
   const suggestion = state.suggestion || current?.suggestion || null;
   const hasSuggestion = !!suggestion;
-  $('suggestionBlock').hidden = !hasSuggestion;
-  $('emptyState').hidden = hasSuggestion || state.status === 'analyzing' || state.status === 'error';
-  text('emptyState', state.settings?.autoAnalyze
-    ? 'Automatic AI analysis is enabled. Waiting for a stable interview question…'
-    : 'Automatic AI analysis is off. Analyze the detected question from the desktop app.');
-  $('errorState').hidden = state.status !== 'error';
-  text('errorState', state.error || 'The suggestion could not be prepared.');
+  const isCoding = suggestion?.responseType === 'coding_solution';
 
-  const statuses = { idle: 'Waiting', question: 'Question detected', analyzing: 'Analyzing…', ready: 'Ready', error: 'Error' };
-  text('statusBadge', statuses[state.status] || state.status || 'Waiting');
+  if ($('suggestionBlock')) $('suggestionBlock').hidden = !hasSuggestion;
+  if ($('emptyState')) $('emptyState').hidden = hasSuggestion || state.status === 'analyzing' || state.status === 'error';
+  text('emptyState', state.status === 'analyzing'
+    ? 'Готовлю ответ…'
+    : 'Жду вопрос. Ответ будет подготовлен автоматически.');
+  if ($('errorState')) $('errorState').hidden = state.status !== 'error';
+  text('errorState', state.error || 'Не удалось подготовить ответ.');
 
   const frozen = !!teleprompter.frozen;
   const answerLocked = !!teleprompter.answerLocked;
-  $('freezeBadge').hidden = !(frozen || answerLocked);
-  text('freezeBadge', frozen ? 'FROZEN' : codingUi.answerLocked);
-  $('moveBadge').hidden = !state.moveMode;
+  if ($('freezeBadge')) $('freezeBadge').hidden = !(frozen || answerLocked);
+  text('freezeBadge', frozen ? 'ЗАМОРОЖЕНО' : 'ОТВЕТ ЗАКРЕПЛЁН');
+  if ($('moveBadge')) $('moveBadge').hidden = !state.moveMode;
   text('moveAssistantOverlay', state.moveMode ? '✓' : '↔');
-  text('freezeTeleprompter', frozen ? 'Unfreeze' : 'Freeze');
-  text('finishCurrentAnswer', codingUi.finishAnswer);
-  $('finishCurrentAnswer').disabled = !teleprompter.current;
 
   const pendingQuestion = teleprompter.pendingQuestion?.text || teleprompter.pending?.question?.text || '';
-  $('pendingBlock').hidden = !(pendingQuestion && (answerLocked || teleprompter.frozen || teleprompter.pending));
+  if ($('pendingBlock')) $('pendingBlock').hidden = !pendingQuestion;
   text('pendingQuestionText', pendingQuestion);
-  text('loadPendingAnswer', teleprompter.pendingAnalyzing ? 'Analyzing pending…' : 'Load pending');
-  $('loadPendingAnswer').disabled = !teleprompter.pending;
+  if ($('loadPendingAnswer')) {
+    $('loadPendingAnswer').disabled = !teleprompter.pending;
+    $('loadPendingAnswer').textContent = teleprompter.pendingAnalyzing ? 'Готовлю следующий ответ…' : 'Следующий вопрос';
+  }
+  const pendingError = state.pendingError || '';
+  if ($('pendingAnswerError')) $('pendingAnswerError').hidden = !pendingError;
+  text('pendingAnswerError', pendingError ? `Не удалось подготовить следующий ответ: ${pendingError}` : '');
+  if ($('retryPendingAnswer')) $('retryPendingAnswer').hidden = !pendingError;
+  if ($('dismissPendingAnswer')) $('dismissPendingAnswer').hidden = !pendingError;
 
-  $('codingSolutionBlock').hidden = true;
+  renderSaveStatus(state, hasSuggestion);
   if (!hasSuggestion) return;
 
-  const isCoding = suggestion.responseType === 'coding_solution';
-  text('taskTypeBadge', isCoding ? 'CODING SOLUTION' : 'INTERVIEW ANSWER');
-  $('codingSolutionBlock').hidden = !isCoding;
+  text('taskTypeBadge', isCoding ? 'РЕШЕНИЕ ЗАДАЧИ' : 'ОТВЕТ НА ВОПРОС');
+  text('sourceBadge', suggestion.source === 'library' ? 'БИБЛИОТЕКА ОТВЕТОВ' : 'ИИ');
+  const confidenceLabels = { high: 'ВЫСОКАЯ УВЕРЕННОСТЬ', medium: 'СРЕДНЯЯ УВЕРЕННОСТЬ', low: 'НИЗКАЯ УВЕРЕННОСТЬ' };
+  text('confidenceBadge', confidenceLabels[suggestion.confidence] || confidenceLabels.low);
 
-  text('sourceBadge', suggestion.source === 'library' ? 'ANSWER LIBRARY' : 'AI GROUNDED');
-  text('confidenceBadge', `${String(suggestion.confidence || 'low').toUpperCase()} CONFIDENCE`);
+  const hasCurrentAnswer = !!current;
+  if ($('teleprompterBlock')) $('teleprompterBlock').hidden = !hasCurrentAnswer;
   text('firstSentence', document?.firstSentence || suggestion.firstSentence);
   text('answerText', suggestion.answer);
   text('fallbackText', suggestion.safeFallback);
-  $('fallbackBlock').hidden = !suggestion.safeFallback;
+  if ($('fallbackBlock')) $('fallbackBlock').hidden = !suggestion.safeFallback;
   renderList('keyPoints', suggestion.keyPoints);
   renderList('basis', suggestion.basis);
 
+  if ($('codingSolutionBlock')) $('codingSolutionBlock').hidden = !isCoding;
   if (isCoding) {
     text('codeLanguage', suggestion.codeLanguage || state.question?.codingLanguage || 'Java');
     text('approachSummary', suggestion.approachSummary);
@@ -286,17 +290,19 @@ function render(state = {}) {
 
   const chunks = document?.chunks || [];
   const activeIndex = Math.max(0, Math.min(chunks.length - 1, Number(teleprompter.activeChunkIndex || 0)));
-  text('activeChunk', chunks[activeIndex] || suggestion.answer || suggestion.firstSentence);
+  text('activeChunk', chunks[activeIndex] || suggestion.firstSentence || suggestion.answer);
   text('chunkProgress', chunks.length ? `${activeIndex + 1} / ${chunks.length}` : '1 / 1');
-  text('chunkModeBadge', `${String(teleprompter.settings?.chunkMode || 'medium').toUpperCase()} CHUNKS`);
-  $('previousChunk').disabled = activeIndex <= 0;
-  $('nextChunk').disabled = !chunks.length || activeIndex >= chunks.length - 1;
+  const chunkLabels = { short: 'КОРОТКИЕ ФРАГМЕНТЫ', medium: 'СРЕДНИЕ ФРАГМЕНТЫ', long: 'ДЛИННЫЕ ФРАГМЕНТЫ' };
+  text('chunkModeBadge', chunkLabels[teleprompter.settings?.chunkMode] || chunkLabels.medium);
+  if ($('previousChunk')) $('previousChunk').disabled = activeIndex <= 0;
+  if ($('nextChunk')) $('nextChunk').disabled = !chunks.length || activeIndex >= chunks.length - 1;
+  if ($('finishCurrentAnswer')) $('finishCurrentAnswer').disabled = !current;
 
-  const showPlan = teleprompter.settings?.showPlan !== false;
-  const showKeywords = teleprompter.settings?.showKeywords !== false;
-  $('planColumn').hidden = !showPlan || !(document?.plan || []).length;
-  $('keywordsColumn').hidden = !showKeywords || !(document?.keywords || []).length;
-  $('teleprompterGuidance').hidden = $('planColumn').hidden && $('keywordsColumn').hidden;
+  const showPlan = !isCoding && teleprompter.settings?.showPlan !== false;
+  const showKeywords = !isCoding && teleprompter.settings?.showKeywords !== false;
+  if ($('planColumn')) $('planColumn').hidden = !showPlan || !(document?.plan || []).length;
+  if ($('keywordsColumn')) $('keywordsColumn').hidden = !showKeywords || !(document?.keywords || []).length;
+  if ($('teleprompterGuidance')) $('teleprompterGuidance').hidden = isCoding || ($('planColumn')?.hidden && $('keywordsColumn')?.hidden);
   renderList('answerPlan', document?.plan || []);
   renderKeywords(document?.keywords || []);
 }
@@ -304,13 +310,16 @@ function render(state = {}) {
 window.lmtAssistantOverlay.onState(render);
 $('hideAssistantOverlay').onclick = () => window.lmtAssistantOverlay.hide();
 $('moveAssistantOverlay').onclick = () => window.lmtAssistantOverlay.control('moveMode', { enabled: !latestState.moveMode });
+$('decreaseAssistantOverlay').onclick = () => window.lmtAssistantOverlay.control('decreaseWindowSize');
+$('increaseAssistantOverlay').onclick = () => window.lmtAssistantOverlay.control('increaseWindowSize');
 $('previousChunk').onclick = () => window.lmtAssistantOverlay.control('previousChunk');
 $('nextChunk').onclick = () => window.lmtAssistantOverlay.control('nextChunk');
-$('freezeTeleprompter').onclick = () => window.lmtAssistantOverlay.control('freezeTeleprompter', { enabled: !(latestState.teleprompter?.frozen) });
 $('finishCurrentAnswer').onclick = () => window.lmtAssistantOverlay.control('finishAnswer');
-$('loadPendingAnswer').onclick = () => window.lmtAssistantOverlay.control('loadPending');
-
-$('clearCodingContext').onclick = () => window.lmtAssistantOverlay.control('clearCodingContext');
+$('loadPendingAnswer').onclick = () => window.lmtAssistantOverlay.control('nextQuestion');
+$('retryPendingAnswer').onclick = () => window.lmtAssistantOverlay.control('retryPending');
+$('dismissPendingAnswer').onclick = () => window.lmtAssistantOverlay.control('dismissPending');
+$('saveAnswerToLibrary').onclick = () => window.lmtAssistantOverlay.control('saveCurrentToLibrary');
+$('clearUtteranceFeed').onclick = () => window.lmtAssistantOverlay.control('clearUtteranceFeed');
 $('endCodingFocus').onclick = () => window.lmtAssistantOverlay.control('endCodingFocus');
 $('analyzeCodingFollowUp').onclick = () => window.lmtAssistantOverlay.control('analyzeCodingFollowUp');
 $('openPendingCodingTask').onclick = () => window.lmtAssistantOverlay.control('openPendingCodingTask');

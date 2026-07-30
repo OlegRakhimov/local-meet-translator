@@ -30,7 +30,8 @@ assertIncludes(main, "createLiveInterviewStore", 'Main process live interview st
 for (const channel of ['live-interview:load','live-interview:start','live-interview:end','live-interview:update','live-interview:reset','live-interview:export']) {
   assertIncludes(main, channel, 'Main process IPC');
 }
-assertIncludes(main, "liveInterviewStore.recordQuestion(question)", 'Automatic question recording');
+assertIncludes(main, "function recordQuestionInCurrentSession(question)", 'Automatic question recording');
+assertIncludes(main, "ensureCurrentLiveInterviewSession()", 'Automatic session creation');
 assertIncludes(main, "liveInterviewStore.recordSuggestion(questionText, suggestion)", 'Automatic suggestion recording');
 for (const method of ['liveInterviewLoad','liveInterviewStart','liveInterviewEnd','liveInterviewUpdate','liveInterviewReset','liveInterviewExport','onLiveInterviewState']) {
   assertIncludes(preload, method, 'Preload API');

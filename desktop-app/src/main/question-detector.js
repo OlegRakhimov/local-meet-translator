@@ -254,6 +254,11 @@ function createQuestionDetector({
     activeCodingTask = null;
   }
 
+  function clearHistory() {
+    history.length = 0;
+    return snapshot();
+  }
+
   function clearActiveCodingTask() {
     activeCodingTask = null;
     return snapshot();
@@ -265,7 +270,7 @@ function createQuestionDetector({
     return snapshot();
   }
 
-  return { consume, snapshot, clear, clearActiveCodingTask, activateCodingTask };
+  return { consume, snapshot, clear, clearHistory, clearActiveCodingTask, activateCodingTask };
 }
 
 module.exports = {
