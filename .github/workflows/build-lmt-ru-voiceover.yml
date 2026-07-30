@@ -7,6 +7,12 @@ on:
     paths:
       - tools/lmt_ru_voiceover/**
       - .github/workflows/build-lmt-ru-voiceover.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - tools/lmt_ru_voiceover/**
+      - .github/workflows/build-lmt-ru-voiceover.yml
 
 permissions:
   contents: read
