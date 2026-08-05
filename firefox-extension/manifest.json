@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Local Meet Translator (Firefox)",
-  "version": "1.6.1",
+  "version": "1.7.1",
   "description": "Thin client for Local Meet Translator desktop app in Firefox.",
   "permissions": [
     "storage",
@@ -19,11 +19,25 @@
     "default_title": "Local Meet Translator",
     "default_popup": "popup.html"
   },
+  "sidebar_action": {
+    "default_title": "Local Meet Translator — Переводчик",
+    "default_panel": "sidepanel.html",
+    "open_at_install": false
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "Translate the selected text in the sidebar"
+    }
+  },
   "background": {
     "scripts": [
+      "firefox_audio.js",
       "background.js"
     ],
-    "persistent": false
+    "persistent": true
   },
   "content_scripts": [
     {
@@ -35,11 +49,14 @@
         "https://teams.live.com/*"
       ],
       "js": [
-        "i18n.js",
-        "content_script.js"
+        "firefox_page_bridge_loader.js"
       ],
-      "run_at": "document_idle"
+      "all_frames": true,
+      "run_at": "document_start"
     }
+  ],
+  "web_accessible_resources": [
+    "firefox_page_bridge.js"
   ],
   "icons": {
     "16": "icons/icon16.png",
@@ -49,7 +66,14 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "local-meet-translator@example.local",
-      "strict_min_version": "109.0"
+      "strict_min_version": "142.0",
+      "data_collection_permissions": {
+        "required": [
+          "authenticationInfo",
+          "personalCommunications",
+          "personallyIdentifyingInfo"
+        ]
+      }
     }
   }
 }

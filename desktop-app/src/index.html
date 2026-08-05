@@ -3,118 +3,881 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" />
   <title>Local Meet Translator</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="wrap">
-    <header>
-      <h1>Local Meet Translator</h1>
-      <p data-i18n="appSubtitle">Desktop controller: bridge, voice conversion, local token, health checks and extension setup.</p>
-    </header>
+  <svg class="iconSprite" aria-hidden="true">
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="icon-translate" viewBox="0 0 24 24"><path d="M4 5h9M8.5 3v2c0 4-2 7-5 9M6 9c1 2 3 4 6 5M14 19l4-10 4 10M15.5 16h5"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/><path d="m19 13.5 2-1.5-2-1.5-.4-1.1.4-2.5-2.5-.4-1.1-.4L14 4h-4L8.6 6.1l-1.1.4-2.5.4.4 2.5-.4 1.1L3 12l2 1.5.4 1.1-.4 2.5 2.5.4 1.1.4L10 20h4l1.4-2.1 1.1-.4 2.5-.4-.4-2.5z"/></symbol>
+    <symbol id="icon-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c.6-4.3 3.3-7 8-7s7.4 2.7 8 7"/></symbol>
+    <symbol id="icon-library" viewBox="0 0 24 24"><path d="M5 4h12a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M7 4v16M9 8h7M9 12h7"/></symbol>
+    <symbol id="icon-trainer" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M22 12h-3M12 22v-3M2 12h3"/></symbol>
+    <symbol id="icon-assistant" viewBox="0 0 24 24"><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+    <symbol id="icon-review" viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16v-5M12 16V8M16 16v-3M20 16V6"/></symbol>
+    <symbol id="icon-system" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 1v5M15 1v5M9 18v5M15 18v5M1 9h5M18 9h5M1 15h5M18 15h5M10 10h4v4h-4z"/></symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24"><path d="M4 4h6a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H4zM20 4h-6a3 3 0 0 0-3 3v13a3 3 0 0 1 3-3h6z"/></symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7z"/></symbol>
+    <symbol id="icon-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="icon-subtitles" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M6 11h5M13 11h5M6 15h8M16 15h2"/></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></symbol>
+  </svg>
+  <div class="appShell">
+    <aside id="appSidebar" class="appSidebar" aria-label="Application navigation">
+      <div class="brandBlock">
+        <div class="brandMark">LM</div>
+        <div class="brandText"><strong>Local Meet</strong><span>Translator</span></div>
+        <button id="collapseSidebar" class="iconButton sidebarCollapse" type="button" aria-label="Collapse navigation"><svg><use href="#icon-menu"></use></svg></button>
+      </div>
+      <nav class="sideNav">
+        <div class="navGroup">
+          <p class="navGroupLabel" data-i18n="navMain">Main</p>
+          <button id="openHome" class="navItem active" type="button" data-target-view="home" style="--item-index:0"><svg><use href="#icon-home"></use></svg><span data-i18n="navHome">Dashboard</span></button>
+          <button id="openTranslationControl" class="navItem" type="button" data-target-view="translation-control" style="--item-index:1"><svg><use href="#icon-translate"></use></svg><span data-i18n="navTranslation">Translation control</span></button>
+          <button id="openSettings" class="navItem" type="button" data-target-view="settings" style="--item-index:2"><svg><use href="#icon-settings"></use></svg><span data-i18n="navSettings">Settings</span></button>
+        </div>
+        <div class="navGroup">
+          <p class="navGroupLabel" data-i18n="navInterview">Interview workspace</p>
+          <button id="openCandidateProfile" class="navItem" type="button" data-target-view="candidate-profile" style="--item-index:3"><svg><use href="#icon-user"></use></svg><span data-i18n="navCandidateProfile">Candidate profile</span><i id="navCandidateDot" class="navStateDot"></i></button>
+          <button id="openAnswerLibrary" class="navItem" type="button" data-target-view="answer-library" style="--item-index:4"><svg><use href="#icon-library"></use></svg><span data-i18n="navAnswerLibrary">Answer Library</span><i id="navLibraryDot" class="navStateDot"></i></button>
+          <button id="openInterviewTrainer" class="navItem" type="button" data-target-view="interview-trainer" style="--item-index:5"><svg><use href="#icon-trainer"></use></svg><span data-i18n="navTrainer">Interview Trainer</span><i id="navTrainerDot" class="navStateDot"></i></button>
+          <button id="openLiveAssistant" class="navItem accentNav" type="button" data-target-view="live-assistant" style="--item-index:6"><svg><use href="#icon-assistant"></use></svg><span data-i18n="navAssistant">Interview Assistant</span><i id="navAssistantDot" class="navStateDot"></i></button>
+          <button id="openPostSessionReview" class="navItem" type="button" data-target-view="post-session-review" style="--item-index:7"><svg><use href="#icon-review"></use></svg><span data-i18n="navReview">Session review</span><i id="navReviewDot" class="navStateDot"></i></button>
+        </div>
+        <div class="navGroup">
+          <p class="navGroupLabel" data-i18n="navSupport">Support</p>
+          <button id="openSystem" class="navItem" type="button" data-target-view="system" style="--item-index:8"><svg><use href="#icon-system"></use></svg><span data-i18n="navSystem">System</span></button>
+          <button id="openDiagnostics" class="navItem" type="button" data-target-view="diagnostics" style="--item-index:9"><svg><use href="#icon-review"></use></svg><span data-i18n="navDiagnostics">Diagnostics</span><i id="navDiagnosticsDot" class="navStateDot"></i></button>
+          <button id="openInstructions" class="navItem" type="button" data-target-view="instructions" style="--item-index:10"><svg><use href="#icon-book"></use></svg><span data-i18n="navInstructions">Instructions</span></button>
+        </div>
+      </nav>
+      <div class="sidebarFooter">
+        <div class="privacyPill"><span class="pulseDot"></span><span data-i18n="localPrivate">Local and private</span></div>
+        <small>v<span id="sidebarVersion">—</span></small>
+      </div>
+    </aside>
+    <div id="sidebarScrim" class="sidebarScrim"></div>
+    <main class="workspace">
+      <header class="topbar">
+        <div class="topbarTitleArea"><button id="toggleSidebar" class="iconButton mobileMenuButton" type="button"><svg><use href="#icon-menu"></use></svg></button><div><span id="viewEyebrow" class="eyebrow" data-i18n="homeEyebrow">Meeting command center</span><h1 id="viewTitle" data-i18n="navHome">Dashboard</h1><p id="viewSubtitle" data-i18n="homeTopbarSubtitle">Everything essential, without the clutter.</p><small id="appVersion" class="appVersionLabel"></small></div></div>
+        <div class="topbarActions"><div class="topbarStatus"><span id="topbarBridgeDot" class="statusOrb"></span><div><small data-i18n="bridge">Bridge</small><strong id="topbarBridgeText" data-i18n="statusChecking">Checking…</strong></div></div><button id="topbarQuickStart" type="button"><svg><use href="#icon-play"></use></svg><span data-i18n="quickStartSubtitles">Start subtitles</span></button></div>
+      </header>
+      <div class="viewViewport">
 
-    <section class="card">
-      <h2 data-i18n="settings">1. Settings</h2>
-      <label><span data-i18n="openaiKey">OpenAI API key</span> <input id="openaiKey" type="password" autocomplete="off" placeholder="sk-..." /></label>
-      <div class="grid">
-        <label><span data-i18n="bridgePort">Bridge port</span> <input id="bridgePort" type="number" value="8799" /></label>
-        <label><span data-i18n="voicePort">Voice conversion port</span> <input id="voicePort" type="number" value="18799" /></label>
-      </div>
-      <div class="grid">
-        <label><span data-i18n="textModel">Text model</span> <input id="textModel" value="gpt-4o-mini" /></label>
-        <label><span data-i18n="transcribeModel">Transcribe model</span> <input id="transcribeModel" value="whisper-1" /></label>
-      </div>
-      <label class="check"><input id="enableTts" type="checkbox" checked /> <span data-i18n="enableTts">Enable TTS for outgoing translated voice</span></label>
-      <label class="check"><input id="enableVoiceConversion" type="checkbox" /> <span data-i18n="enableVc">Enable voice conversion / RVC hook</span></label>
-      <label><span data-i18n="token">Generated extension token</span> <input id="token" readonly /></label>
-      <h3 data-i18n="translationControl">Translation control</h3>
-      <div class="grid">
-        <label><span data-i18n="incomingSource">Incoming source language</span> <input id="extSourceLang" value="auto" placeholder="auto / en / pl / ..." /></label>
-        <label><span data-i18n="incomingTarget">Incoming target language</span> <input id="extTargetLang" value="en" placeholder="en" /></label>
-      </div>
-      <div class="grid">
-        <label><span data-i18n="chunk">Incoming chunk seconds</span> <input id="extChunkSeconds" type="number" min="2" max="15" step="1" value="3" /></label>
-        <label><span data-i18n="ttsVoice">TTS voice</span> <select id="extTtsVoice"></select></label>
-      </div>
-      <div class="grid">
-        <label><span data-i18n="ttsSpeed">TTS speed</span> <input id="extTtsSpeed" type="number" min="0.25" max="4" step="0.05" value="1.0" /></label>
-        <label><span data-i18n="outStyle">Outgoing voice style</span>
-          <select id="extOutVoiceStyle">
-            <option value="openai" data-i18n="openaiVoice">OpenAI voice</option>
-            <option value="rvc" data-i18n="myVoiceRvc">My voice / RVC</option>
-          </select>
-        </label>
-      </div>
-      <label class="check"><input id="extTtsEnabled" type="checkbox" /> <span data-i18n="speakIncoming">Speak incoming translations in browser</span></label>
+      <section id="homeScreen" class="appView active dashboardView" data-view="home">
+        <section class="heroPanel">
+          <div class="heroGlow heroGlowOne"></div><div class="heroGlow heroGlowTwo"></div>
+          <div class="heroCopy">
+            <span class="eyebrow" data-i18n="homeEyebrow">Meeting command center</span>
+            <h1 data-i18n="homeTitle">Translate, understand and answer with confidence.</h1>
+            <p data-i18n="homeDescription">Everything needed during a call is visible here. Detailed configuration stays out of the way.</p>
+            <div class="quickLanguageBar">
+              <label><span data-i18n="homeFrom">Speaker</span><input id="homeSourceLang" list="sourceLanguageModes" value="en-expected" placeholder="auto / en-expected / en" /></label>
+              <span class="languageArrow">→</span>
+              <label><span data-i18n="homeTo">Subtitles</span><input id="homeTargetLang" value="ru" placeholder="ru" /></label>
+              <label><span data-i18n="homeChunk">Chunk</span><input id="homeChunkSeconds" type="number" min="2" max="15" value="3" /></label>
+            </div>
+            <div class="heroActions">
+              <button id="quickStartSubtitles" class="primaryLarge" type="button"><svg><use href="#icon-play"></use></svg><span data-i18n="quickStartSubtitles">Start subtitles</span></button>
+              <button id="quickShowSubtitleWindow" class="secondary" type="button"><svg><use href="#icon-subtitles"></use></svg><span data-i18n="quickShowSubtitles">Show subtitle window</span></button>
+              <button id="quickStopTranslation" class="ghostDanger" type="button"><svg><use href="#icon-stop"></use></svg><span data-i18n="quickStopAll">Stop all</span></button>
+            </div>
+          </div>
+          <div class="readinessPanel">
+            <div class="readinessHeader"><div><span data-i18n="readinessTitle">Readiness</span><strong id="homeReadinessScore">Checking…</strong></div><button id="homeRefreshStatus" class="iconButton" type="button" aria-label="Refresh">↻</button></div>
+            <div class="readinessItemCard"><span id="homeBridgeDot" class="statusOrb"></span><div><strong data-i18n="bridge">Bridge</strong><small id="homeBridgeText" data-i18n="statusChecking">Checking…</small></div></div>
+            <div class="readinessItemCard"><span id="homeMeetingDot" class="statusOrb"></span><div><strong data-i18n="meetingTab">Meeting tab</strong><small id="homeMeetingText" data-i18n="connectInExtension">Connect in the extension</small></div></div>
+            <div class="readinessItemCard"><span id="homeSubtitleDot" class="statusOrb"></span><div><strong data-i18n="subtitleWindowTitle">Subtitle window</strong><small id="homeSubtitleText" data-i18n="statusChecking">Checking…</small></div></div>
+            <div class="readinessItemCard"><span id="homeAssistantDot" class="statusOrb"></span><div><strong data-i18n="liveAssistantTitle">Interview Assistant</strong><small id="homeAssistantText" data-i18n="statusChecking">Checking…</small></div></div>
+            <div class="pairingStrip"><div><span data-i18n="pairingCode">Extension pairing code</span><strong id="homePairingCode">—</strong></div><button id="copyPairingCode" class="iconButton" type="button" title="Copy"><svg><use href="#icon-copy"></use></svg></button></div>
+            <button id="openExtensionFromHome" class="linkButton" type="button" data-i18n="openExtension">Open browser extension folder</button>
+          </div>
+        </section>
 
-      <div class="subcard important">
-        <h3><span data-i18n="outgoingTitle">Outgoing voice to meeting</span></h3>
-        <label class="check"><input id="extMicTxEnabled" type="checkbox" /> <span data-i18n="outgoingOn">ON: my microphone → translation → voice into meeting</span></label>
-        <div class="grid">
-          <label><span data-i18n="myLang">I speak</span> <input id="extMicTxSourceLang" value="en" placeholder="en" /></label>
-          <label><span data-i18n="meetingLang">Meeting hears</span> <input id="extMicTxTargetLang" value="en" placeholder="en" /></label>
+        <section class="dashboardGrid">
+          <article class="panel subtitleControlPanel">
+            <div class="panelHeader">
+              <div><span class="eyebrow" data-i18n="liveControls">Live controls</span><h2 data-i18n="subtitleWindowTitle">Local subtitle window</h2><p data-i18n="subtitleWindowDescription">Incoming translation is shown in a separate protected Electron window.</p></div>
+              <div id="homeSubtitleStatePill" class="statePill"><span></span><strong data-i18n="statusChecking">Checking…</strong></div>
+            </div>
+            <div class="subcard important subtitleWindowSettings">
+<h3 data-i18n="subtitleWindowTitle">Local subtitle window</h3>
+<p class="hint" data-i18n="subtitleWindowDescription">Incoming translation is shown in a separate protected Electron window, not inside the meeting page.</p>
+<div class="subtitleState" id="subtitleWindowState" role="status">
+<span class="dot" id="subtitleWindowDot"></span>
+<strong data-i18n="subtitleWindowNotChecked" id="subtitleWindowStateText">Subtitle window: not checked</strong>
+<small id="subtitleProtectionText"></small>
+</div>
+<div class="grid">
+<label class="check"><input id="subtitleWindowEnabled" type="checkbox"/> <span data-i18n="subtitleWindowEnabled">Enable local subtitle window</span></label>
+<label class="check"><input id="subtitleContentProtection" type="checkbox"/> <span data-i18n="subtitleContentProtection">Protect subtitle window from screen capture</span></label>
+<label class="check"><input id="subtitleAlwaysOnTop" type="checkbox"/> <span data-i18n="subtitleAlwaysOnTop">Always on top</span></label>
+<label class="check"><input id="subtitleClickThrough" type="checkbox"/> <span data-i18n="subtitleClickThrough">Click-through mode</span></label>
+<label class="check"><input id="subtitleMinimalMode" type="checkbox"/> <span data-i18n="subtitleMinimalMode">Minimal text-only subtitle mode</span></label>
+<label class="check"><input id="subtitleShowTranslation" type="checkbox"/> <span data-i18n="subtitleShowTranslation">Show translation</span></label>
+<label class="check"><input id="subtitleShowOriginal" type="checkbox"/> <span data-i18n="subtitleShowOriginal">Show original speech</span></label>
+</div>
+<div class="grid">
+<label><span data-i18n="subtitleFontSize">Subtitle font size</span> <input id="subtitleFontSize" max="56" min="16" step="1" type="number" value="28"/></label>
+<label><span data-i18n="subtitleBackgroundOpacity">Background opacity</span> <input id="subtitleBackgroundOpacity" max="1" min="0.2" step="0.05" type="number" value="0.82"/></label>
+<label><span data-i18n="subtitleMaxLines">Maximum subtitle lines</span> <input id="subtitleMaxLines" max="8" min="1" step="1" type="number" value="3"/></label>
+<label><span data-i18n="subtitleHotkey">Show/hide hotkey</span> <input id="subtitleHotkey" value="CommandOrControl+Shift+S"/></label>
+</div>
+<p class="hint" data-i18n="subtitleShareHint">For maximum reliability, share a browser tab or a specific meeting window. Entire-screen protection depends on Windows and the capture application.</p>
+<div class="buttons">
+<button data-i18n="showSubtitleWindow" id="showSubtitleWindow" type="button">Show subtitle window</button>
+<button class="secondary" data-i18n="hideSubtitleWindow" id="hideSubtitleWindow" type="button">Hide subtitle window</button>
+<button class="secondary" data-i18n="clearSubtitleWindow" id="clearSubtitleWindow" type="button">Clear subtitles</button>
+<button class="secondary" data-i18n="testSubtitleProtection" id="testSubtitleProtection" type="button">Test capture protection</button>
+</div>
+</div>
+          </article>
+
+          <aside class="panel customizePanel">
+            <div class="panelHeader compact"><div><span class="eyebrow">Customize</span><h2 data-i18n="quickPreferences">Quick preferences</h2></div></div>
+            <p class="panelHint" data-i18n="quickPreferencesHint">The most important switches are available here. Full settings remain on their own screens.</p>
+            <div class="quickSwitchGrid">
+              <label class="modernSwitch"><span><strong data-i18n="subtitleContentProtection">Protect subtitles</strong><small data-i18n="recommended">Recommended</small></span><input id="homeSubtitleProtection" type="checkbox"/><i></i></label>
+              <label class="modernSwitch"><span><strong data-i18n="subtitleAlwaysOnTop">Always on top</strong><small data-i18n="subtitleWindowTitle">Subtitle window</small></span><input id="homeSubtitleAlwaysOnTop" type="checkbox"/><i></i></label>
+              <label class="modernSwitch"><span><strong data-i18n="subtitleShowOriginal">Show original speech</strong><small data-i18n="bilingualView">Bilingual view</small></span><input id="homeSubtitleShowOriginal" type="checkbox"/><i></i></label>
+              <label class="modernSwitch"><span><strong data-i18n="subtitleShowTranslation">Show translation</strong><small data-i18n="primarySubtitle">Primary subtitle</small></span><input id="homeSubtitleShowTranslation" type="checkbox"/><i></i></label>
+              <label class="modernSwitch"><span><strong data-i18n="automaticAnalysisOn">Automatic AI analysis</strong><small data-i18n="interviewQuestionsOnly">Interview questions only</small></span><input id="homeAssistantAutoAnalyze" type="checkbox" checked disabled/><i></i></label>
+              <label class="modernSwitch"><span><strong data-i18n="assistantEnabledLabel">Interview Assistant</strong><small data-i18n="groundedAnswers">Grounded answers</small></span><input id="homeAssistantEnabled" type="checkbox"/><i></i></label>
+            </div>
+            <button id="openTranslationFromHome" class="wideSecondary" type="button" data-i18n="openTranslationControl">Open full translation control</button>
+          </aside>
+        </section>
+
+      <div class="stateRegistry" aria-hidden="true">
+        <div id="candidateProfileStatus"><span id="candidateProfileDot" class="dot"></span><strong id="candidateProfileStatusText"></strong><small id="candidateProfilePath"></small><span id="candidateProfileIdentity"></span><span id="candidateProfileFactSummary"></span></div>
+        <div><span id="answerLibraryDot" class="dot"></span><strong id="answerLibraryStatusText"></strong><small id="answerLibraryPath"></small><span id="answerLibraryCount"></span><span id="answerLibraryLockedCount"></span></div>
+        <div><span id="interviewTrainerDot" class="dot"></span><strong id="interviewTrainerStatusText"></strong><small id="interviewTrainerPath"></small><span id="interviewTrainerSessionCount"></span><span id="interviewTrainerAttemptCount"></span></div>
+        <div><span id="liveAssistantDot" class="dot"></span><strong id="liveAssistantStatusText"></strong><small id="liveAssistantProtectionText"></small><span id="liveAssistantQuestionSummary"></span><span id="liveAssistantSourceSummary"></span></div>
+        <div><span id="postSessionReviewDot" class="dot"></span><strong id="postSessionReviewStatusText"></strong><small id="postSessionReviewPath"></small><span id="postSessionReviewSessionCount"></span><span id="postSessionReviewQuestionCount"></span></div>
+        <div><span id="diagnosticsDot" class="dot"></span><strong id="diagnosticsStatusText"></strong><small id="diagnosticsVersionSummary"></small><span id="diagnosticsServerSummary"></span><span id="diagnosticsPrivacySummary"></span></div>
+      </div>
+      </section>
+
+      <section id="settingsScreen" class="appView focusedView" data-view="settings" hidden>
+        <div class="screenToolbar modernToolbar"><button id="backFromSettings" class="secondary backButton" type="button" data-i18n="backToMain">← Back</button><div class="screenToolbarTitle"><p class="eyebrow" data-i18n="navSettings">Settings</p><h2 data-i18n="settingsTitleModern">Application settings</h2><p data-i18n="settingsDescriptionModern">API, models, local ports and secure extension pairing.</p></div><button id="saveSettingsTop" type="button" data-i18n="saveSettings">Save settings</button></div>
+        <section class="panel complianceModePanel">
+          <div class="sectionTitle"><span class="sectionIcon secure"><svg><use href="#icon-system"></use></svg></span><div><h3 data-i18n="examComplianceModeTitle">Exam compliance mode</h3><p data-i18n="examComplianceModeDescription">Disables interview answers, automatic analysis, teleprompter and capture-protected overlays. It does not hide the application or bypass monitoring.</p></div></div>
+          <label class="modernSwitch complianceSwitch"><span><strong data-i18n="examComplianceModeEnable">Enable compliance mode</strong><small id="examComplianceModeStatus" data-i18n="examComplianceModeOff">Compliance mode is off</small></span><input id="examComplianceMode" type="checkbox"/><i></i></label>
+        </section>
+        <div class="settingsLayout">
+          <section class="panel settingsMainPanel"><div class="sectionTitle"><span class="sectionIcon"><svg><use href="#icon-settings"></use></svg></span><div><h3 data-i18n="aiAndRuntime">AI and runtime</h3><p data-i18n="aiAndRuntimeHint">These values affect transcription, translation and generated interview suggestions.</p></div></div><label><span data-i18n="openaiKey">OpenAI API key</span> <input autocomplete="off" id="openaiKey" placeholder="sk-..." type="password"/></label>
+<div class="grid">
+<label><span data-i18n="bridgePort">Bridge port</span> <input id="bridgePort" type="number" value="8799"/></label>
+<label><span data-i18n="voicePort">Voice conversion port</span> <input id="voicePort" type="number" value="18799"/></label>
+</div>
+<div class="grid">
+<label><span data-i18n="textModel">Text model</span> <input id="textModel" value="gpt-4o-mini"/></label>
+<label><span data-i18n="transcribeModel">Transcribe model</span> <input id="transcribeModel" value="whisper-1"/></label>
+</div>
+<label class="check"><input checked="" id="enableTts" type="checkbox"/> <span data-i18n="enableTts">Enable TTS for outgoing translated voice</span></label>
+<label class="check"><input id="enableVoiceConversion" type="checkbox"/> <span data-i18n="enableVc">Enable voice conversion / RVC hook</span></label>
+<label><span data-i18n="token">Bridge auth token</span> <input id="token" readonly=""/></label>
+<div class="grid">
+<label><span data-i18n="pairingCode">Extension pairing code</span> <input id="pairingCode" readonly=""/></label>
+<label><span data-i18n="desktopExtensionToken">Desktop extension token</span> <input id="desktopExtensionToken" readonly=""/></label>
+</div></section>
+          <aside class="panel secureSettingsPanel"><div class="sectionTitle"><span class="sectionIcon secure"><svg><use href="#icon-system"></use></svg></span><div><h3 data-i18n="secureLocalConfig">Secure local configuration</h3><p data-i18n="secureLocalConfigHint">Secrets stay in your local application data folder.</p></div></div><div class="buttons">
+<button data-i18n="save" id="save">Save .env</button>
+<button class="secondary" data-i18n="openEnv" id="openEnv">Open .env</button>
+</div>
+<p class="hint"><span data-i18n="configPath">Stable config path:</span> <code id="envPath">loading...</code></p></aside>
         </div>
-        <div class="grid">
-          <label><span data-i18n="micChunk">Mic chunk seconds</span> <input id="extMicTxChunkSeconds" type="number" min="2" max="15" step="1" value="5" /></label>
-          <label><span data-i18n="rvcTag">RVC model tag</span> <input id="extRvcModelTag" placeholder="myvoice" /></label>
+      </section>
+
+      <section id="translationControlScreen" class="appView focusedView" data-view="translation-control" hidden>
+        <div class="screenToolbar modernToolbar"><button id="backFromTranslationControl" class="secondary backButton" type="button" data-i18n="backToMain">← Back</button><div class="screenToolbarTitle"><p class="eyebrow" data-i18n="navTranslation">Translation control</p><h2 data-i18n="translationWorkspaceTitle">Translation workspace</h2><p data-i18n="translationWorkspaceDescription">Incoming subtitles, outgoing translated voice and meeting-tab connection in one focused screen.</p></div><button id="saveTranslationTop" type="button" data-i18n="saveSettings">Save settings</button></div>
+        <div class="translationWorkspaceGrid">
+          <section class="panel incomingPanel"><div class="sectionTitle"><span class="sectionIcon"><svg><use href="#icon-translate"></use></svg></span><div><h3 data-i18n="incomingTranslationTitle">Incoming speech</h3><p data-i18n="incomingTranslationHint">What the interviewer says and how it appears for you.</p></div></div><div class="grid">
+<label><span data-i18n="incomingSource">Incoming source language</span> <input id="extSourceLang" list="sourceLanguageModes" placeholder="auto / en-expected / en / pl / ..." value="en-expected"/></label>
+<label><span data-i18n="incomingTarget">Incoming target language</span> <input id="extTargetLang" placeholder="en" value="en"/></label>
+</div>
+<p class="hint" data-i18n="englishExpectedHint">Use en-expected for interviews: automatic detection runs first, and suspicious non-English text is retried as strict English.</p>
+<div class="grid">
+<label><span data-i18n="chunk">Incoming chunk seconds</span> <input id="extChunkSeconds" max="15" min="2" step="1" type="number" value="3"/></label>
+<label><span data-i18n="ttsVoice">TTS voice</span> <select id="extTtsVoice"></select></label>
+</div>
+<div class="grid">
+<label><span data-i18n="ttsSpeed">TTS speed</span> <input id="extTtsSpeed" max="4" min="0.25" step="0.05" type="number" value="1.0"/></label>
+<label><span data-i18n="outStyle">Outgoing voice style</span>
+<select id="extOutVoiceStyle">
+<option data-i18n="openaiVoice" value="openai">OpenAI voice</option>
+<option data-i18n="myVoiceRvc" value="rvc">My voice / RVC</option>
+</select>
+</label>
+</div>
+<label class="check"><input checked="" id="extAudioIsolationMode" type="checkbox"/> <span data-i18n="audioIsolationMode">Audio isolation mode: ON</span></label>
+<label class="check"><input id="extTtsEnabled" type="checkbox"/> <span data-i18n="speakIncoming">Speak incoming translations in browser</span></label>
+<div class="subcard important">
+<h3><span data-i18n="outgoingTitle">Outgoing voice to meeting</span></h3>
+<input hidden="" id="extMicTxEnabled" type="checkbox"/>
+<div aria-live="polite" class="voiceState idle" id="outgoingState" role="status">
+<div>
+<strong data-i18n="voiceOff" id="outgoingStateTitle">Voice translation is off</strong>
+<p data-i18n="voiceOffDetail" id="outgoingStateDetail">Press the green button below when the meeting tab and CABLE Output are ready.</p>
+</div>
+<div class="readiness">
+<span class="readinessItem pending" data-i18n="stepBridge" id="voiceStepBridge">Bridge: not checked</span>
+<span class="readinessItem pending" data-i18n="stepTab" id="voiceStepTab">Meeting tab: not checked</span>
+<span class="readinessItem pending" data-i18n="stepMic" id="voiceStepMic">Microphone: not checked</span>
+<span class="readinessItem pending" data-i18n="stepOutput" id="voiceStepOutput">VB-Cable output: not checked</span>
+</div>
+</div>
+<p class="flow" data-i18n="outgoingOn">My microphone → translation → CABLE Input → CABLE Output in the meeting → other participant</p>
+<label class="check confirmation"><input id="meetingCableConfirmed" type="checkbox"/> <span data-i18n="confirmMeetingCable">I selected CABLE Output as the microphone in Zoom / Meet / Teams</span></label>
+<p class="hint" data-i18n="outgoingHint">The desktop app cannot inspect the microphone selected inside the meeting. This confirmation is required before launch.</p>
+<div class="buttons primaryActions">
+<button data-i18n="enableVoiceMeeting" id="enableOutgoingVoice">Start voice translation for the other participant</button>
+<button class="danger" data-i18n="disableVoiceMeeting" id="disableOutgoingVoice">Stop voice translation</button>
+</div>
+<details class="voiceSettings">
+<summary data-i18n="voiceSettings">Language and device settings</summary>
+<div class="grid">
+<label><span data-i18n="myLang">I speak</span> <input id="extMicTxSourceLang" placeholder="en" value="en"/></label>
+<label><span data-i18n="meetingLang">Meeting hears</span> <input id="extMicTxTargetLang" placeholder="en" value="en"/></label>
+</div>
+<div class="grid">
+<label><span data-i18n="micChunk">Mic chunk seconds</span> <input id="extMicTxChunkSeconds" max="15" min="2" step="1" type="number" value="5"/></label>
+<label><span data-i18n="rvcTag">RVC model tag</span> <input id="extRvcModelTag" placeholder="myvoice"/></label>
+</div>
+<p class="hint" data-i18n="rvcRequirementHint">RVC requires trained model and external inference command.</p>
+<div class="grid">
+<label><span data-i18n="micName">My microphone name contains</span> <input data-i18n-placeholder="emptyDefaultMic" id="extMicDeviceName" placeholder="Empty = system browser microphone; e.g. Realtek / USB / Headset"/></label>
+<label><span data-i18n="ttsOutputName">Translated voice output name contains</span> <input id="extTtsSinkDeviceName" placeholder="CABLE Input"/></label>
+<label class="advanced"><span data-i18n="advMicId">Advanced: microphone device ID</span> <input data-i18n-placeholder="leaveEmpty" id="extMicDeviceId" placeholder="Usually leave empty"/></label>
+<label class="advanced"><span data-i18n="advTtsId">Advanced: TTS output device ID</span> <input data-i18n-placeholder="leaveEmpty" id="extTtsSinkDeviceId" placeholder="Usually leave empty"/></label>
+</div>
+<label class="check"><input id="extShowOutgoingSubtitles" type="checkbox"/> <span data-i18n="showOutgoingDebug">Show outgoing debug subtitles</span></label>
+</details>
+</div></section>
+          <section class="card">
+<h2 data-i18n="extension">4. Extension</h2>
+<p data-i18n="extensionText">Open the actual Meet/Zoom/Teams tab, click the Local Meet Translator extension icon once, connect that tab, then control translation here.</p>
+<h3 data-i18n="subtitlesOnly">Subtitles for me</h3>
+<div class="buttons">
+<button data-i18n="startTranslation" id="startTranslation">Start subtitles only</button>
+<button class="danger" data-i18n="stopTranslation" id="stopTranslation">Stop all translation</button>
+<button class="secondary" data-i18n="openExtension" id="openExtension">Open browser extension folder</button>
+</div>
+<p class="hint" data-i18n="extensionHint">If the log says the extension was not invoked, open the extension popup on the Meet/Zoom/Teams tab and press Connect this meeting tab.</p>
+</section>
         </div>
-        <div class="grid">
-          <label><span data-i18n="micName">My microphone name contains</span> <input id="extMicDeviceName" data-i18n-placeholder="emptyDefaultMic" placeholder="Empty = system browser microphone; e.g. Realtek / USB / Headset" /></label>
-          <label><span data-i18n="ttsOutputName">Translated voice output name contains</span> <input id="extTtsSinkDeviceName" placeholder="CABLE Input" /></label>
-          <label class="advanced"><span data-i18n="advMicId">Advanced: microphone device ID</span> <input id="extMicDeviceId" data-i18n-placeholder="leaveEmpty" placeholder="Usually leave empty" /></label>
-          <label class="advanced"><span data-i18n="advTtsId">Advanced: TTS output device ID</span> <input id="extTtsSinkDeviceId" data-i18n-placeholder="leaveEmpty" placeholder="Usually leave empty" /></label>
+      </section>
+
+      <section id="systemScreen" class="appView focusedView" data-view="system" hidden>
+        <div class="screenToolbar modernToolbar"><button id="backFromSystem" class="secondary backButton" type="button" data-i18n="backToMain">← Back</button><div class="screenToolbarTitle"><p class="eyebrow" data-i18n="navSystem">System</p><h2 data-i18n="systemCenterTitle">System center</h2><p data-i18n="systemCenterDescription">Start local services, verify VB-Cable and inspect technical events.</p></div><button id="openDiagnosticsFromSystem" type="button" data-i18n="openDiagnostics">Open diagnostics</button></div>
+        <div class="systemWorkspaceGrid"><section class="card">
+<h2 data-i18n="services">3. Services</h2>
+<div class="statusGrid">
+<div><span class="dot" id="bridgeDot"></span> <span data-i18n="bridge">Bridge</span> <small id="bridgeText">unknown</small></div>
+<div><span class="dot" id="voiceDot"></span> <span data-i18n="voiceConversion">Voice conversion</span> <small id="voiceText">unknown</small></div>
+<div><span class="dot" id="cableDot"></span> <span data-i18n="virtualCable">Virtual cable</span> <small id="cableText">unknown</small></div>
+<div><span class="dot ok" id="configDot"></span> <span data-i18n="extensionConfigServer">Extension config server</span> <small>http://127.0.0.1:18798</small></div>
+</div>
+<div class="buttons">
+<button data-i18n="startBridge" id="startBridge">Start bridge</button>
+<button class="danger" data-i18n="stopBridge" id="stopBridge">Stop bridge</button>
+<button data-i18n="startVoice" id="startVoice">Start voice conversion</button>
+<button class="danger" data-i18n="stopVoice" id="stopVoice">Stop voice</button>
+<button class="secondary" data-i18n="check" id="health">Check</button>
+<button class="secondary" data-i18n="checkCable" id="checkCable">Check VB-Cable</button>
+</div>
+</section><section class="panel systemSummaryPanel"><div class="sectionTitle"><span class="sectionIcon secure"><svg><use href="#icon-system"></use></svg></span><div><h3 data-i18n="systemHealthSummary">Health summary</h3><p data-i18n="systemHealthSummaryHint">Use Check before a real interview. Voice conversion is optional unless RVC is enabled.</p></div></div><div class="systemTips"><div><strong data-i18n="systemTipOneTitle">Normal interview</strong><span data-i18n="systemTipOne">Bridge must be ready. Voice conversion may stay off.</span></div><div><strong data-i18n="systemTipTwoTitle">Translated voice</strong><span data-i18n="systemTipTwo">VB-Cable and the physical microphone must be detected.</span></div><div><strong data-i18n="systemTipThreeTitle">Something is stuck</strong><span data-i18n="systemTipThree">Open Diagnostics and reset transient state.</span></div></div></section></div><section class="card">
+<h2 data-i18n="log">Log</h2>
+<pre id="log"></pre>
+</section>
+      </section>
+
+      <section id="instructionsScreen" class="appView focusedView" data-view="instructions" hidden>
+        <div class="screenToolbar modernToolbar"><button id="backFromInstructions" class="secondary backButton" type="button" data-i18n="backToMain">← Back</button><div class="screenToolbarTitle"><p class="eyebrow" data-i18n="navInstructions">Instructions</p><h2 data-i18n="instructionsTitle">How to use Local Meet Translator</h2><p data-i18n="instructionsDescription">A compact guide for preparation, live calls and interview practice.</p></div><button id="openSystemGuide" class="secondary" type="button" data-i18n="openSystemSection">Open system section</button></div>
+        <div class="guideHero"><div><span class="guideStep">01</span><h3 data-i18n="guidePrepareTitle">Prepare once</h3><p data-i18n="guidePrepareText">Save the OpenAI key, check the candidate profile and build the Answer Library.</p></div><div><span class="guideStep">02</span><h3 data-i18n="guideConnectTitle">Connect the meeting</h3><p data-i18n="guideConnectText">Start Bridge, connect the Meet/Zoom/Teams tab from the extension and start subtitles.</p></div><div><span class="guideStep">03</span><h3 data-i18n="guideInterviewTitle">Run the interview</h3><p data-i18n="guideInterviewText">Keep subtitles and the assistant on top. Comments remain subtitles; real questions receive grounded answers.</p></div></div>
+        <div class="guideGrid">
+          <details class="guideCard" open><summary data-i18n="guideQuickStart">Quick start for an English interview</summary><ol><li data-i18n="guideQuick1">Open Settings and save your OpenAI API key.</li><li data-i18n="guideQuick2">Open System and start Bridge.</li><li data-i18n="guideQuick3">Open the meeting tab and connect it from the extension popup.</li><li data-i18n="guideQuick4">On Dashboard choose en → ru and press Start subtitles.</li><li data-i18n="guideQuick5">Open Interview Assistant and start a live session.</li></ol></details>
+          <details class="guideCard"><summary data-i18n="guideAssistantTitle">Interview Assistant</summary><p data-i18n="guideAssistantText">Automatic analysis reacts only to stable interview questions. Jokes and remarks remain in subtitles. Coding tasks receive an approach, plan, code, line-by-line explanation, complexity and speaking notes.</p></details>
+          <details class="guideCard"><summary data-i18n="guideTranscriptGuardTitle">English expected and transcript protection</summary><p data-i18n="guideTranscriptGuardText">English expected first uses automatic recognition, retries suspicious text as English, rejects silent chunks before the network request, and blocks prompt echoes before translation. Dropped text never reaches subtitles, history, Coding Focus or the classifier.</p></details>
+          <details class="guideCard"><summary data-i18n="guideLearningAidsTitle">Keywords and useful phrases</summary><p data-i18n="guideLearningAidsText">Each Answer Library question may contain a first sentence, English keywords with Russian translations, and reusable English phrases with Russian translations. Generate missing aids for one question or fill all incomplete questions. Reviewed answers are preserved.</p></details>
+          <details class="guideCard"><summary data-i18n="guideClassifierTitle">Coding Focus and contextual replies</summary><p data-i18n="guideClassifierText">Remarks only enter the feed. Follow-up questions receive a separate answer. Recommendations are offered, direct requests and constraints revise the solution, corrections replace earlier inputs, and new tasks wait for confirmation.</p></details>          <details class="guideCard"><summary data-i18n="guideVoiceTitle">Voice translation to the other participant</summary><p data-i18n="guideVoiceText">In Translation control select CABLE Input as output, select CABLE Output as the meeting microphone, confirm the checkbox and start outgoing voice translation.</p></details>
+          <details class="guideCard"><summary data-i18n="guidePrivacyTitle">Privacy and screen sharing</summary><p data-i18n="guidePrivacyText">Share only the browser tab or meeting window. Keep content protection enabled. The desktop app does not store raw audio.</p></details>
+          <details class="guideCard"><summary data-i18n="guideHotkeysTitle">Main hotkeys</summary><div class="hotkeyGrid"><span>Ctrl+Shift+S</span><strong data-i18n="guideHotkeySubtitles">Show or hide subtitles</strong><span>Ctrl+Shift+A</span><strong data-i18n="guideHotkeyAssistant">Show or hide assistant</strong><span>Ctrl+Shift+M</span><strong data-i18n="guideHotkeyMove">Move assistant window</strong><span>Ctrl+Shift+F</span><strong data-i18n="guideHotkeyFreeze">Freeze teleprompter</strong></div></details>
+          <details class="guideCard"><summary data-i18n="guideTroubleshootingTitle">When something does not work</summary><p data-i18n="guideTroubleshootingText">Check Bridge, reconnect the meeting tab, verify en as source language, use headphones and reset transient state in Diagnostics.</p></details>
         </div>
-        <label class="check"><input id="extShowOutgoingSubtitles" type="checkbox" /> <span data-i18n="showOutgoingDebug">Show outgoing debug subtitles</span></label>
-        <p class="hint"><b>Для собеседника:</b> в desktop включи этот блок, <span data-i18n="ttsOutputName">Translated voice output name contains</span> = CABLE Input, а в Meet микрофоном выбери CABLE Output. Без virtual cable собеседник не услышит TTS.</p>
+      </section>
+    <section id="candidateProfileScreen" class="appView focusedView" data-view="candidate-profile" hidden>
+      <div class="screenToolbar">
+        <button id="backFromCandidateProfile" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="candidateProfileScreenTitle">Candidate profile</h2>
+          <p data-i18n="candidateProfileDescription">This local profile is the only factual basis for future interview suggestions. Nothing is sent automatically.</p>
+        </div>
+        <button id="saveCandidateProfileTop" type="button" data-i18n="saveCandidateProfile">Save candidate profile</button>
+      </div>
+
+      <div id="candidateProfileScreenStatus" class="profileStatus screenStatus" role="status">
+        <span id="candidateProfileScreenDot" class="dot"></span>
+        <strong id="candidateProfileScreenStatusText" data-i18n="candidateProfileNotLoaded">Candidate profile: not loaded</strong>
+        <small id="candidateProfileScreenPath"></small>
+      </div>
+      <div id="candidateProfileDirtyBanner" class="dirtyBanner" hidden data-i18n="unsavedProfileChanges">There are unsaved profile changes.</div>
+
+      <details class="editorSection" open>
+        <summary data-i18n="profileBasicSection">Basic information</summary>
+        <div class="sectionBody">
+          <div class="grid">
+            <label><span data-i18n="candidateFullName">Full name</span><input id="candidateFullName" autocomplete="name" /></label>
+            <label><span data-i18n="candidateTargetRole">Target role</span><input id="candidateTargetRole" placeholder="Android Developer / Flutter Developer" /></label>
+            <label><span data-i18n="candidateLocation">Location</span><input id="candidateLocation" placeholder="Poznań, Poland" /></label>
+            <label><span data-i18n="candidateLanguages">Languages, one per line</span><textarea id="candidateLanguages" rows="4" placeholder="Russian — native&#10;Polish — working proficiency&#10;English — B1"></textarea></label>
+          </div>
+          <label><span data-i18n="candidateSummary">Professional summary</span><textarea id="candidateSummary" rows="5"></textarea></label>
+        </div>
+      </details>
+
+      <details class="editorSection" open>
+        <summary data-i18n="profileSkillsEducationSection">Skills and education</summary>
+        <div class="sectionBody grid">
+          <label><span data-i18n="candidateSkills">Skills, one per line</span><textarea id="candidateSkills" rows="9"></textarea></label>
+          <label><span data-i18n="candidateEducation">Education and courses</span><textarea id="candidateEducation" rows="9"></textarea></label>
+        </div>
+      </details>
+
+      <details class="editorSection" open>
+        <summary data-i18n="profileExperienceProjectsSection">Experience and projects</summary>
+        <div class="sectionBody grid">
+          <label><span data-i18n="candidateExperience">Experience</span><textarea id="candidateExperience" rows="11"></textarea></label>
+          <label><span data-i18n="candidateProjects">Projects</span><textarea id="candidateProjects" rows="11"></textarea></label>
+        </div>
+      </details>
+
+      <details class="editorSection" open>
+        <summary data-i18n="profileInterviewContextSection">Vacancy and interview rules</summary>
+        <div class="sectionBody">
+          <label><span data-i18n="candidateVacancyContext">Vacancy context</span><textarea id="candidateVacancyContext" rows="8"></textarea></label>
+          <label><span data-i18n="candidateInterviewInstructions">Interview answer instructions</span><textarea id="candidateInterviewInstructions" rows="8"></textarea></label>
+          <label><span data-i18n="candidateUnsupportedClaims">Unsupported claims, one per line</span><textarea id="candidateUnsupportedClaims" rows="8"></textarea></label>
+          <p class="hint" data-i18n="candidateInterviewContextHint">These fields guide AI answers for questions not found in the prepared library. They do not replace confirmed facts.</p>
+        </div>
+      </details>
+
+      <details class="editorSection">
+        <summary data-i18n="profileImportedSourceSection">Imported resume source</summary>
+        <div class="sectionBody">
+          <label><span data-i18n="candidateResumeText">Imported resume/source text</span><textarea id="candidateResumeText" rows="12" readonly></textarea></label>
+          <p class="hint"><span data-i18n="candidateResumeSource">Imported source:</span> <code id="candidateResumeSource">—</code></p>
+        </div>
+      </details>
+
+      <details class="editorSection confirmedFactsCard" open>
+        <summary data-i18n="confirmedFactsTitle">Confirmed facts</summary>
+        <div class="sectionBody">
+          <p class="hint" data-i18n="confirmedFactsDescription">Enter one fact per line. The future assistant may use only facts explicitly marked as confirmed.</p>
+          <textarea id="candidateFacts" rows="12" placeholder="I built Work Time Calculator from scratch.&#10;I use Kotlin and Jetpack Compose.&#10;I have published applications in Google Play."></textarea>
+          <div class="grid">
+            <label class="check"><input id="candidateFactsConfirmed" type="checkbox" /> <span data-i18n="confirmedFactsCheckbox">I confirm that these facts are accurate</span></label>
+            <label class="check"><input id="candidateFactsLocked" type="checkbox" /> <span data-i18n="lockedFactsCheckbox">Lock these facts against automatic rewriting</span></label>
+          </div>
+        </div>
+      </details>
+
+      <p class="hint" data-i18n="candidateImportHint">Imports JSON profiles and TXT, MD, PDF or DOCX resumes. Document text is loaded for review; facts are never generated automatically.</p>
+      <div class="buttons screenActions">
+        <button id="saveCandidateProfile" type="button" data-i18n="saveCandidateProfile">Save candidate profile</button>
+        <button id="importCandidateProfile" type="button" class="secondary" data-i18n="importCandidateProfile">Import profile / resume text</button>
+        <button id="exportCandidateProfile" type="button" class="secondary" data-i18n="exportCandidateProfile">Export JSON</button>
+        <button id="resetCandidateProfile" type="button" class="danger" data-i18n="resetCandidateProfile">Clear local profile</button>
+      </div>
+    </section>
+
+    <section id="liveAssistantScreen" class="appView focusedView" data-view="live-assistant" hidden>
+      <div class="screenToolbar">
+        <button id="backFromLiveAssistant" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="liveAssistantTitle">Live Interview Assistant</h2>
+          <p data-i18n="liveAssistantScreenDescription">Questions are detected from incoming subtitles. The Answer Library is checked before any AI request.</p>
+        </div>
+        <button id="showAssistantWindowTop" type="button" data-i18n="showAssistantWindow">Show assistant window</button>
+      </div>
+
+
+
+      <section class="card liveSessionLifecycleCard">
+        <div class="navigationCardHeader">
+          <div>
+            <h3 data-i18n="liveSessionLifecycleTitle">Live interview session</h3>
+            <p class="hint" data-i18n="liveSessionLifecycleDescription">Start a session before the call. Detected questions and generated suggestions are saved locally; raw audio is never stored.</p>
+          </div>
+          <span id="liveSessionStatusChip" class="summaryChip" data-i18n="liveSessionInactive">No active session</span>
+        </div>
+        <div class="grid threeColumns">
+          <label><span data-i18n="liveSessionTitle">Session title</span><input id="liveSessionTitle" placeholder="Android interview" /></label>
+          <label><span data-i18n="liveSessionRole">Role</span><input id="liveSessionRole" placeholder="Android Developer" /></label>
+          <label><span data-i18n="liveSessionCompany">Company</span><input id="liveSessionCompany" placeholder="Company name" /></label>
+        </div>
         <div class="buttons">
-          <button id="enableOutgoingVoice" data-i18n="enableVoiceMeeting">Enable voice to meeting</button>
-          <button id="disableOutgoingVoice" class="secondary" data-i18n="disableVoiceMeeting">Disable voice to meeting</button>
+          <button id="startLiveSession" type="button" data-i18n="startLiveSession">Start live session</button>
+          <button id="endLiveSession" type="button" class="danger" data-i18n="endLiveSession">End live session</button>
+          <button id="openPostSessionReviewFromAssistant" type="button" class="secondary" data-i18n="openPostSessionReview">Open review</button>
+        </div>
+        <p id="liveSessionMessage" class="hint"></p>
+      </section>
+
+      <div class="assistantWorkspaceGrid">
+        <section class="card assistantControlCard">
+          <h3 data-i18n="assistantWindowSettings">Assistant window and analysis</h3>
+          <div class="subcard interviewProfileSelectorCard">
+            <label><span data-i18n="assistantInterviewProfile">Interview profile</span>
+              <select id="assistantProfileMode">
+                <option value="general" data-i18n="assistantProfileGeneral">General interview assistant</option>
+                <option value="speakit_polish_support" data-i18n="assistantProfileSpeakit">SpeakIT — Polish Customer Support</option>
+              </select>
+            </label>
+            <p id="assistantProfileModeHint" class="hint" data-i18n="assistantProfileModeHint">Each profile has a separate candidate profile and Answer Library. Changing the profile does not overwrite the other mode.</p>
+          </div>
+          <div class="grid">
+            <label class="check"><input id="assistantEnabled" type="checkbox" /> <span data-i18n="assistantEnabled">Enable Live Assistant</span></label>
+            <label class="check"><input id="assistantAutoAnalyze" type="checkbox" checked disabled /> <span data-i18n="assistantAutoAnalyze">Ответы готовятся автоматически</span></label>
+            <label class="check"><input id="assistantContentProtection" type="checkbox" /> <span data-i18n="assistantContentProtection">Protect assistant window from screen capture</span></label>
+            <label class="check"><input id="assistantAlwaysOnTop" type="checkbox" /> <span data-i18n="assistantAlwaysOnTop">Keep assistant window on top</span></label>
+            <label class="check"><input id="assistantClickThrough" type="checkbox" /> <span data-i18n="assistantClickThrough">Click-through mode</span></label>
+            <label class="check"><input id="assistantCompactOverlay" type="checkbox" /> <span data-i18n="assistantCompactOverlay">Compact transparent overlay</span></label>
+          </div>
+          <div class="grid threeColumns">
+            <label><span data-i18n="assistantLanguageLevel">Answer English level</span>
+              <select id="assistantLanguageLevel"><option value="A2">A2</option><option value="B1" selected>B1</option><option value="B2">B2</option></select>
+            </label>
+            <label><span data-i18n="assistantAnswerStyle">Answer style</span>
+              <select id="assistantAnswerStyle"><option value="simple" data-i18n="answerStyleSimple">Simple</option><option value="technical" data-i18n="answerStyleTechnical">Technical</option><option value="star" data-i18n="answerStyleStar">STAR</option><option value="general" data-i18n="answerStyleGeneral">General</option></select>
+            </label>
+            <label><span data-i18n="assistantFontSize">Assistant font size</span><input id="assistantFontSize" type="number" min="14" max="36" step="1" value="20" /></label>
+          </div>
+          <div class="grid">
+            <label><span data-i18n="assistantBackgroundOpacity">Panel background opacity</span><input id="assistantBackgroundOpacity" type="number" min="0.15" max="1" step="0.05" value="0.94" /></label>
+            <label><span data-i18n="assistantHotkey">Show/hide hotkey</span><input id="assistantHotkey" value="CommandOrControl+Shift+A" /></label>
+            <label><span data-i18n="assistantMoveHotkey">Move window hotkey</span><input id="assistantMoveHotkey" value="CommandOrControl+Shift+M" /></label>
+          </div>
+          <p class="hint" data-i18n="assistantCostHint">Automatic analysis can create OpenAI API charges. It is disabled by default. Local Answer Library matches do not call the API.</p>
+
+          <div class="subcard teleprompterSettingsCard">
+            <h4 data-i18n="teleprompterSettingsTitle">English teleprompter</h4>
+            <p class="hint" data-i18n="teleprompterSettingsDescription">Read the answer in short speaking chunks. Freezing keeps the current answer visible while a new question waits.</p>
+            <div class="grid">
+              <label class="check"><input id="assistantTeleprompterEnabled" type="checkbox" /> <span data-i18n="teleprompterEnabled">Enable teleprompter view</span></label>
+              <label class="check"><input id="assistantTeleprompterFrozen" type="checkbox" /> <span data-i18n="teleprompterFrozen">Freeze the current answer</span></label>
+              <label class="check"><input id="assistantTeleprompterAutoStart" type="checkbox" /> <span data-i18n="teleprompterAutoStart">Start from the first chunk when an answer arrives</span></label>
+              <label class="check"><input id="assistantTeleprompterShowPlan" type="checkbox" /> <span data-i18n="teleprompterShowPlan">Show answer plan</span></label>
+              <label class="check"><input id="assistantTeleprompterShowKeywords" type="checkbox" /> <span data-i18n="teleprompterShowKeywords">Show keywords</span></label>
+            </div>
+            <div class="grid threeColumns">
+              <label><span data-i18n="teleprompterChunkMode">Speaking chunk size</span>
+                <select id="assistantTeleprompterChunkMode">
+                  <option value="short" data-i18n="teleprompterChunkShort">Short</option>
+                  <option value="medium" selected data-i18n="teleprompterChunkMedium">Medium</option>
+                  <option value="long" data-i18n="teleprompterChunkLong">Long</option>
+                </select>
+              </label>
+              <label><span data-i18n="teleprompterNextHotkey">Next chunk hotkey</span><input id="assistantTeleprompterNextHotkey" value="CommandOrControl+Shift+Right" /></label>
+              <label><span data-i18n="teleprompterPreviousHotkey">Previous chunk hotkey</span><input id="assistantTeleprompterPreviousHotkey" value="CommandOrControl+Shift+Left" /></label>
+            </div>
+            <div class="grid">
+              <label><span data-i18n="teleprompterFreezeHotkey">Freeze hotkey</span><input id="assistantTeleprompterFreezeHotkey" value="CommandOrControl+Shift+F" /></label>
+              <label><span data-i18n="teleprompterPendingHotkey">Load pending answer hotkey</span><input id="assistantTeleprompterPendingHotkey" value="CommandOrControl+Shift+Enter" /></label>
+            </div>
+          </div>
+
+          <div class="buttons screenActions">
+            <button id="saveAssistantSettings" type="button" data-i18n="saveAssistantSettings">Save assistant settings</button>
+            <button id="showAssistantWindow" type="button" class="secondary" data-i18n="showAssistantWindow">Show window</button>
+            <button id="moveAssistantWindow" type="button" class="secondary" data-i18n="moveAssistantWindow">Move window</button>
+            <button id="hideAssistantWindow" type="button" class="secondary" data-i18n="hideAssistantWindow">Hide window</button>
+            <button id="clearAssistantSession" type="button" class="danger" data-i18n="clearAssistantSession">Clear current session</button>
+          </div>
+        </section>
+
+        <section class="card assistantQuestionCard">
+          <div class="assistantQuestionHeader">
+            <h3 data-i18n="currentInterviewQuestion">Текущий вопрос</h3>
+            <span id="assistantModeChip" class="summaryChip">ЖДУ ВОПРОС</span>
+          </div>
+          <textarea id="assistantQuestionInput" rows="5" placeholder="Tell me about yourself"></textarea>
+          <div class="buttons">
+            <button id="analyzeAssistantQuestion" type="button" data-i18n="analyzeQuestion">Analyze question</button>
+            <button id="useLastDetectedQuestion" type="button" class="secondary" data-i18n="useLastDetectedQuestion">Use last detected question</button>
+          </div>
+          <p id="assistantAnalysisMessage" class="hint" data-i18n="assistantWaitingForQuestion">Waiting for an interview question.</p>
+          <div class="assistantResultPreview">
+            <div class="assistantResultMeta"><span id="assistantResultSource" class="summaryChip">—</span><span id="assistantResultConfidence" class="summaryChip">—</span></div>
+            <label><span data-i18n="assistantFirstSentence">Start with</span><textarea id="assistantResultFirstSentence" rows="3" readonly></textarea></label>
+            <div class="teleprompterPreviewCard">
+              <div class="teleprompterPreviewHeader">
+                <strong data-i18n="teleprompterCurrentChunk">Current speaking chunk</strong>
+                <span id="assistantTeleprompterProgress" class="summaryChip">0 / 0</span>
+              </div>
+              <textarea id="assistantTeleprompterChunk" rows="5" readonly></textarea>
+              <p id="assistantTeleprompterPending" class="pendingText" hidden></p>
+              <div id="assistantPendingError" class="pendingAnswerError" hidden>
+                <p id="assistantPendingErrorText"></p>
+                <div class="buttons">
+                  <button id="assistantRetryPending" type="button" class="secondary" data-i18n="retryPendingAnswer">Retry</button>
+                  <button id="assistantDismissPending" type="button" class="secondary" data-i18n="dismissPendingAnswer">Dismiss</button>
+                </div>
+              </div>
+              <div class="buttons">
+                <button id="assistantPreviousChunk" type="button" class="secondary" data-i18n="teleprompterPrevious">Previous</button>
+                <button id="assistantToggleFreeze" type="button" class="secondary" data-i18n="teleprompterFreeze">Freeze</button>
+                <button id="assistantFinishAnswer" type="button" class="secondary" data-i18n="finishAssistantAnswer">Finish answer</button>
+                <button id="assistantNextChunk" type="button" class="secondary" data-i18n="teleprompterNext">Next</button>
+                <button id="assistantLoadPending" type="button" class="secondary" data-i18n="teleprompterLoadPending">Следующий вопрос</button>
+              </div>
+            </div>
+            <div class="assistantSaveRow">
+              <button id="assistantSaveToLibrary" type="button" class="secondary">Сохранить в Answer Library</button>
+              <span id="assistantSessionSaveStatus" class="hint"></span>
+              <span id="assistantLibrarySaveStatus" class="hint"></span>
+            </div>
+            <label><span data-i18n="assistantSuggestedAnswer">Предлагаемый ответ</span><textarea id="assistantResultAnswer" rows="10" readonly></textarea></label>
+            <section id="assistantCodingResult" class="assistantCodingResult" hidden>
+              <div class="assistantCodingHeader">
+                <strong data-i18n="codingSolutionTitle">Coding solution</strong>
+                <span id="assistantResultCodeLanguage" class="summaryChip">Java</span>
+              </div>
+              <label><span data-i18n="codingSpeakingNotes">Что говорить сейчас</span><textarea id="assistantResultSpeakingNotes" rows="7" readonly></textarea></label>
+              <label><span data-i18n="codingCode">Код</span><textarea id="assistantResultCode" class="codeTextarea" rows="18" readonly spellcheck="false"></textarea></label>
+              <details class="assistantSolutionDetails">
+                <summary data-i18n="codingSolutionDetails">Подробности решения</summary>
+                <label><span data-i18n="codingApproach">Краткая идея решения</span><textarea id="assistantResultApproach" rows="4" readonly></textarea></label>
+                <div class="grid">
+                  <label><span data-i18n="codingImplementationPlan">План реализации</span><textarea id="assistantResultPlan" rows="7" readonly></textarea></label>
+                  <label><span data-i18n="codingComplexity">Сложность</span><textarea id="assistantResultComplexity" rows="7" readonly></textarea></label>
+                </div>
+                <label><span data-i18n="codingLineByLine">Объяснение кода по строкам</span><textarea id="assistantResultWalkthrough" rows="12" readonly></textarea></label>
+                <label><span data-i18n="codingEdgeCases">Граничные случаи</span><textarea id="assistantResultEdgeCases" rows="6" readonly></textarea></label>
+              </details>
+            </section>
+            <div class="grid">
+              <label><span data-i18n="assistantKeyPoints">Key points</span><textarea id="assistantResultKeyPoints" rows="6" readonly></textarea></label>
+              <label><span data-i18n="assistantGrounding">Grounding used</span><textarea id="assistantResultBasis" rows="6" readonly></textarea></label>
+            </div>
+            <label><span data-i18n="assistantHonestFallback">Honest fallback when experience is missing</span><textarea id="assistantResultFallback" rows="4" readonly></textarea></label>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <h3 data-i18n="detectedQuestionHistory">Detected question history</h3>
+        <div id="assistantQuestionHistory" class="questionHistory"></div>
+        <p id="assistantQuestionHistoryEmpty" class="emptyState" data-i18n="noDetectedQuestionsYet">No detected questions yet.</p>
+      </section>
+    </section>
+
+    <section id="interviewTrainerScreen" class="appView focusedView" data-view="interview-trainer" hidden>
+      <div class="screenToolbar">
+        <button id="backFromInterviewTrainer" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="interviewTrainerTitle">Interview Trainer</h2>
+          <p data-i18n="interviewTrainerScreenDescription">Practice locally from the Answer Library. Training answers and reports are not sent to OpenAI.</p>
+        </div>
+        <button id="exportTrainingReportTop" type="button" class="secondary" data-i18n="exportTrainingReport">Export report</button>
+      </div>
+
+      <div class="trainerWorkspaceGrid">
+        <section class="card trainerSetupCard">
+          <h3 data-i18n="trainerSessionSetup">Practice session</h3>
+          <label><span data-i18n="trainerSessionTitle">Session title</span><input id="trainerSessionTitle" placeholder="Android interview practice" /></label>
+          <div class="grid">
+            <label><span data-i18n="trainerQuestionCount">Number of questions</span><input id="trainerQuestionCount" type="number" min="1" max="50" value="5" /></label>
+            <label><span data-i18n="trainerQuestionOrder">Question order</span>
+              <select id="trainerQuestionOrder">
+                <option value="random" data-i18n="trainerRandomOrder">Random</option>
+                <option value="library" data-i18n="trainerLibraryOrder">Answer Library order</option>
+                <option value="needs-practice" data-i18n="trainerNeedsPracticeOrder">Needs practice first</option>
+              </select>
+            </label>
+          </div>
+          <div class="buttons">
+            <button id="startTrainingSession" type="button" data-i18n="startTrainingSession">Start session</button>
+            <button id="resumeTrainingSession" type="button" class="secondary" data-i18n="resumeTrainingSession">Resume active session</button>
+          </div>
+          <p id="trainerSetupMessage" class="hint"></p>
+        </section>
+
+        <section class="card trainerPracticeCard">
+          <div class="trainerProgressHeader">
+            <div>
+              <span class="eyebrow" data-i18n="trainerCurrentQuestion">Current question</span>
+              <strong id="trainerProgress">0 / 0</strong>
+            </div>
+            <span id="trainerSessionStatus" class="summaryChip" data-i18n="trainerIdle">Not started</span>
+          </div>
+          <div class="trainerQuestionBox"><p id="trainerQuestionText" data-i18n="trainerNoQuestion">Start a session to receive a question.</p></div>
+          <div id="trainerLearningAids" class="trainerReferencePanel" hidden>
+            <div><span class="eyebrow" data-i18n="trainerKeywords">Keywords</span><div id="trainerKeywordList" class="keywordChips"></div></div>
+            <div><span class="eyebrow" data-i18n="trainerUsefulPhrases">Useful phrases</span><ul id="trainerUsefulPhraseList"></ul></div>
+          </div>          <label><span data-i18n="trainerPracticeAnswer">Your practice answer or transcript</span><textarea id="trainerPracticeAnswer" rows="8"></textarea></label>
+          <div class="buttons">
+            <button id="showTrainerReference" type="button" class="secondary" data-i18n="showTrainerReference">Show reviewed answer</button>
+          </div>
+          <div id="trainerReferencePanel" class="trainerReferencePanel" hidden>
+            <span class="eyebrow" data-i18n="trainerReviewedReference">Reviewed reference</span>
+            <p id="trainerReferenceFirstSentence"></p>
+            <div id="trainerReferenceAnswer"></div>
+          </div>
+          <div class="grid threeColumns">
+            <label><span data-i18n="trainerAnswerRating">Answer rating</span>
+              <select id="trainerAnswerRating"><option value="0">—</option><option value="1">1 / 5</option><option value="2">2 / 5</option><option value="3">3 / 5</option><option value="4">4 / 5</option><option value="5">5 / 5</option></select>
+            </label>
+            <label><span data-i18n="trainerConfidenceRating">Confidence</span>
+              <select id="trainerConfidenceRating"><option value="0">—</option><option value="1">1 / 5</option><option value="2">2 / 5</option><option value="3">3 / 5</option><option value="4">4 / 5</option><option value="5">5 / 5</option></select>
+            </label>
+            <label class="check trainerNeedsCheck"><input id="trainerNeedsPractice" type="checkbox" /> <span data-i18n="trainerNeedsMorePractice">Needs more practice</span></label>
+          </div>
+          <label><span data-i18n="trainerNotes">Notes</span><textarea id="trainerNotes" rows="4"></textarea></label>
+          <div class="buttons screenActions">
+            <button id="saveTrainingAttempt" type="button" data-i18n="trainerSaveAndNext">Save and next</button>
+            <button id="finishTrainingSession" type="button" class="danger" data-i18n="finishTrainingSession">Finish session</button>
+          </div>
+        </section>
+      </div>
+
+      <section class="card trainerReportCard">
+        <div class="navigationCardHeader">
+          <div>
+            <h3 data-i18n="trainingProgressReport">Training progress report</h3>
+            <p class="hint" data-i18n="trainingProgressReportDescription">Completed sessions are stored locally and can be exported as Markdown or JSON.</p>
+          </div>
+          <div class="buttons">
+            <button id="exportTrainingMarkdown" type="button" class="secondary" data-i18n="exportMarkdown">Export Markdown</button>
+            <button id="exportTrainingJson" type="button" class="secondary" data-i18n="exportJson">Export JSON</button>
+            <button id="resetTrainingHistory" type="button" class="danger" data-i18n="resetTrainingHistory">Clear history</button>
+          </div>
+        </div>
+        <div class="trainingMetricGrid">
+          <div><span data-i18n="trainingSessionsMetric">Sessions</span><strong id="trainingMetricSessions">0</strong></div>
+          <div><span data-i18n="trainingAttemptsMetric">Answers</span><strong id="trainingMetricAttempts">0</strong></div>
+          <div><span data-i18n="trainingAverageRatingMetric">Average rating</span><strong id="trainingMetricRating">—</strong></div>
+          <div><span data-i18n="trainingConfidenceMetric">Confidence</span><strong id="trainingMetricConfidence">—</strong></div>
+          <div><span data-i18n="trainingNeedsPracticeMetric">Needs practice</span><strong id="trainingMetricNeedsPractice">0</strong></div>
+        </div>
+        <div id="trainingSessionHistory" class="trainingSessionHistory"></div>
+        <p id="trainingHistoryEmpty" class="emptyState" data-i18n="trainingHistoryEmpty">No completed training sessions yet.</p>
+      </section>
+    </section>
+
+
+
+    <section id="postSessionReviewScreen" class="appView focusedView" data-view="post-session-review" hidden>
+      <div class="screenToolbar">
+        <button id="backFromPostSessionReview" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="postSessionReviewTitle">Post-session Review</h2>
+          <p data-i18n="postSessionReviewScreenDescription">Review live interview questions and grounded suggestions stored locally. Add self-ratings and notes for future practice.</p>
+        </div>
+        <div class="buttons">
+          <button id="exportPostSessionMarkdownTop" type="button" class="secondary" data-i18n="exportMarkdown">Export Markdown</button>
+          <button id="exportPostSessionJsonTop" type="button" class="secondary" data-i18n="exportJson">Export JSON</button>
         </div>
       </div>
 
-      <p class="hint" data-i18n="startStopHint">Open the extension popup once on the meeting tab to connect capture access. Start/Stop then lives in this desktop app.</p>
-      <div class="buttons">
-        <button id="save" data-i18n="save">Save .env</button>
-        <button id="openEnv" class="secondary" data-i18n="openEnv">Open .env</button>
+      <div class="postSessionWorkspace">
+        <aside class="postSessionSidebar card">
+          <div class="sidebarHeader">
+            <strong data-i18n="liveInterviewSessions">Live interview sessions</strong>
+            <span id="postSessionScreenCount">0</span>
+          </div>
+          <div class="trainingMetricGrid compactMetrics">
+            <div><span data-i18n="trainingSessionsMetric">Sessions</span><strong id="postMetricSessions">0</strong></div>
+            <div><span data-i18n="postQuestionsMetric">Questions</span><strong id="postMetricQuestions">0</strong></div>
+            <div><span data-i18n="postAnalyzedMetric">Analyzed</span><strong id="postMetricAnalyzed">0</strong></div>
+            <div><span data-i18n="trainingNeedsPracticeMetric">Needs practice</span><strong id="postMetricNeedsPractice">0</strong></div>
+          </div>
+          <div id="postSessionList" class="postSessionList"></div>
+          <p id="postSessionEmpty" class="emptyState" data-i18n="postSessionReviewEmpty">No completed live interview sessions yet.</p>
+          <div class="buttons verticalButtons">
+            <button id="exportPostSessionMarkdown" type="button" class="secondary" data-i18n="exportMarkdown">Export Markdown</button>
+            <button id="exportPostSessionJson" type="button" class="secondary" data-i18n="exportJson">Export JSON</button>
+            <button id="resetPostSessionHistory" type="button" class="danger" data-i18n="resetPostSessionHistory">Clear live interview history</button>
+          </div>
+        </aside>
+
+        <section class="card postSessionEditor">
+          <div id="postSessionNoSelection" class="emptyState" data-i18n="selectPostSession">Select a completed session to review.</div>
+          <div id="postSessionEditorContent" hidden>
+            <div class="navigationCardHeader">
+              <div>
+                <h3 id="postSessionEditorTitle">—</h3>
+                <p id="postSessionEditorMeta" class="hint"></p>
+              </div>
+              <button id="savePostSessionReview" type="button" data-i18n="savePostSessionReview">Save review</button>
+            </div>
+            <div class="grid threeColumns">
+              <label><span data-i18n="liveSessionTitle">Session title</span><input id="postSessionTitle" /></label>
+              <label><span data-i18n="liveSessionRole">Role</span><input id="postSessionRole" /></label>
+              <label><span data-i18n="liveSessionCompany">Company</span><input id="postSessionCompany" /></label>
+            </div>
+            <label><span data-i18n="postSessionNotes">Session notes</span><textarea id="postSessionNotes" rows="4"></textarea></label>
+            <div id="postSessionQuestionList" class="postSessionQuestionList"></div>
+          </div>
+        </section>
       </div>
-      <p class="hint"><span data-i18n="configPath">Stable config path:</span> <code id="envPath">loading...</code></p>
     </section>
 
-    <section class="card">
-      <h2 data-i18n="services">2. Services</h2>
-      <div class="statusGrid">
-        <div><span id="bridgeDot" class="dot"></span> <span data-i18n="bridge">Bridge</span> <small id="bridgeText">unknown</small></div>
-        <div><span id="voiceDot" class="dot"></span> <span data-i18n="voiceConversion">Voice conversion</span> <small id="voiceText">unknown</small></div>
-        <div><span id="cableDot" class="dot"></span> <span data-i18n="virtualCable">Virtual cable</span> <small id="cableText">unknown</small></div>
-        <div><span id="configDot" class="dot ok"></span> <span data-i18n="extensionConfigServer">Extension config server</span> <small>http://127.0.0.1:18798</small></div>
+
+    <section id="diagnosticsScreen" class="appView focusedView" data-view="diagnostics" hidden>
+      <div class="screenToolbar">
+        <button id="backFromDiagnostics" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="systemWorkspace">System workspace</p>
+          <h2 data-i18n="diagnosticsTitle">Diagnostics and privacy</h2>
+          <p data-i18n="diagnosticsScreenDescription">All checks are local. The exported report contains service states and counters, but no API keys, tokens, resume text or subtitle content.</p>
+        </div>
+        <button id="runDiagnosticsTop" type="button" data-i18n="runDiagnostics">Run local self-test</button>
       </div>
-      <div class="buttons">
-        <button id="startBridge" data-i18n="startBridge">Start bridge</button>
-        <button id="stopBridge" class="danger" data-i18n="stopBridge">Stop bridge</button>
-        <button id="startVoice" data-i18n="startVoice">Start voice conversion</button>
-        <button id="stopVoice" class="danger" data-i18n="stopVoice">Stop voice</button>
-        <button id="health" class="secondary" data-i18n="check">Check</button>
-        <button id="checkCable" class="secondary" data-i18n="checkCable">Check VB-Cable</button>
+
+      <div class="diagnosticsGrid">
+        <section class="card diagnosticsSummaryCard">
+          <div class="navigationCardHeader">
+            <div>
+              <h3 data-i18n="diagnosticsReadiness">Release readiness</h3>
+              <p id="diagnosticsGeneratedAt" class="hint">—</p>
+            </div>
+            <span id="diagnosticsOverallBadge" class="summaryChip">—</span>
+          </div>
+          <div class="statusGrid diagnosticsStatusGrid">
+            <div><span id="diagDesktopDot" class="dot"></span> <span data-i18n="diagDesktopServer">Desktop server</span> <small id="diagDesktopText">—</small></div>
+            <div><span id="diagBridgeDot" class="dot"></span> <span data-i18n="bridge">Bridge</span> <small id="diagBridgeText">—</small></div>
+            <div><span id="diagVoiceDot" class="dot"></span> <span data-i18n="voiceConversion">Voice conversion</span> <small id="diagVoiceText">—</small></div>
+            <div><span id="diagExtensionDot" class="dot"></span> <span data-i18n="diagExtension">Meeting extension</span> <small id="diagExtensionText">—</small></div>
+            <div><span id="diagSubtitleProtectionDot" class="dot"></span> <span data-i18n="diagSubtitleProtection">Subtitle protection</span> <small id="diagSubtitleProtectionText">—</small></div>
+            <div><span id="diagAssistantProtectionDot" class="dot"></span> <span data-i18n="diagAssistantProtection">Assistant protection</span> <small id="diagAssistantProtectionText">—</small></div>
+          </div>
+          <div class="buttons">
+            <button id="runDiagnostics" type="button" data-i18n="runDiagnostics">Run local self-test</button>
+            <button id="exportDiagnosticsJson" type="button" class="secondary" data-i18n="exportDiagnosticsJson">Export sanitized JSON</button>
+            <button id="exportDiagnosticsMarkdown" type="button" class="secondary" data-i18n="exportDiagnosticsMarkdown">Export sanitized Markdown</button>
+          </div>
+        </section>
+
+        <section class="card diagnosticsRuntimeCard">
+          <h3 data-i18n="diagnosticsRuntime">Runtime state</h3>
+          <div class="diagnosticsFacts">
+            <div><span data-i18n="diagnosticsAppVersion">App version</span><strong id="diagAppVersion">—</strong></div>
+            <div><span data-i18n="diagnosticsBuildMode">Build mode</span><strong id="diagBuildMode">—</strong></div>
+            <div><span data-i18n="diagnosticsLanguages">Incoming languages</span><strong id="diagLanguages">—</strong></div>
+            <div><span data-i18n="diagnosticsAssistantMode">Assistant analysis</span><strong id="diagAssistantMode">—</strong></div>
+            <div><span data-i18n="diagnosticsSessionState">Translation state</span><strong id="diagSessionState">—</strong></div>
+            <div><span data-i18n="diagnosticsMeetingHost">Active meeting host</span><strong id="diagMeetingHost">—</strong></div>
+          </div>
+          <h3 data-i18n="diagnosticsCounters">Local counters</h3>
+          <div id="diagnosticsCounterGrid" class="trainingMetricGrid diagnosticsCounterGrid"></div>
+          <button id="resetTransientState" type="button" class="danger" data-i18n="resetTransientState">Reset transient subtitle and assistant state</button>
+          <p class="hint" data-i18n="resetTransientStateHint">This clears temporary questions, pending analysis and deduplication buffers. It does not delete your profile, Answer Library or interview history.</p>
+        </section>
+
+        <section class="card diagnosticsPrivacyCard">
+          <h3 data-i18n="diagnosticsPrivacy">Privacy guarantees for this report</h3>
+          <ul class="privacyChecklist">
+            <li data-i18n="privacyNoRawAudio">Raw audio is not stored by the desktop app.</li>
+            <li data-i18n="privacyNoSecrets">API keys, bridge tokens, extension tokens and pairing codes are excluded.</li>
+            <li data-i18n="privacyNoTranscript">Subtitle text, translations, resume text and confirmed facts are excluded.</li>
+            <li data-i18n="privacyLocalOnly">The diagnostics screen does not call OpenAI.</li>
+          </ul>
+          <label><span data-i18n="diagnosticsReportPreview">Sanitized report preview</span><textarea id="diagnosticsReportPreview" class="codeTextarea" rows="22" readonly spellcheck="false"></textarea></label>
+        </section>
       </div>
     </section>
 
-    <section class="card">
-      <h2 data-i18n="extension">3. Extension</h2>
-      <p data-i18n="extensionText">Open the actual Meet/Zoom/Teams tab, click the Local Meet Translator extension icon once, connect that tab, then control translation here.</p>
-      <div class="buttons">
-        <button id="startTranslation" data-i18n="startTranslation">Start translation in browser</button>
-        <button id="stopTranslation" class="danger" data-i18n="stopTranslation">Stop translation</button>
-        <button id="openExtension" class="secondary" data-i18n="openExtension">Open browser extension folder</button>
+    <section id="answerLibraryScreen" class="appView focusedView" data-view="answer-library" hidden>
+      <div class="screenToolbar">
+        <button id="backFromAnswerLibrary" type="button" class="secondary backButton" data-i18n="backToMain">← Back</button>
+        <div class="screenToolbarTitle">
+          <p class="eyebrow" data-i18n="interviewWorkspace">Interview workspace</p>
+          <h2 data-i18n="answerLibraryTitle">Answer Library</h2>
+          <p data-i18n="answerLibraryScreenDescription">Create and lock reviewed answers. Stage 4 stores them locally and does not generate or send them automatically.</p>
+        </div>
+        <button id="newAnswerEntry" type="button" class="secondary" data-i18n="newAnswer">New answer</button>
       </div>
-      <p class="hint" data-i18n="extensionHint">If the log says the extension was not invoked, open the extension popup on the Meet/Zoom/Teams tab and press Connect this meeting tab.</p>
+
+      <div class="answerWorkspace">
+        <aside class="answerSidebar">
+          <div class="sidebarHeader">
+            <strong data-i18n="savedAnswers">Saved answers</strong>
+            <span id="answerLibraryScreenCount">0</span>
+          </div>
+          <div id="answerEntryList" class="answerEntryList"></div>
+          <p id="answerEmptyState" class="emptyState" data-i18n="answerLibraryEmpty">No saved answers</p>
+          <div class="buttons verticalButtons">
+            <button id="generateMissingLearningAids" type="button" class="secondary" data-i18n="generateMissingLearningAids">Add keywords and phrases to missing questions</button>
+            <button id="importAnswerLibrary" type="button" class="secondary" data-i18n="importAnswerLibrary">Import JSON</button>
+            <button id="exportAnswerLibrary" type="button" class="secondary" data-i18n="exportAnswerLibrary">Export JSON</button>
+            <button id="resetAnswerLibrary" type="button" class="danger" data-i18n="resetAnswerLibrary">Clear library</button>
+          </div>
+        </aside>
+
+        <div class="answerEditor">
+          <div id="answerLibraryDirtyBanner" class="dirtyBanner" hidden data-i18n="unsavedAnswerChanges">There are unsaved answer changes.</div>
+          <input id="answerEntryId" type="hidden" />
+          <label><span data-i18n="answerQuestion">Interview question</span><textarea id="answerQuestion" rows="3" placeholder="Tell me about yourself"></textarea></label>
+          <label><span data-i18n="answerAliases">Alternative English or Polish formulations, one per line</span><textarea id="answerAliases" rows="5" placeholder="Could you introduce yourself?&#10;Proszę opowiedzieć coś o sobie."></textarea></label>
+          <div class="grid threeColumns">
+            <label><span data-i18n="answerIntent">Intent / category</span><input id="answerIntent" placeholder="introduction / experience / conflict" /></label>
+            <label><span data-i18n="answerLevel">English level</span>
+              <select id="answerLevel">
+                <option value="A2">A2</option>
+                <option value="B1" selected>B1</option>
+                <option value="B2">B2</option>
+              </select>
+            </label>
+            <label><span data-i18n="answerStyle">Answer style</span>
+              <select id="answerStyle">
+                <option value="simple" data-i18n="answerStyleSimple">Simple</option>
+                <option value="technical" data-i18n="answerStyleTechnical">Technical</option>
+                <option value="star" data-i18n="answerStyleStar">STAR</option>
+                <option value="general" data-i18n="answerStyleGeneral">General</option>
+              </select>
+            </label>
+          </div>
+          <label><span data-i18n="answerText">Prepared answer</span><textarea id="answerText" rows="12"></textarea></label>
+          <label><span data-i18n="answerFirstSentence">First sentence / speaking start</span><textarea id="answerFirstSentence" rows="2"></textarea></label>
+          <div class="grid">
+            <label><span data-i18n="answerKeywords">Keywords, one per line</span><textarea id="answerKeywords" rows="7"></textarea></label>
+            <label><span data-i18n="answerUsefulPhrases">Useful phrases, one per line</span><textarea id="answerUsefulPhrases" rows="7" placeholder="The main difference is... — Главное различие заключается в..."></textarea></label>
+            <label><span data-i18n="answerGroundingFacts">Confirmed facts used, one per line</span><textarea id="answerGroundingFacts" rows="7"></textarea></label>
+          </div>
+          <p class="hint" data-i18n="learningAidsHint">Keywords and useful phrases are study aids. Generation preserves your reviewed answer and may use the OpenAI API.</p>
+          <p id="answerLearningAidsStatus" class="hint"></p>
+          <label class="check"><input id="answerLocked" type="checkbox" /> <span data-i18n="answerLocked">Lock this reviewed answer against automatic rewriting</span></label>
+          <div class="buttons screenActions">
+            <button id="generateAnswerLearningAids" type="button" class="secondary" data-i18n="generateLearningAids">Generate missing aids</button>
+            <button id="regenerateAnswerLearningAids" type="button" class="secondary" data-i18n="regenerateLearningAids">Regenerate aids</button>
+            <button id="saveAnswerEntry" type="button" data-i18n="saveAnswer">Save answer</button>
+            <button id="deleteAnswerEntry" type="button" class="danger" data-i18n="deleteAnswer">Delete answer</button>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="card">
-      <h2 data-i18n="log">Log</h2>
-      <pre id="log"></pre>
-    </section>
-  </main>
+      </div>
+    </main>
+  </div>
   <script src="i18n.js"></script>
+  <datalist id="sourceLanguageModes">
+    <option value="en-expected">English expected — auto + retry</option>
+    <option value="auto">Auto detect</option>
+    <option value="en">English strict</option>
+    <option value="pl">Polish</option>
+    <option value="ru">Russian</option>
+    <option value="de">German</option>
+    <option value="es">Spanish</option>
+  </datalist>
   <script src="renderer.js"></script>
 </body>
 </html>

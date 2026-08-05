@@ -1,3 +1,4 @@
+import argparse
 import base64
 import os
 import shlex
@@ -59,3 +60,18 @@ def convert(req: ConvertRequest, x_auth_token: str | None = Header(default=None)
             raise HTTPException(status_code=500, detail="RVC command did not create output wav")
         out = output_path.read_bytes()
         return {"ok": True, "audioMime": "audio/wav", "audioBase64": base64.b64encode(out).decode("ascii"), "mode": "external-rvc"}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Local Meet Translator voice conversion service")
+    parser.add_argument("--host", default=os.getenv("VOICE_CONVERSION_HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("VOICE_CONVERSION_PORT", "18799")))
+    args = parser.parse_args()
+
+    import uvicorn
+
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
+if __name__ == "__main__":
+    main()

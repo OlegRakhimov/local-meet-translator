@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" />
+  <title>Помощник на собеседовании</title>
+  <link rel="stylesheet" href="assistant-overlay.css" />
+</head>
+<body>
+  <main id="assistantRoot" class="assistantRoot idle">
+    <header class="dragBar">
+      <div>
+        <span class="eyebrow">LOCAL MEET TRANSLATOR</span>
+        <strong>Помощник на собеседовании</strong>
+      </div>
+      <div class="windowActions">
+        <span id="moveBadge" class="moveBadge" hidden>ПЕРЕМЕЩЕНИЕ</span>
+        <span id="freezeBadge" class="freezeBadge" hidden>ОТВЕТ ЗАКРЕПЛЁН</span>
+        <button id="moveAssistantOverlay" type="button" aria-label="Переместить окно" title="Переместить окно">↔</button>
+        <button id="decreaseAssistantOverlay" type="button" aria-label="Уменьшить окно" title="Уменьшить окно">−</button>
+        <button id="increaseAssistantOverlay" type="button" aria-label="Увеличить окно" title="Увеличить окно">+</button>
+        <button id="hideAssistantOverlay" type="button" aria-label="Скрыть окно" title="Скрыть окно">×</button>
+      </div>
+    </header>
+
+    <section class="modePanel">
+      <div>
+        <span class="label">Текущий режим</span>
+        <strong id="modeBadge">ЖДУ ВОПРОС</strong>
+        <span id="interviewProfileBadge" class="profileBadge">ОБЩИЙ ПРОФИЛЬ</span>
+      </div>
+      <p id="modeDescription">Помощник слушает собеседника и автоматически подготовит ответ.</p>
+    </section>
+
+    <section id="utterancePanel" class="utterancePanel">
+      <div class="sectionHeaderRow">
+        <div>
+          <span class="label">Реплики собеседника</span>
+          <strong>Последние распознанные фразы</strong>
+        </div>
+        <button id="clearUtteranceFeed" type="button" class="secondaryButton">Очистить</button>
+      </div>
+      <div id="liveContextEmpty" class="liveContextEmpty">Реплик пока нет.</div>
+      <div id="liveContextFeed" class="liveContextFeed"></div>
+    </section>
+
+    <section class="questionBlock">
+      <span id="questionLabel" class="label">Текущий вопрос</span>
+      <p id="questionText">Жду вопрос или задачу по программированию…</p>
+    </section>
+
+    <section id="pendingBlock" class="pendingBlock" hidden>
+      <div>
+        <span class="label">Следующий вопрос готов</span>
+        <p id="pendingQuestionText"></p>
+        <p id="pendingAnswerError" class="pendingAnswerError" hidden></p>
+      </div>
+      <div class="pendingAnswerActions">
+        <button id="loadPendingAnswer" type="button">Следующий вопрос</button>
+        <button id="retryPendingAnswer" type="button" class="secondaryButton" hidden>Повторить</button>
+        <button id="dismissPendingAnswer" type="button" class="secondaryButton" hidden>Удалить</button>
+      </div>
+    </section>
+
+    <section id="suggestionBlock" class="suggestionBlock" hidden>
+      <div class="metaRow">
+        <span id="sourceBadge" class="sourceBadge">ИИ</span>
+        <span id="taskTypeBadge" class="taskTypeBadge">ОТВЕТ</span>
+        <span id="confidenceBadge" class="confidenceBadge">НИЗКАЯ УВЕРЕННОСТЬ</span>
+      </div>
+
+      <div class="saveStatusRow">
+        <span id="sessionSaveStatus" class="saveStatus idle">Ответ будет сохранён автоматически</span>
+        <button id="saveAnswerToLibrary" type="button" class="secondaryButton">Сохранить в Answer Library</button>
+      </div>
+      <p id="librarySaveStatus" class="librarySaveStatus" hidden></p>
+
+      <section id="teleprompterBlock" class="teleprompterBlock">
+        <div class="teleprompterHeader">
+          <div>
+            <span class="eyebrow">ПОДСКАЗКА ДЛЯ ОТВЕТА</span>
+            <strong id="chunkProgress">1 / 1</strong>
+          </div>
+          <span id="chunkModeBadge" class="chunkModeBadge">СРЕДНИЕ ФРАГМЕНТЫ</span>
+        </div>
+        <div class="firstSentenceBlock">
+          <span class="label">Начните с этой фразы</span>
+          <p id="firstSentence"></p>
+        </div>
+        <div class="activeChunkBlock">
+          <span class="label">Скажите сейчас</span>
+          <p id="activeChunk"></p>
+        </div>
+        <div class="teleprompterControls">
+          <button id="previousChunk" type="button">← Назад</button>
+          <button id="finishCurrentAnswer" type="button">Завершить ответ</button>
+          <button id="nextChunk" type="button">Далее →</button>
+        </div>
+        <div id="teleprompterGuidance" class="teleprompterGuidance">
+          <div id="planColumn">
+            <span class="label">План ответа</span>
+            <ul id="answerPlan"></ul>
+          </div>
+          <div id="keywordsColumn">
+            <span class="label">Ключевые слова</span>
+            <div id="keywordChips" class="keywordChips"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="codingSolutionBlock" class="codingSolutionBlock" hidden>
+        <div class="codingHeader">
+          <div>
+            <span class="eyebrow">РЕШЕНИЕ ЗАДАЧИ</span>
+            <strong id="codeLanguage">Java</strong>
+          </div>
+          <span class="codeReadyBadge">КОД ГОТОВ</span>
+        </div>
+        <div class="codeBlock">
+          <span class="label">Код</span>
+          <pre><code id="codeText"></code></pre>
+        </div>
+        <details class="solutionDetailsPanel">
+          <summary>Подробности решения</summary>
+          <div class="approachBlock">
+            <span class="label">Краткая идея решения</span>
+            <p id="approachSummary"></p>
+          </div>
+          <div class="codingColumns">
+            <div>
+              <span class="label">План реализации</span>
+              <ol id="implementationPlan"></ol>
+            </div>
+            <div>
+              <span class="label">Сложность</span>
+              <p id="complexityText"></p>
+              <span class="label secondaryLabel">Граничные случаи</span>
+              <ul id="edgeCases"></ul>
+            </div>
+          </div>
+          <div class="codeWalkthroughPanel">
+            <span class="label">Объяснение кода по строкам</span>
+            <ol id="codeWalkthrough"></ol>
+          </div>
+          <div class="speakingNotesBlock">
+            <span class="label">Что говорить во время написания кода</span>
+            <ul id="speakingNotes"></ul>
+          </div>
+        </details>
+      </section>
+
+      <details class="detailsPanel">
+        <summary>Полный ответ и обоснование</summary>
+        <div class="answerBlock">
+          <span class="label">Полный предлагаемый ответ</span>
+          <p id="answerText"></p>
+        </div>
+        <div id="fallbackBlock" class="fallbackBlock" hidden>
+          <span class="label">Честный вариант, если опыта нет</span>
+          <p id="fallbackText"></p>
+        </div>
+        <div class="columns">
+          <div>
+            <span class="label">Основные пункты</span>
+            <ul id="keyPoints"></ul>
+          </div>
+          <div>
+            <span class="label">Использованные факты</span>
+            <ul id="basis"></ul>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section id="codingFocusPanel" class="codingFocusPanel" hidden>
+      <div class="codingFocusHeader">
+        <div>
+          <span class="eyebrow">ТЕКУЩАЯ ЗАДАЧА ПО ПРОГРАММИРОВАНИЮ</span>
+          <strong>Задача и код остаются закреплёнными</strong>
+        </div>
+        <div class="codingFocusActions">
+          <button id="endCodingFocus" type="button">Завершить задачу с кодом</button>
+        </div>
+      </div>
+
+      <section id="pendingCodingChangeBlock" class="pendingCodingChangeBlock" hidden>
+        <div class="pendingChangeCopy">
+          <span id="pendingCodingChangeLabel" class="label">Новое условие ждёт подтверждения</span>
+          <strong id="pendingCodingChangeType"></strong>
+          <p id="pendingCodingChangeText"></p>
+          <p id="pendingCodingChangeReason" class="pendingCodingChangeReason"></p>
+          <p id="pendingCodingChangeError" class="pendingCodingChangeError" hidden></p>
+        </div>
+        <div class="pendingChangeActions">
+          <button id="applyCodingChange" type="button">Применить к решению</button>
+          <button id="dismissCodingChange" type="button" class="secondaryButton">Оставить текущее решение</button>
+        </div>
+      </section>
+
+      <section id="codingFollowUpBlock" class="codingFollowUpBlock" hidden>
+        <div class="followUpHeader">
+          <div><span class="label">Вопрос по текущему решению</span><p id="codingFollowUpQuestion"></p></div>
+          <button id="analyzeCodingFollowUp" type="button">Подготовить ответ</button>
+        </div>
+        <div id="codingFollowUpStatus" class="codingFollowUpStatus"></div>
+        <div id="codingFollowUpAnswerBlock" class="codingFollowUpAnswerBlock" hidden>
+          <span class="label">Короткий ответ</span>
+          <p id="codingFollowUpFirstSentence"></p>
+          <p id="codingFollowUpAnswer"></p>
+        </div>
+      </section>
+
+      <section id="pendingCodingTaskBlock" class="pendingCodingTaskBlock" hidden>
+        <div><span id="pendingCodingTaskLabel" class="label">Обнаружена новая coding-задача</span><p id="pendingCodingTaskText"></p></div>
+        <button id="openPendingCodingTask" type="button">Перейти к новой задаче</button>
+      </section>
+
+      <details id="activeCodingInputsBlock" class="activeCodingInputsBlock" hidden>
+        <summary id="activeCodingInputsLabel">Учитываемые условия</summary>
+        <div id="activeCodingInputs" class="activeCodingInputs"></div>
+      </details>
+      <button id="clearCodingContext" type="button" class="hiddenCompatibilityButton" hidden>Очистить реплики</button>
+    </section>
+
+    <section id="emptyState" class="emptyState">Жду вопрос. Ответ будет подготовлен автоматически.</section>
+    <section id="errorState" class="errorState" hidden></section>
+  </main>
+  <script src="assistant-overlay-renderer.js"></script>
+</body>
+</html>

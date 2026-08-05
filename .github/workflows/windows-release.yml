@@ -1,0 +1,59 @@
+name: Windows release build
+
+'on':
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-installer:
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop-app/package-lock.json
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: voice-conversion/requirements-build.lock
+
+      - name: Install Poppler runtime
+        shell: powershell
+        run: .\scripts\windows\install-poppler.ps1
+
+      - name: Build and verify installer
+        shell: cmd
+        run: BUILD_DESKTOP_WINDOWS.cmd
+
+      - name: Upload verified release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-meet-translator-windows-${{ github.ref_name }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            desktop-app/dist/Local Meet Translator-*-Setup-x64.exe
+            desktop-app/dist/Local Meet Translator-*-Setup-x64.exe.sha256
+            desktop-app/dist/RELEASE_MANIFEST.json

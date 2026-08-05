@@ -9,7 +9,7 @@ Local Meet Translator is a local translator for web meetings. The desktop app is
 - Can translate your own speech for the other participant: your microphone → transcription → translation → TTS → virtual audio cable → meeting microphone.
 - Supports Chrome, Edge, and Firefox through separate extension folders.
 - Keeps the OpenAI API key locally in the desktop app, not in the browser extension.
-- Supports normal OpenAI TTS and optional RVC / voice conversion if you have a separate voice-conversion server and trained model.
+- Supports normal OpenAI TTS and a bundled voice-conversion service; actual RVC additionally requires a trained model and a configured external inference command.
 
 ## 2. Project structure
 
@@ -22,6 +22,7 @@ local-meet-translator/
   firefox-extension/         Firefox extension
   voice-conversion/          optional RVC / voice conversion server
   docs/                      additional materials / landing page
+  BUILD_DESKTOP_WINDOWS.cmd
   INSTALL_DESKTOP_WINDOWS.cmd
   RUN_DESKTOP_DEV.cmd
   README_RU.md
@@ -33,13 +34,28 @@ local-meet-translator/
 For normal Windows usage:
 
 - Windows 10 / 11.
-- Node.js LTS — required to build the desktop installer.
-- Java 17+ — required for the bridge.
-- Google Chrome, Microsoft Edge, or Firefox.
+- Google Chrome, Microsoft Edge, or Firefox 142+.
 - OpenAI API key.
 - VB-Audio Virtual Cable or a similar virtual audio cable — required only if the other participant must hear your translated voice.
+- Java and Python do not need to be installed: the installer contains a minimal Java runtime and a standalone voice-conversion service.
 
-For bridge development, Maven is also needed if you rebuild `local-meet-bridge` manually.
+To build from source:
+
+- Node.js 20+.
+- JDK 21 with `jdeps` and `jlink`.
+- Python x64 3.11, 3.12, or 3.13.
+- Poppler for Windows with `pdftotext.exe`; the build copies its runtime into the installer, while CI installs it through Chocolatey.
+- Maven does not need to be installed: Maven Wrapper pins and downloads Maven 3.9.16.
+
+Run the complete build with one command from the project root:
+
+```text
+BUILD_DESKTOP_WINDOWS.cmd
+```
+
+It builds the bridge through Maven Wrapper, creates a minimal Java runtime with `jdeps`/`jlink`, packages the Python service as an `.exe` with PyInstaller, bundles the local Poppler `pdftotext.exe` runtime for PDF import, installs the exact npm dependency tree with `npm ci`, and only then starts electron-builder. `INSTALL_DESKTOP_WINDOWS.cmd` invokes the same build and then opens the output directory.
+
+Electron and electron-builder are intentionally pinned in `desktop-app/package.json`; do not bump them casually. The `desktop-app/npm-overrides/temp` shim is a temporary workaround for the old `electron-winstaller` chain so the build can avoid the deprecated `rimraf@2.6.3` path without breaking packaging.
 
 ## 4. Installing the Windows desktop app
 
@@ -47,7 +63,7 @@ For bridge development, Maven is also needed if you rebuild `local-meet-bridge` 
 2. Double-click:
 
 ```text
-INSTALL_DESKTOP_WINDOWS.cmd
+BUILD_DESKTOP_WINDOWS.cmd
 ```
 
 The script builds the desktop app and creates an installer here:
@@ -59,7 +75,7 @@ desktop-app\dist\
 Run the installer named like:
 
 ```text
-Local Meet Translator-1.0.0-Setup-x64.exe
+Local Meet Translator-1.0.29-Setup-x64.exe
 ```
 
 After installation, a **Local Meet Translator** shortcut appears on the desktop and in the Start menu.
@@ -78,7 +94,7 @@ C:\Users\<user>\AppData\Roaming\Local Meet Translator\.env
 
 ## 5. Installing browser extensions
 
-The extension popup does not control translation. It only shows status. Start / Stop live in the desktop app.
+The extension popup pairs the browser extension with the desktop app and connects the current meeting tab. Start / Stop still live in the desktop app.
 
 ### Chrome
 
@@ -112,6 +128,10 @@ edge-extension
 firefox-extension/manifest.json
 ```
 
+Firefox uses a dedicated architecture: a page bridge intercepts incoming WebRTC audio tracks in Meet / Zoom / Teams, while a persistent background page sends audio chunks to the bridge and handles microphone capture and TTS. The Firefox extension does not use Chromium `offscreen`/`tabCapture`. It captures meeting WebRTC audio only, not arbitrary system audio.
+
+Firefox 142 or newer is required. During installation, Firefox shows built-in consent for transmitting the token and conference audio to the local desktop service.
+
 Important: after replacing extension files, always press **Reload** on the browser extensions page and reload the Meet / Zoom / Teams tab.
 
 ## 6. First run
@@ -121,13 +141,11 @@ Important: after replacing extension files, always press **Reload** on the brows
 3. Click **Save .env**.
 4. Click **Start bridge**.
 5. Open a Meet / Zoom / Teams tab.
-6. Click in the desktop app:
+6. Copy the **pairing code** shown in the desktop app, open the extension popup on that meeting tab, paste the code, and click **Pair with desktop**.
+7. Click **Connect this meeting tab** in the popup.
+8. In the desktop app, choose **Start voice translation for the other participant** or **Start subtitles only**.
 
-```text
-Start translation in browser
-```
-
-Do not use the extension popup to start translation.
+The popup does not start translation. It only pairs the extension with the desktop app and identifies the exact meeting tab that the desktop app should control.
 
 ## 7. Language settings
 
@@ -204,7 +222,6 @@ Your physical microphone
 In the outgoing voice block:
 
 ```text
-ON: my microphone → translation → voice to meeting = ON
 My speech source language = your language, for example ru
 Meeting target language = other participant language, for example en
 My microphone name contains = Realtek / Mikrofon / USB / Headset
@@ -214,6 +231,10 @@ Advanced TTS output device ID = usually empty
 ```
 
 Do not put `CABLE Output` into **My microphone name contains**. That field must identify your real microphone.
+
+Before starting, confirm **I selected CABLE Output as the microphone in Zoom / Meet / Teams**, then click the single green **Start voice translation for the other participant** button. No additional Start button is required.
+
+Voice translation is actually active only when the status panel is green and confirms that the bridge, meeting tab, physical microphone, and CABLE Input output are ready.
 
 ### Google Meet settings
 
@@ -257,7 +278,9 @@ Enable voice conversion / RVC hook = OFF
 Outgoing voice style = OpenAI voice
 ```
 
-Enable RVC only if you have a trained model and a running voice-conversion server.
+Enable RVC only if you have a trained model and configured `RVC_INFER_CMD`. The voice-conversion server itself is bundled with the desktop application.
+
+Treat the desktop Electron versions as locked release inputs, not ordinary dependencies.
 
 ## 11. Updating the project
 
@@ -329,3 +352,201 @@ Outgoing voice style = OpenAI voice
 ## 13. Security
 
 The OpenAI API key is stored locally in the desktop app `.env` file. It should not be copied into the browser extension and should not be included in archives shared with other people.
+
+## 14. Local protected subtitle window
+
+Starting with desktop version `1.0.8`, incoming subtitles are no longer injected into the Google Meet, Zoom, or Teams page DOM. The extension sends transcript and translation events to the local desktop app, and Electron renders them in a separate window.
+
+Data flow:
+
+```text
+tab audio → extension → Java bridge → extension → localhost:18798/extension/subtitle → protected Electron window
+```
+
+The **Local subtitle window** section provides:
+
+- enable/disable;
+- always-on-top;
+- capture protection;
+- click-through mode;
+- original and translated text controls;
+- font size;
+- background opacity;
+- maximum visible lines;
+- a local protection self-test.
+
+Default shortcuts:
+
+```text
+Ctrl+Shift+S — show or hide the subtitle window
+Ctrl+Shift+X — toggle click-through mode
+```
+
+On Windows, Electron applies the operating-system window protection before sensitive subtitle content is loaded. The desktop status reports whether protection was actually applied.
+
+For maximum reliability, share a browser tab or a specific meeting window. Entire-screen behavior depends on Windows and the capture application. The built-in self-test is useful, but it does not replace a manual Google Meet, Zoom, or Teams preview test.
+
+## 15. Stage 3: repeat suppression and candidate profile
+
+Desktop `1.0.9` and extensions `1.6.9` add two layers of incoming subtitle repeat suppression:
+
+1. the extension keeps a short incoming phrase history and avoids re-sending a phrase from a later audio chunk;
+2. the desktop app checks events again by meeting tab, extension client and translation channel before rendering them.
+
+A genuine longer completion is preserved: it replaces the earlier partial line instead of creating another subtitle line. Translation models, languages and translated wording are not changed by this logic.
+
+### Candidate profile
+
+The desktop app now includes **Candidate Profile and Confirmed Facts**. Data is stored locally at:
+
+```text
+%APPDATA%\Local Meet Translator\candidate-profile.json
+```
+
+The profile contains identity, target role, location, languages, skills, experience, projects, education, imported resume text and factual statements.
+
+Facts have two independent flags:
+
+- `confirmed` — reviewed by the user and eligible for future assistant grounding;
+- `locked` — must not be automatically rewritten or replaced.
+
+The profile imports `JSON`, `TXT`, `MD`, `PDF` and `DOCX`. TXT/MD are read directly, DOCX is parsed by a local bounded ZIP/XML reader, and PDF uses the bundled local `pdftotext.exe`. Import does not upload the document. Extracted text is loaded only for manual review and is not converted into confirmed facts automatically. Image-only scanned PDFs require OCR; OCR is intentionally not enabled in version 1.0.29.
+
+## 16. Stage 4: focused profile and Answer Library screens
+
+Desktop `1.0.10` reduces the main controller page and moves interview data into focused in-app screens.
+
+The main page now keeps compact cards for:
+
+- **Candidate profile** — identity, target role and confirmed-fact count;
+- **Answer Library** — saved and locked answer counts.
+
+**Open profile** navigates to a dedicated screen inside the same desktop window. The existing profile file is preserved without migration:
+
+```text
+%APPDATA%\Local Meet Translator\candidate-profile.json
+```
+
+Profile groups are collapsible: basic information, skills and education, experience and projects, imported source, and confirmed facts. Leaving the screen or closing the app with unsaved changes produces a warning.
+
+### Answer Library
+
+Reviewed answers are stored locally at:
+
+```text
+%APPDATA%\Local Meet Translator\answer-library.json
+```
+
+Each entry contains the interview question, intent/category, English level (`A2`, `B1`, `B2`), answer style (`simple`, `technical`, `STAR`, `general`), prepared answer, first sentence, keywords, grounding facts and a `locked` flag.
+
+Stage 4 is manual-only: the app does not generate answers or send them to OpenAI. The library can be imported from or exported to JSON.
+
+## Stage 5: Live Interview Assistant
+
+The desktop app can now detect interview questions from incoming subtitles and display a suggestion in a separate protected Electron window.
+
+Key rules:
+
+- outgoing user speech is not treated as an interviewer question;
+- repeated and near-identical questions are suppressed;
+- the local Answer Library is matched before any AI request;
+- a suitable local answer does not call the OpenAI API;
+- AI suggestions are grounded only in the saved profile, confirmed facts, and closest reviewed answers;
+- suggestions are never spoken automatically;
+- automatic AI analysis is disabled by default to avoid unexpected API spend;
+- the assistant window uses `setContentProtection(true)` on supported platforms.
+
+The Live Interview Assistant screen lets the user select A2/B1/B2, choose an answer style, enable automatic analysis, manually analyze the latest question, and control the separate assistant window.
+
+Default assistant-window hotkey: `Ctrl+Shift+A`.
+
+## Stage 6: English teleprompter
+
+The protected assistant window can now present an existing reviewed suggestion as readable speaking chunks. The teleprompter does not rewrite, expand, or invent answer content; it only splits the already prepared answer locally.
+
+Features:
+
+- short, medium, or long speaking chunks;
+- a separate first sentence for starting the answer;
+- answer plan and keywords;
+- previous and next chunk navigation;
+- freeze the current answer;
+- a new question and answer are queued while frozen instead of replacing the visible answer;
+- load the pending answer manually;
+- existing supported screen-capture protection remains enabled;
+- no automatic TTS for interview suggestions.
+
+Default hotkeys:
+
+- `Ctrl+Shift+Right` — next chunk;
+- `Ctrl+Shift+Left` — previous chunk;
+- `Ctrl+Shift+F` — freeze or unfreeze;
+- `Ctrl+Shift+Enter` — load the pending answer.
+
+Stage 6 adds no new OpenAI API call. Chunking is performed locally after Live Interview Assistant has already selected a reviewed library answer or produced a grounded suggestion.
+
+## Stage 7: Interview Trainer and movable teleprompter
+
+The Interview Trainer uses reviewed entries from the local Answer Library. It creates local practice sessions, stores the user's practice answer, rating, confidence and notes, and produces Markdown or JSON progress reports. Training content is not sent to OpenAI.
+
+The protected Interview Assistant window can now enter Move mode. Use the Move window button or `Ctrl+Shift+M`, drag the title area to another position, then finish Move mode. The selected bounds remain stored in the existing assistant window state file.
+
+Training history is stored at `%APPDATA%\\Local Meet Translator\\interview-training.json`.
+
+## Stage 8: post-session live interview review
+
+The desktop app now has an explicit local lifecycle for a live interview session:
+
+1. Open Live Interview Assistant.
+2. Enter the session title, role and company.
+3. Start the live session before the call.
+4. Detected incoming questions and prepared suggestions are stored locally.
+5. End the live session after the call and open Post-session Review.
+
+The review screen lets you mark whether you answered, add self-ratings and confidence, write notes and flag questions for more practice. Reports can be exported as Markdown or JSON.
+
+History is stored in `%APPDATA%\Local Meet Translator\live-interviews.json`. Raw audio is not stored. Reviewing a session does not create additional OpenAI requests.
+
+## Conversation context and coding tasks (1.0.16)
+
+The assistant now distinguishes between:
+
+- an actionable interview question;
+- a practical coding task;
+- an additional constraint for the active coding task;
+- a normal remark, joke, or conversational comment.
+
+Normal remarks remain visible in local subtitles but do not replace the current answer and do not start a new AI analysis. A distinct new question is analyzed separately. Constraints such as `Use Java`, `without streams`, or `explain the time complexity` are merged into the active coding task.
+
+For coding tasks the protected assistant displays a speaking start, a brief approach, an implementation plan, complete code, an ordered line-by-line walkthrough, complexity, edge cases, and short notes the candidate can say while coding.
+
+Java is used when no language is requested. Explicit requests for Kotlin, Python, JavaScript, TypeScript, or SQL are respected. A standalone algorithm task normally receives a runnable example with a class, `main`, sample data, and a helper method, while method-only or Android-specific requests keep the requested scope.
+
+Coding guidance is shown in the protected Interview Assistant window and in the desktop assistant screen. It is also preserved in the local post-session review. Raw audio is still not stored.
+
+## Diagnostics, privacy and release readiness (1.0.17)
+
+Version 1.0.17 adds a separate **Diagnostics and privacy** screen. It runs local readiness checks for the desktop server, Java bridge, optional voice service, browser-extension connection and protected subtitle/assistant windows.
+
+The exported diagnostics report is intentionally sanitized. It does not contain API keys, bridge or extension tokens, pairing codes, subtitle/transcript text, translations, resume text or confirmed candidate facts. The report may contain only service states, application/runtime versions, redacted local paths, the active meeting hostname and numeric counters.
+
+The desktop companion now enforces a single running instance, constant-time extension-token comparison, bounded JSON request bodies, local rate limits, no-store response headers, strict Content Security Policy and blocked external navigation in Electron windows.
+
+The Windows build writes these files to `desktop-app/dist`:
+
+- `Local Meet Translator-1.0.17-Setup-x64.exe`
+- `Local Meet Translator-1.0.17-Setup-x64.exe.sha256`
+- `RELEASE_MANIFEST.json`
+
+The diagnostics action **Reset transient subtitle and assistant state** clears only temporary questions, pending analysis and deduplication buffers. It does not delete the candidate profile, Answer Library, training history or live-interview reviews.
+
+## Stage 16: document import, compliance mode, tab visibility and reproducible release (1.0.29)
+
+Candidate Profile now imports PDF and DOCX locally. DOCX uses a bounded ZIP/XML reader, while PDF uses a bundled Poppler `pdftotext.exe` process launched without a shell and with output and timeout limits. Extracted text remains review material; no facts are created automatically. Image-only scanned PDFs require OCR, which is not included.
+
+**Exam compliance mode** disables Interview Assistant, automatic analysis, AI learning-aid generation, coding revisions, teleprompter and capture-protected overlays. Enforcement exists both in the renderer and the Electron main process. Previous assistant/protection preferences are snapshotted when the mode is enabled and restored when it is disabled. It does not hide the application, extension, processes, virtual audio devices or network activity, and it is not a proctoring bypass.
+
+The Edge extension's `DESKTOP_BLUR_STATE` is now consumed by `/extension-client/armed`. Hidden armed tabs cannot remain active; visible tabs receive first routing priority. This works together with the persisted `desktopCommandSeq` cursor to avoid routing commands to a background tab or replaying acknowledged commands.
+
+The Windows build stages and verifies Poppler, validates the packaged runtime and records component hashes in `RELEASE_MANIFEST.json`. `.github/workflows/windows-release.yml` runs the same verified build on a Windows runner and uploads the installer, SHA-256 file and release manifest.
+

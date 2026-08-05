@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Local Meet Translator (Edge)",
-  "version": "1.6.1",
+  "version": "1.7.5",
   "description": "Thin client for Local Meet Translator desktop app in Edge.",
   "permissions": [
     "storage",
@@ -9,6 +9,7 @@
     "tabCapture",
     "audioCapture",
     "scripting",
+    "sidePanel",
     "offscreen",
     "tabs"
   ],
@@ -28,6 +29,17 @@
   "background": {
     "service_worker": "background.js"
   },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "commands": {
+    "translate-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+T"
+      },
+      "description": "Translate the selected text in the side panel"
+    }
+  },
   "content_scripts": [
     {
       "matches": [
@@ -38,7 +50,6 @@
         "https://teams.live.com/*"
       ],
       "js": [
-        "i18n.js",
         "content_script.js"
       ],
       "run_at": "document_idle"

@@ -1,0 +1,8 @@
+{
+  "name": "temp",
+  "version": "0.9.5",
+  "main": "index.js",
+  "license": "MIT",
+  "description": "Temporary local compatibility shim for electron-winstaller temp usage",
+  "dependencies": {}
+}

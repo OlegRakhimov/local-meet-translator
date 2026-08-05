@@ -1,34 +1,27 @@
-﻿# secrets
-.env
-.env.*
-!.env.example
-
-# dependencies
-node_modules/
-
-# build outputs
-dist/
-out/
-build-output/
-target/
-.gradle/
-coverage/
-
-# IDE / OS
-.idea/
-.vscode/
+﻿# OS / IDE
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.iml
 
-# logs / temp
-*.log
-*.tmp
-*.bak
-tmp/
-temp/
-logs/
+# Dependencies and build outputs
+**/node_modules/
+**/.venv/
+**/dist/
+**/target/
+out/
+**/*.tar
+**/*.zip
 
-# archives
-*.zip
-*.7z
-*.rar
+# Local configs / secrets
+.env
+local.properties
+# Poppler runtime staged by the Windows release build
+document-tools/poppler/*
+!document-tools/poppler/.gitkeep
+!document-tools/poppler/README.txt
+
+# Python generated files
+__pycache__/
+*.py[cod]

@@ -1,0 +1,99 @@
+const { normalizeQuestionText, questionTokens } = require('./question-detector');
+
+const STOP_WORDS = new Set([
+  'a','an','the','and','or','to','of','in','on','for','with','about','me','you','your','my','is','are','was','were',
+  'do','does','did','can','could','would','will','please','tell','describe','explain','give','example'
+]);
+
+function meaningfulTokens(value) {
+  return questionTokens(value).filter(token => !STOP_WORDS.has(token));
+}
+
+function englishSide(value) {
+  return String(value || "").split(/\s+(?:—|–|-)\s+/)[0].trim();
+}
+
+function overlapScore(queryTokens, candidateTokens) {
+  const query = new Set(queryTokens);
+  const candidate = new Set(candidateTokens);
+  if (!query.size || !candidate.size) return 0;
+  let overlap = 0;
+  for (const token of query) if (candidate.has(token)) overlap += 1;
+  const recall = overlap / query.size;
+  const precision = overlap / candidate.size;
+  return (recall * 0.7) + (precision * 0.3);
+}
+
+function scoreAnswerEntry(question, entry = {}) {
+  const normalizedQuestion = normalizeQuestionText(question);
+  const normalizedSaved = normalizeQuestionText(entry.question || '');
+  if (!normalizedQuestion || !normalizedSaved || !entry.answer) return 0;
+  if (normalizedQuestion === normalizedSaved) return 1;
+
+  const queryTokens = meaningfulTokens(normalizedQuestion);
+  const savedTokens = meaningfulTokens(normalizedSaved);
+  const aliases = Array.isArray(entry.aliases) ? entry.aliases.filter(Boolean) : [];
+  const normalizedAliases = aliases.map(alias => normalizeQuestionText(alias)).filter(Boolean);
+  if (normalizedAliases.includes(normalizedQuestion)) return 0.99;
+  const aliasScore = normalizedAliases.reduce((best, alias) => {
+    const score = overlapScore(queryTokens, meaningfulTokens(alias));
+    const containsBonus = normalizedQuestion.includes(alias) || alias.includes(normalizedQuestion) ? 0.12 : 0;
+    return Math.max(best, score + containsBonus);
+  }, 0);
+  const keywordTokens = meaningfulTokens((Array.isArray(entry.keywords) ? entry.keywords : [entry.keywords || '']).map(englishSide).join(' '));
+  const phraseTokens = meaningfulTokens((Array.isArray(entry.usefulPhrases) ? entry.usefulPhrases : [entry.usefulPhrases || '']).map(englishSide).join(' '));
+  const intentTokens = meaningfulTokens(entry.intent || '');
+  let score = Math.max(overlapScore(queryTokens, savedTokens), aliasScore) * 0.62;
+  score += overlapScore(queryTokens, keywordTokens) * 0.22;
+  score += overlapScore(queryTokens, phraseTokens) * 0.08;
+  score += overlapScore(queryTokens, intentTokens) * 0.08;
+
+  if (normalizedQuestion.includes(normalizedSaved) || normalizedSaved.includes(normalizedQuestion)) score += 0.12;
+  if (entry.locked === true) score += 0.03;
+  return Math.max(0, Math.min(1, score));
+}
+
+function entryToSuggestion(entry, score) {
+  const keywords = Array.isArray(entry.keywords) ? entry.keywords.filter(Boolean).map(englishSide).slice(0, 6) : [];
+  const usefulPhrases = Array.isArray(entry.usefulPhrases) ? entry.usefulPhrases.filter(Boolean).map(englishSide).slice(0, 3) : [];
+  const facts = Array.isArray(entry.groundingFacts) ? entry.groundingFacts.filter(Boolean).slice(0, 10) : [];
+  return {
+    source: 'library',
+    sourceEntryId: String(entry.id || ''),
+    responseType: 'interview_answer',
+    question: String(entry.question || ''),
+    firstSentence: String(entry.firstSentence || '').trim() || String(entry.answer || '').split(/(?<=[.!?])\s+/)[0] || '',
+    answer: String(entry.answer || ''),
+    keyPoints: [...keywords, ...usefulPhrases],
+    basis: facts,
+    confidence: score >= 0.82 ? 'high' : 'medium',
+    experienceGap: false,
+    safeFallback: '',
+    score
+  };
+}
+
+function matchAnswerLibrary(question, entries = [], { threshold = 0.52 } = {}) {
+  const ranked = (Array.isArray(entries) ? entries : [])
+    .map(entry => ({ entry, score: scoreAnswerEntry(question, entry) }))
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0] || null;
+  return {
+    matched: !!best && best.score >= threshold,
+    score: best ? best.score : 0,
+    entry: best ? best.entry : null,
+    suggestion: best && best.score >= threshold ? entryToSuggestion(best.entry, best.score) : null,
+    candidates: ranked.slice(0, 5)
+  };
+}
+
+module.exports = {
+  STOP_WORDS,
+  meaningfulTokens,
+  englishSide,
+  overlapScore,
+  scoreAnswerEntry,
+  entryToSuggestion,
+  matchAnswerLibrary
+};

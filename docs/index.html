@@ -46,10 +46,10 @@
           </p>
 
           <div class="cta-row" id="install">
-            <a class="btn btn--primary" href="__CHROME_WEB_STORE_URL__" target="_blank" rel="noopener">
+            <a class="btn btn--primary" data-landing-link="chrome" data-landing-fallback="#setup" target="_blank" rel="noopener">
               Install for Chrome
             </a>
-            <a class="btn btn--primary" href="__EDGE_ADDONS_URL__" target="_blank" rel="noopener">
+            <a class="btn btn--primary" data-landing-link="edge" data-landing-fallback="#setup" target="_blank" rel="noopener">
               Install for Edge
             </a>
             <a class="btn btn--ghost" href="#download">Download Bridge</a>
@@ -122,18 +122,18 @@
         <div class="downloads">
           <div class="download">
             <div class="download__title">Windows</div>
-            <p class="download__desc">Starter bundle (bridge + scripts). Replace with your real file link.</p>
-            <a class="btn btn--primary" href="downloads/bridge-windows.zip">Download for Windows</a>
+            <p class="download__desc">Build the installer from source with the canonical Windows build command.</p>
+            <a class="btn btn--primary" href="#setup">Build for Windows</a>
           </div>
           <div class="download">
             <div class="download__title">macOS / Linux</div>
             <p class="download__desc">Provide a tar/zip or a one-line installer. Replace with your real link.</p>
-            <a class="btn btn--ghost" href="__DOWNLOAD_MAC_LINUX_URL__">Download for macOS/Linux</a>
+            <a class="btn btn--ghost" data-landing-link="macLinux" data-landing-fallback="#download">Download for macOS/Linux</a>
           </div>
           <div class="download">
             <div class="download__title">Source</div>
             <p class="download__desc">Prefer open source? Link the GitHub repository here.</p>
-            <a class="btn btn--ghost" href="__GITHUB_REPO_URL__" target="_blank" rel="noopener">View on GitHub</a>
+            <a class="btn btn--ghost" data-landing-link="github" data-landing-fallback="../README_EN.md" target="_blank" rel="noopener">View on GitHub</a>
           </div>
         </div>
         <p class="fineprint">
@@ -249,8 +249,8 @@
           <div class="footer__meta">© <span id="y"></span> — All rights reserved.</div>
         </div>
         <div class="footer__links">
-          <a href="__GITHUB_REPO_URL__" target="_blank" rel="noopener">GitHub</a>
-          <a href="mailto:__SUPPORT_EMAIL__">Support</a>
+          <a data-landing-link="github" data-landing-fallback="../README_EN.md" target="_blank" rel="noopener">GitHub</a>
+          <a data-landing-link="support" data-landing-fallback="#faq">Support</a>
           <a href="#privacy">Privacy</a>
         </div>
       </div>

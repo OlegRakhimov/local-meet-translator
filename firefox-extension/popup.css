@@ -13,6 +13,7 @@ h1 { margin: 0 0 8px 0; font-size: 18px; }
 .err { color: #f85149; }
 .actions { display: flex; gap: 8px; margin: 12px 0; }
 button { appearance: none; border: 0; border-radius: 8px; padding: 9px 12px; background: #238636; color: #fff; font-weight: 700; cursor: pointer; }
+button.secondary { background: #30363d; }
 button:disabled { background: #30363d; color: #8b949e; cursor: not-allowed; }
 .hint { color: #9da7b3; font-size: 12px; line-height: 1.4; margin: 12px 0; }
 .log { min-height: 56px; max-height: 140px; overflow: auto; white-space: pre-wrap; background: #020617; border: 1px solid #30363d; border-radius: 10px; padding: 8px; color: #c9d1d9; font-size: 11px; }

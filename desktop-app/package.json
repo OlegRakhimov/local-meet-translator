@@ -1,19 +1,30 @@
 {
   "name": "local-meet-translator-desktop",
-  "version": "1.0.1",
+  "version": "1.0.29",
   "private": true,
   "description": "Desktop controller for Local Meet Translator bridge, voice conversion service, settings and extension bootstrap.",
+  "author": "Oleg",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
+    "test": "npm run test:unit && npm run test:architecture",
+    "test:unit": "node --test test/*.test.js",
+    "test:architecture": "node ../scripts/tests/verify-electron-pins.js && node ../scripts/tests/validate-desktop-controls.js && node ../scripts/tests/validate-feedback-guard.js && node ../scripts/tests/validate-chromium-extension.js && node ../scripts/tests/validate-firefox-extension.js && node ../scripts/tests/validate-voice-mode-switch.js && node ../scripts/tests/validate-stage1-architecture.js && node ../scripts/tests/validate-stage2-subtitle-overlay.js && node ../scripts/tests/validate-stage3-profile-dedupe.js && node ../scripts/tests/validate-stage4-workspace-navigation.js && node ../scripts/tests/validate-stage5-live-assistant.js && node ../scripts/tests/validate-stage6-teleprompter.js && node ../scripts/tests/validate-stage7-interview-trainer.js && node ../scripts/tests/validate-stage8-post-session-review.js && node ../scripts/tests/validate-stage8-1-assistant-hotfix.js && node ../scripts/tests/validate-stage9-dialogue-coding.js && node ../scripts/tests/validate-stage10-release-readiness.js && node ../scripts/tests/validate-stage11-modern-workspace.js && node ../scripts/tests/validate-stage11-1-reliable-start.js && node ../scripts/tests/validate-stage12-english-expected-coding-focus.js && node ../scripts/tests/validate-stage12-1-armed-capture.js && node ../scripts/tests/validate-stage12-2-audio-recovery.js && node ../scripts/tests/validate-stage12-3-runtime-routing.js && node ../scripts/tests/validate-stage13-compact-overlays.js && node ../scripts/tests/validate-stage15-contextual-utterance-dispatcher.js && node ../scripts/tests/validate-stage15-1-transcript-learning-aids.js && node ../scripts/tests/validate-stage15-2-structured-coding-context.js && node ../scripts/tests/validate-stage16-document-compliance-release.js",
     "package:win": "electron-builder --win nsis --x64",
-    "package:mac": "electron-builder --mac dmg",
     "package:dir": "electron-builder --dir",
     "dist:win": "electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
-    "electron-builder": "^24.13.3",
-    "electron": "^31.7.7"
+    "electron": "42.5.0",
+    "electron-builder": "26.15.3",
+    "temp": "file:./npm-overrides/temp"
+  },
+  "overrides": {
+    "@electron/asar": "4.2.0",
+    "@electron/get": "5.0.0",
+    "electron-winstaller": {
+      "temp": "$temp"
+    }
   },
   "build": {
     "appId": "local.meet.translator.desktop",
@@ -25,20 +36,38 @@
     ],
     "extraResources": [
       {
+        "from": "../chrome-extension",
+        "to": "browser-extensions/chrome-extension"
+      },
+      {
         "from": "../edge-extension",
-        "to": "edge-extension"
+        "to": "browser-extensions/edge-extension"
       },
       {
-        "from": "../local-meet-bridge",
-        "to": "local-meet-bridge"
+        "from": "../firefox-extension",
+        "to": "browser-extensions/firefox-extension"
       },
       {
-        "from": "../voice-conversion",
-        "to": "voice-conversion"
+        "from": "../local-meet-bridge/target",
+        "to": "local-meet-bridge/target",
+        "filter": [
+          "local-meet-bridge.jar"
+        ]
       },
       {
-        "from": "../scripts",
-        "to": "scripts"
+        "from": "../local-meet-bridge/target/java-runtime",
+        "to": "java-runtime"
+      },
+      {
+        "from": "../voice-conversion/target",
+        "to": "voice-conversion",
+        "filter": [
+          "local-meet-voice-conversion.exe"
+        ]
+      },
+      {
+        "from": "../document-tools/poppler",
+        "to": "document-tools/poppler"
       },
       {
         "from": "../.env.example",
@@ -56,11 +85,6 @@
       ],
       "icon": "build/icon.ico",
       "artifactName": "${productName}-${version}-Setup-${arch}.${ext}"
-    },
-    "mac": {
-      "target": "dmg",
-      "category": "public.app-category.utilities",
-      "icon": "build/icon.png"
     },
     "directories": {
       "output": "dist"

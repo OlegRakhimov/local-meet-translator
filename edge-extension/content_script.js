@@ -1,310 +1,288 @@
-// Movable subtitles overlay (Meet / Zoom / Teams)
-// Safe localized strings for subtitles overlay.
-// Keep this local fallback so subtitles never disappear if i18n.js is not injected.
-function lmtText(key) {
-  try {
-    if (window.LMT_I18N && typeof window.LMT_I18N.t === "function") return window.LMT_I18N.t(key);
-  } catch (_) {}
-  const fallback = {
-    drag: "Local Meet Translator — drag",
-    heard: "Heard",
-    you: "You"
+(() => {
+  const root = globalThis;
+  const previous = root.__LMT_CONTENT_SCRIPT_CONTROLLER__;
+  try { if (previous && typeof previous.dispose === "function") previous.dispose(); } catch (_) {}
+
+  const LMT_CLIENT_ID_KEY = "lmt_desktop_client_id";
+  const state = {
+    disposed: false,
+    clientId: sessionStorage.getItem(LMT_CLIENT_ID_KEY) || "",
+    sessionId: sessionStorage.getItem("lmt_desktop_session_id") || "",
+    lastSeq: Number(sessionStorage.getItem("lmt_last_desktop_seq") || "0") || 0,
+    lastCommandKey: sessionStorage.getItem("lmt_last_desktop_command_key") || "",
+    identityReady: false,
+    pollBusy: false,
+    pollStartedAt: 0,
+    lastReportedVisibility: null,
+    intervals: [],
+    timeouts: []
   };
-  return fallback[key] || key;
-}
 
-const OVERLAY_ID = "local-meet-translator-overlay";
-const STORAGE_KEY = "lmt_overlay_pos_" + location.host;
-let showOutgoing = false;
-
-function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-function px(n) { return `${Math.round(n)}px`; }
-
-async function loadPos() {
-  try {
-    const obj = await chrome.storage.local.get(STORAGE_KEY);
-    return obj[STORAGE_KEY] || null;
-  } catch (_) { return null; }
-}
-async function savePos(pos) {
-  try { await chrome.storage.local.set({ [STORAGE_KEY]: pos }); } catch (_) {}
-}
-
-function ensureOverlay() {
-  let root = document.getElementById(OVERLAY_ID);
-  if (root) return root;
-
-  root = document.createElement("div");
-  root.id = OVERLAY_ID;
-  root.style.position = "fixed";
-  root.style.left = "24px";
-  root.style.bottom = "24px";
-  root.style.zIndex = "2147483647";
-  root.style.maxWidth = "900px";
-  root.style.width = "min(900px, calc(100% - 48px))";
-  root.style.userSelect = "none";
-
-  const box = document.createElement("div");
-  box.style.background = "rgba(0,0,0,0.72)";
-  box.style.color = "#fff";
-  box.style.borderRadius = "12px";
-  box.style.boxShadow = "0 6px 20px rgba(0,0,0,0.35)";
-  box.style.backdropFilter = "blur(6px)";
-  box.style.webkitBackdropFilter = "blur(6px)";
-  box.style.overflow = "hidden";
-
-  const header = document.createElement("div");
-  header.textContent = lmtText("drag");
-  header.style.fontSize = "12px";
-  header.style.opacity = "0.9";
-  header.style.padding = "8px 10px";
-  header.style.cursor = "move";
-  header.style.background = "rgba(255,255,255,0.08)";
-  header.style.borderBottom = "1px solid rgba(255,255,255,0.08)";
-
-  const body = document.createElement("div");
-  body.style.padding = "10px 12px";
-  body.style.display = "flex";
-  body.style.flexDirection = "column";
-  body.style.gap = "6px";
-
-  // Incoming (tab audio) - this is the primary user-facing subtitle.
-  const inText = document.createElement("div");
-  inText.id = OVERLAY_ID + "-in-text";
-  inText.style.fontSize = "18px";
-  inText.style.lineHeight = "1.35";
-  inText.textContent = "—";
-
-  const inSmall = document.createElement("div");
-  inSmall.id = OVERLAY_ID + "-in-small";
-  inSmall.style.fontSize = "12px";
-  inSmall.style.opacity = "0.75";
-  inSmall.textContent = "";
-
-  // Outgoing (mic) - optional debug view.
-  const outWrap = document.createElement("div");
-  outWrap.id = OVERLAY_ID + "-out-wrap";
-  outWrap.style.display = "none";
-  outWrap.style.marginTop = "4px";
-  outWrap.style.paddingTop = "6px";
-  outWrap.style.borderTop = "1px solid rgba(255,255,255,0.12)";
-
-  const outText = document.createElement("div");
-  outText.id = OVERLAY_ID + "-out-text";
-  outText.style.fontSize = "14px";
-  outText.style.opacity = "0.95";
-  outText.textContent = "";
-
-  const outSmall = document.createElement("div");
-  outSmall.id = OVERLAY_ID + "-out-small";
-  outSmall.style.fontSize = "12px";
-  outSmall.style.opacity = "0.65";
-  outSmall.textContent = "";
-
-  outWrap.appendChild(outText);
-  outWrap.appendChild(outSmall);
-
-  body.appendChild(inText);
-  body.appendChild(inSmall);
-  body.appendChild(outWrap);
-
-  box.appendChild(header);
-  box.appendChild(body);
-  root.appendChild(box);
-  document.documentElement.appendChild(root);
-
-  (async () => {
-    const pos = await loadPos();
-    if (!pos) return;
-    if (typeof pos.left === "number") root.style.left = px(pos.left);
-    if (typeof pos.top === "number") { root.style.top = px(pos.top); root.style.bottom = "auto"; }
-  })();
-
-  let dragging = false;
-  let startX = 0, startY = 0;
-  let startLeft = 0, startTop = 0;
-
-  function getRect() { return root.getBoundingClientRect(); }
-
-  header.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    dragging = true;
-    const rect = getRect();
-    startX = e.clientX; startY = e.clientY;
-    startLeft = rect.left; startTop = rect.top;
-    root.style.left = px(startLeft);
-    root.style.top = px(startTop);
-    root.style.bottom = "auto";
-    header.setPointerCapture(e.pointerId);
-  });
-
-  header.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    const rect = getRect();
-    const w = rect.width, h = rect.height;
-    const left = clamp(startLeft + dx, 0, window.innerWidth - w);
-    const top = clamp(startTop + dy, 0, window.innerHeight - h);
-    root.style.left = px(left);
-    root.style.top = px(top);
-  });
-
-  header.addEventListener("pointerup", async () => {
-    if (!dragging) return;
-    dragging = false;
-    const rect = getRect();
-    await savePos({ left: rect.left, top: rect.top });
-  });
-
-  header.addEventListener("dblclick", async () => {
-    root.style.left = "24px";
-    root.style.bottom = "24px";
-    root.style.top = "auto";
-    await savePos({ left: 24, top: null });
-  });
-
-  return root;
-}
-
-function updateOutgoingVisibility() {
-  const outWrap = document.getElementById(OVERLAY_ID + "-out-wrap");
-  if (!outWrap) return;
-  outWrap.style.display = showOutgoing ? "block" : "none";
-}
-
-function setIncomingSubtitle(translation, transcript) {
-  ensureOverlay();
-  const text = document.getElementById(OVERLAY_ID + "-in-text");
-  const small = document.getElementById(OVERLAY_ID + "-in-small");
-  if (text) text.textContent = translation || "—";
-  if (small) small.textContent = transcript ? `${lmtText("heard")}: ${transcript}` : "";
-}
-
-function setOutgoingSubtitle(translation, transcript) {
-  ensureOverlay();
-  updateOutgoingVisibility();
-  if (!showOutgoing) return;
-
-  const text = document.getElementById(OVERLAY_ID + "-out-text");
-  const small = document.getElementById(OVERLAY_ID + "-out-small");
-  if (text) text.textContent = translation ? `${lmtText("you")} → ${translation}` : "";
-  if (small) small.textContent = transcript ? `Mic: ${transcript}` : "";
-}
-
-async function loadShowOutgoingSetting() {
-  try {
-    const { settings } = await chrome.storage.local.get("settings");
-    showOutgoing = !!(settings && settings.showOutgoingSubtitles);
-    updateOutgoingVisibility();
-  } catch (_) {
-    showOutgoing = false;
+  function withTimeout(promise, timeoutMs, message) {
+    let timer = null;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      })
+    ]).finally(() => { if (timer) clearTimeout(timer); });
   }
-}
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (!msg || msg.type !== "SUBTITLE") return;
-
-  const ch = msg.channel || "incoming";
-  if (ch === "outgoing") {
-    setOutgoingSubtitle(msg.translation || "", msg.transcript || "");
-  } else {
-    setIncomingSubtitle(msg.translation || "", msg.transcript || "");
+  function persistIdentity() {
+    try {
+      sessionStorage.setItem(LMT_CLIENT_ID_KEY, state.clientId || "");
+      sessionStorage.setItem("lmt_desktop_session_id", state.sessionId || "");
+      sessionStorage.setItem("lmt_last_desktop_seq", String(state.lastSeq || 0));
+      sessionStorage.setItem("lmt_last_desktop_command_key", state.lastCommandKey || "");
+    } catch (_) {}
   }
-});
 
-ensureOverlay();
-loadShowOutgoingSetting();
+  async function syncDesktopIdentity(force = false) {
+    if (state.disposed) return false;
+    if (state.identityReady && !force) return true;
+    try {
+      const identity = await withTimeout(
+        chrome.runtime.sendMessage({ type: "DESKTOP_IDENTITY_GET" }),
+        5000,
+        "Desktop identity request timed out."
+      );
+      if (!identity || !identity.ok) return false;
+      if (identity.clientId) state.clientId = String(identity.clientId);
+      if (!state.clientId) {
+        state.clientId = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+      const nextSessionId = String(identity.sessionId || "");
+      const identitySeq = Number(identity.seq || 0) || 0;
+      if (nextSessionId !== state.sessionId) {
+        state.sessionId = nextSessionId;
+        state.lastSeq = identitySeq;
+        state.lastCommandKey = "";
+      } else if (identitySeq > state.lastSeq) {
+        state.lastSeq = identitySeq;
+      }
+      state.identityReady = true;
+      persistIdentity();
+      return true;
+    } catch (_) {
+      state.identityReady = false;
+      return false;
+    }
+  }
 
-try {
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local") return;
-    if (!changes || !changes.settings) return;
-    const next = changes.settings.newValue;
-    showOutgoing = !!(next && next.showOutgoingSubtitles);
-    updateOutgoingVisibility();
-  });
-} catch (_) {}
+  function isMeetingTabVisible() {
+    return document.visibilityState === "visible" && document.hasFocus();
+  }
 
-// Desktop app command channel. The desktop app cannot call browser extension
-// APIs directly, so this Meet/Zoom/Teams content script polls the local desktop
-// command endpoint and asks the background service worker to start/stop capture
-// for the current tab.
-const DESKTOP_COMMAND_URL = "http://127.0.0.1:18798/extension-command";
-const DESKTOP_ACK_URL = "http://127.0.0.1:18798/extension-command/ack";
-let lmtLastDesktopSeq = Number(sessionStorage.getItem("lmt_last_desktop_seq") || "0");
-let lmtDesktopSessionId = sessionStorage.getItem("lmt_desktop_session_id") || "";
-let lmtDesktopPollBusy = false;
+  async function notifyDesktopVisibility(visible = isMeetingTabVisible(), force = false) {
+    if (state.disposed) return { ok: false };
+    const normalizedVisible = !!visible;
+    if (!force && state.lastReportedVisibility === normalizedVisible) {
+      return { ok: true, unchanged: true, visible: normalizedVisible };
+    }
+    try {
+      await syncDesktopIdentity();
+      const response = await withTimeout(
+        chrome.runtime.sendMessage({
+          type: normalizedVisible ? "DESKTOP_ARMED" : "DESKTOP_BLUR_STATE",
+          clientId: state.clientId,
+          url: location.href,
+          visible: normalizedVisible
+        }),
+        5000,
+        "Desktop visibility update timed out."
+      );
+      if (response && response.ok !== false) {
+        state.lastReportedVisibility = normalizedVisible;
+      }
+      return response || { ok: false };
+    } catch (_) {
+      return { ok: false };
+    }
+  }
 
-async function ackDesktopCommand(command, result) {
-  try {
-    await fetch(DESKTOP_ACK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+  async function notifyDesktopArmed(force = false) {
+    return await notifyDesktopVisibility(isMeetingTabVisible(), force);
+  }
+
+  async function pollDesktopCommand() {
+    if (state.disposed) return;
+    if (state.pollBusy) {
+      if (state.pollStartedAt && Date.now() - state.pollStartedAt > 25000) {
+        // A stale runtime message must not block every later start command.
+        state.pollBusy = false;
+        state.pollStartedAt = 0;
+      } else {
+        return;
+      }
+    }
+
+    state.pollBusy = true;
+    state.pollStartedAt = Date.now();
+    try {
+      await syncDesktopIdentity();
+      const data = await withTimeout(
+        chrome.runtime.sendMessage({
+          type: "DESKTOP_COMMAND_POLL",
+          clientId: state.clientId,
+          sessionId: state.sessionId,
+          lastSeq: state.lastSeq,
+          visible: isMeetingTabVisible(),
+          url: location.href
+        }),
+        7000,
+        "Desktop command poll timed out."
+      );
+      if (!data || !data.ok) return;
+
+      const nextSessionId = String(data.sessionId || state.sessionId || "");
+      if (nextSessionId !== state.sessionId) {
+        state.sessionId = nextSessionId;
+        state.lastSeq = Number(data.lastProcessedSeq || 0) || 0;
+        state.lastCommandKey = "";
+        persistIdentity();
+      } else {
+        const backgroundSeq = Number(data.lastProcessedSeq || 0) || 0;
+        if (backgroundSeq > state.lastSeq) {
+          state.lastSeq = backgroundSeq;
+          persistIdentity();
+        }
+      }
+      if (!data.hasCommand || !data.command) return;
+
+      const command = data.command;
+      const commandKey = [
+        data.sessionId || state.sessionId || "",
+        command.seq || 0,
+        command.action || "",
+        command.issuedAt || "",
+        command.micTxEnabled ? "voice" : "subtitles"
+      ].join(":");
+      const commandSeq = Number(command.seq || 0) || 0;
+      if (!commandSeq || commandSeq <= state.lastSeq || commandKey === state.lastCommandKey) return;
+
+      console.info("[LMT] desktop command", {
         seq: command.seq,
         action: command.action,
-        ok: !!(result && result.ok),
-        message: result && (result.message || (result.already ? "already running/stopped" : "")),
-        error: result && result.error
-      })
-    });
-  } catch (_) {}
-}
+        micTxEnabled: command.micTxEnabled,
+        ttsSinkDeviceName: command.ttsSinkDeviceName
+      });
 
-async function pollDesktopCommand() {
-  if (lmtDesktopPollBusy) return;
-  lmtDesktopPollBusy = true;
-  try {
-    const res = await fetch(`${DESKTOP_COMMAND_URL}?lastSeq=${encodeURIComponent(lmtLastDesktopSeq)}&sessionId=${encodeURIComponent(lmtDesktopSessionId)}&url=${encodeURIComponent(location.href)}`, { cache: "no-store" });
-    if (!res.ok) return;
-    const data = await res.json();
-    if (!data || !data.ok) return;
-    if (data.sessionId && data.sessionId !== lmtDesktopSessionId) {
-      lmtDesktopSessionId = data.sessionId;
-      lmtLastDesktopSeq = 0;
-      sessionStorage.setItem("lmt_desktop_session_id", lmtDesktopSessionId);
-      sessionStorage.setItem("lmt_last_desktop_seq", "0");
+      const result = await withTimeout(
+        chrome.runtime.sendMessage({
+          type: "DESKTOP_COMMAND",
+          clientId: state.clientId,
+          sessionId: state.sessionId,
+          seq: command.seq,
+          action: command.action,
+          serverUrl: command.serverUrl || data.serverUrl,
+          authToken: command.authToken || data.authToken,
+          sourceLang: command.sourceLang,
+          targetLang: command.targetLang,
+          chunkSeconds: command.chunkSeconds,
+          audioIsolationMode: command.audioIsolationMode,
+          ttsEnabled: command.ttsEnabled,
+          ttsVoice: command.ttsVoice,
+          ttsSpeed: command.ttsSpeed,
+          micTxEnabled: command.micTxEnabled,
+          micTxSourceLang: command.micTxSourceLang,
+          micTxTargetLang: command.micTxTargetLang,
+          micDeviceId: command.micDeviceId,
+          micDeviceName: command.micDeviceName,
+          ttsSinkDeviceId: command.ttsSinkDeviceId,
+          ttsSinkDeviceName: command.ttsSinkDeviceName,
+          micTxChunkSeconds: command.micTxChunkSeconds,
+          outVoiceStyle: command.outVoiceStyle,
+          rvcModelTag: command.rvcModelTag,
+          showOutgoingSubtitles: command.showOutgoingSubtitles
+        }),
+        32000,
+        "Browser audio start/stop operation timed out."
+      );
+
+      if (!result || result.acknowledged === false) {
+        throw new Error(String(result && (result.ackError || result.error) || "Extension background did not acknowledge the desktop command."));
+      }
+      state.lastSeq = Math.max(commandSeq, Number(result.ackSeq || 0) || 0);
+      state.lastCommandKey = commandKey;
+      persistIdentity();
+    } catch (error) {
+      console.warn("[LMT] desktop command was not finalized", String(error && (error.message || error) || error));
+      // Force the next poll to reload the durable background cursor. If the
+      // background delivered the ACK but its response was lost, the next poll
+      // advances from lastProcessedSeq without executing the command twice.
+      state.identityReady = false;
+    } finally {
+      state.pollBusy = false;
+      state.pollStartedAt = 0;
     }
-    if (!data.hasCommand || !data.command) return;
-    const command = data.command;
-    if (!command.seq || command.seq <= lmtLastDesktopSeq) return;
-    const result = await chrome.runtime.sendMessage({
-      type: "DESKTOP_COMMAND",
-      action: command.action,
-      serverUrl: command.serverUrl || data.serverUrl,
-      authToken: command.authToken || data.authToken,
-      sourceLang: command.sourceLang,
-      targetLang: command.targetLang,
-      chunkSeconds: command.chunkSeconds,
-      ttsEnabled: command.ttsEnabled,
-      ttsVoice: command.ttsVoice,
-      ttsSpeed: command.ttsSpeed,
-      micTxEnabled: command.micTxEnabled,
-      micTxSourceLang: command.micTxSourceLang,
-      micTxTargetLang: command.micTxTargetLang,
-      micDeviceId: command.micDeviceId,
-      micDeviceName: command.micDeviceName,
-      ttsSinkDeviceId: command.ttsSinkDeviceId,
-      ttsSinkDeviceName: command.ttsSinkDeviceName,
-      micTxChunkSeconds: command.micTxChunkSeconds,
-      outVoiceStyle: command.outVoiceStyle,
-      rvcModelTag: command.rvcModelTag,
-      showOutgoingSubtitles: command.showOutgoingSubtitles
-    });
-    lmtLastDesktopSeq = command.seq;
-    sessionStorage.setItem("lmt_last_desktop_seq", String(lmtLastDesktopSeq));
-    await ackDesktopCommand(command, result || { ok:true });
-  } catch (_) {
-    // Desktop app may be closed; keep polling quietly.
-  } finally {
-    lmtDesktopPollBusy = false;
   }
-}
 
-setInterval(pollDesktopCommand, 250);
-setTimeout(pollDesktopCommand, 50);
-window.addEventListener("focus", pollDesktopCommand);
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) pollDesktopCommand();
-});
+  async function restart() {
+    if (state.disposed) return { ok: false, error: "Content script is disposed." };
+    state.pollBusy = false;
+    state.pollStartedAt = 0;
+    state.identityReady = false;
+    const identityOk = await syncDesktopIdentity(true);
+    const armed = await notifyDesktopArmed(true);
+    await pollDesktopCommand();
+    return {
+      ok: !!identityOk && !!(armed && armed.ok !== false),
+      clientId: state.clientId,
+      sessionId: state.sessionId
+    };
+  }
+
+  const onFocus = () => { restart().catch(() => {}); };
+  const onBlur = () => { notifyDesktopVisibility(false, true).catch(() => {}); };
+  const onVisibility = () => {
+    if (document.hidden) {
+      notifyDesktopVisibility(false, true).catch(() => {});
+    } else {
+      restart().catch(() => {});
+    }
+  };
+  const onPageShow = () => { restart().catch(() => {}); };
+  const onPageHide = () => { notifyDesktopVisibility(false, true).catch(() => {}); };
+  const onRuntimeMessage = (msg, _sender, sendResponse) => {
+    if (msg && (msg.type === "LMT_RESTART_POLLING" || msg.type === "LMT_ARMED")) {
+      restart()
+        .then(result => sendResponse(result))
+        .catch(error => sendResponse({ ok: false, error: String(error && (error.message || error) || error) }));
+      return true;
+    }
+    return false;
+  };
+
+  function dispose() {
+    if (state.disposed) return;
+    state.disposed = true;
+    for (const id of state.intervals) clearInterval(id);
+    for (const id of state.timeouts) clearTimeout(id);
+    state.intervals = [];
+    state.timeouts = [];
+    try { window.removeEventListener("focus", onFocus); } catch (_) {}
+    try { window.removeEventListener("blur", onBlur); } catch (_) {}
+    try { window.removeEventListener("pageshow", onPageShow); } catch (_) {}
+    try { window.removeEventListener("pagehide", onPageHide); } catch (_) {}
+    try { document.removeEventListener("visibilitychange", onVisibility); } catch (_) {}
+    try { chrome.runtime.onMessage.removeListener(onRuntimeMessage); } catch (_) {}
+  }
+
+  root.__LMT_CONTENT_SCRIPT_LOADED__ = true;
+  root.__LMT_CONTENT_SCRIPT_CONTROLLER__ = { restart, dispose, poll: pollDesktopCommand };
+
+  try { chrome.runtime.onMessage.addListener(onRuntimeMessage); } catch (_) {}
+  window.addEventListener("focus", onFocus);
+  window.addEventListener("blur", onBlur);
+  window.addEventListener("pageshow", onPageShow);
+  window.addEventListener("pagehide", onPageHide);
+  document.addEventListener("visibilitychange", onVisibility);
+
+  state.intervals.push(setInterval(() => { pollDesktopCommand().catch(() => {}); }, 500));
+  state.intervals.push(setInterval(() => {
+    notifyDesktopVisibility(isMeetingTabVisible(), true).catch(() => {});
+  }, 3000));
+  state.timeouts.push(setTimeout(() => { restart().catch(() => {}); }, 50));
+})();

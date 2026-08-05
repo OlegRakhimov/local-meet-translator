@@ -26,26 +26,33 @@ function isSupportedMeetingUrl(url) {
     || u.startsWith("https://teams.live.com/");
 }
 
-async function getActiveTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab || null;
+async function getPairingStatus() {
+  try {
+    const obj = await browser.storage.local.get([
+      "desktopExtensionToken",
+      "desktopExtensionClientId",
+      "desktopExtensionSessionId",
+      "desktopExtensionCommandSeq"
+    ]);
+    return {
+      paired: !!obj.desktopExtensionToken,
+      clientId: String(obj.desktopExtensionClientId || ""),
+      sessionId: String(obj.desktopExtensionSessionId || ""),
+      seq: Number(obj.desktopExtensionCommandSeq || 0) || 0
+    };
+  } catch (_) {
+    return { paired: false, clientId: "", sessionId: "", seq: 0 };
+  }
 }
 
-async function checkDesktop() {
-  try {
-    const resp = await fetch("http://127.0.0.1:18798/health", { cache: "no-store" });
-    const data = await resp.json().catch(() => ({}));
-    if (resp.ok && data.ok) {
-      setText("desktopStatus", t("online"), "ok");
-      log(t("desktopOnline"));
-    } else {
-      setText("desktopStatus", t("notReady"), "warn");
-      log(t("desktopNotReady"));
-    }
-  } catch (_) {
-    setText("desktopStatus", t("offline"), "err");
-    log(t("desktopOffline"));
-  }
+function renderPairStatus(status) {
+  const paired = !!(status && status.paired);
+  setText("pairStatus", paired ? t("paired") : t("notPaired"), paired ? "ok" : "warn");
+}
+
+async function getActiveTab() {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  return tab || null;
 }
 
 async function checkCurrentPage() {
@@ -78,10 +85,15 @@ async function connectCurrentMeetingTab() {
       log(t("connectOpenMeeting"));
       return;
     }
-    const res = await chrome.runtime.sendMessage({ type: "ARM_CURRENT_TAB", tabId: tab.id });
+    const res = await browser.runtime.sendMessage({ type: "ARM_CURRENT_TAB", tabId: tab.id });
     if (res && res.ok) {
-      setText("runtimeStatus", t("connected"), "ok");
-      log(t("connectedLog"));
+      if (res.paired) {
+        setText("runtimeStatus", t("connected"), "ok");
+        log(t("connectedLog"));
+      } else {
+        setText("runtimeStatus", t("pairingRequired"), "warn");
+        log(t("pairingEnterCode"));
+      }
     } else {
       setText("runtimeStatus", t("notReady"), "err");
       log((res && (res.error || res.message)) || t("connectFailed"));
@@ -94,22 +106,68 @@ async function connectCurrentMeetingTab() {
   }
 }
 
+async function pairDesktop() {
+  const codeEl = $("pairingCode");
+  const code = String(codeEl && codeEl.value || "").trim();
+  const btn = $("pairDesktop");
+  try {
+    if (btn) btn.disabled = true;
+    if (!code) {
+      setText("runtimeStatus", t("pairingRequired"), "warn");
+      log(t("pairingEnterCode"));
+      return;
+    }
+    const res = await browser.runtime.sendMessage({ type: "PAIR_DESKTOP", pairingCode: code });
+    if (res && res.ok) {
+      const status = await getPairingStatus();
+      renderPairStatus(status);
+      setText("runtimeStatus", t("paired"), "ok");
+      log(t("pairingSuccess"));
+    } else {
+      setText("runtimeStatus", t("pairingFailed"), "err");
+      log((res && (res.error || res.message)) || t("pairingFailed"));
+    }
+  } catch (e) {
+    setText("runtimeStatus", t("pairingFailed"), "err");
+    log(String(e));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   applyI18n();
   setText("runtimeStatus", t("idle"), "warn");
-  await checkDesktop();
+  renderPairStatus(await getPairingStatus());
   const tab = await checkCurrentPage();
   const btn = $("connectTab");
   if (btn) btn.onclick = connectCurrentMeetingTab;
+  const pairBtn = $("pairDesktop");
+  if (pairBtn) pairBtn.onclick = pairDesktop;
+  const pairingCode = $("pairingCode");
+  if (pairingCode) pairingCode.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") pairDesktop();
+  });
+  const audioAccess = $("audioAccess");
+  if (audioAccess) audioAccess.onclick = () => browser.runtime.openOptionsPage();
   if (tab) await connectCurrentMeetingTab();
 
   try {
-    chrome.runtime.onMessage.addListener((msg) => {
+    browser.runtime.onMessage.addListener((msg) => {
       if (msg && msg.type === "STATUS") {
         const kind = msg.kind || "idle";
         const cls = kind === "ok" || kind === "run" ? "ok" : (kind === "err" ? "err" : "warn");
         setText("runtimeStatus", msg.text || kind, cls);
         if (msg.log) log(msg.log);
+      }
+    });
+  } catch (_) {}
+
+  try {
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local" || !changes) return;
+      if (changes.desktopExtensionToken) {
+        renderPairStatus({ paired: !!changes.desktopExtensionToken.newValue });
       }
     });
   } catch (_) {}

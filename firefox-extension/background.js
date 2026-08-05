@@ -1,232 +1,509 @@
-let offscreenCreated = false;
 let running = false;
-
-async function ensureOffscreen() {
-  if (offscreenCreated) return;
-  try {
-    if (chrome.offscreen && typeof chrome.offscreen.hasDocument === "function") {
-      const has = await chrome.offscreen.hasDocument();
-      if (has) { offscreenCreated = true; return; }
-    }
-  } catch (_) {}
-  try {
-    await chrome.offscreen.createDocument({
-      url: "offscreen.html",
-      reasons: ["USER_MEDIA"],
-      justification: "Capture tab audio and (optionally) microphone audio in an offscreen document."
-    });
-    offscreenCreated = true;
-  } catch (e) {
-    const msg = String((e && (e.message || e)) || "");
-    if (msg.toLowerCase().includes("only a single offscreen document")) {
-      offscreenCreated = true;
-      return;
-    }
-    throw e;
-  }
-}
-
-async function closeOffscreenIfPossible() {
-  try {
-    if (chrome.offscreen && typeof chrome.offscreen.closeDocument === "function") {
-      await chrome.offscreen.closeDocument();
-    }
-  } catch (_) {} finally {
-    offscreenCreated = false;
-  }
-}
-
-async function stopCaptureForRestart() {
-  if (running || offscreenCreated) {
-    try { await chrome.runtime.sendMessage({ type: "OFFSCREEN_STOP" }); } catch (_) {}
-    await closeOffscreenIfPossible();
-  }
-  running = false;
-}
-
-async function ensureTabNotMuted(tabId) {
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (tab && tab.mutedInfo && tab.mutedInfo.muted) await chrome.tabs.update(tabId, { muted: false });
-  } catch (_) {}
-}
+let activeTabId = null;
+let activeSessionId = "";
+let activeTabUrl = "";
+let activeTabVisible = false;
+let extensionClientId = "";
+let desktopExtensionToken = "";
+let desktopSessionId = "";
+let desktopCommandSeq = 0;
+let desktopPollTimer = null;
+let desktopPollBusy = false;
 
 function status(kind, text, log) {
-  chrome.runtime.sendMessage({ type: "STATUS", kind, text, log }).catch(() => {});
+  browser.runtime.sendMessage({ type: "STATUS", kind, text, log }).catch(() => {});
 }
 
-function friendlyError(e) {
-  const text = String(e && (e.message || e) || "");
-  if (text.includes("Extension has not been invoked") || text.includes("activeTab permission")) {
-    return "Open the Meet tab, click the Local Meet Translator extension icon, and press 'Connect this meeting tab' once. Browser security requires this before tab audio can be captured.";
-  }
-  if (text.includes("Chrome pages cannot be captured")) {
-    return "This tab cannot be captured. Open a real Meet/Zoom/Teams meeting tab and connect it from the extension popup.";
-  }
-  return text || "Unknown extension error";
+function desktopBaseUrl() {
+  return "http://127.0.0.1:18798";
 }
 
-function isSupportedMeetingUrl(url) {
-  const u = String(url || "").toLowerCase();
-  return u.startsWith("https://meet.google.com/")
-    || u.includes(".zoom.us/")
-    || u.startsWith("https://app.zoom.us/")
-    || u.startsWith("https://teams.microsoft.com/")
-    || u.startsWith("https://teams.live.com/");
+function normalizePairingCode(code) {
+  return String(code || "").trim().replace(/[\s-]+/g, "").toUpperCase();
 }
 
-async function getStartMessageFromStorage(overrides, tabId) {
-  const obj = await chrome.storage.local.get("settings");
-  const stored = obj.settings || {};
-  const incoming = overrides || {};
-  const s = { ...stored, ...incoming };
+function normalizeOrigin(origin) {
+  return String(origin || "").trim();
+}
 
-  // The desktop app can configure the output by name, but it cannot know the
-  // browser-only deviceId returned after the user grants speaker selection.
-  // Keep that saved id instead of overwriting it with an empty desktop value.
-  if (!incoming.ttsSinkDeviceId && stored.ttsSinkDeviceId) {
-    s.ttsSinkDeviceId = stored.ttsSinkDeviceId;
-  }
-  if (!incoming.ttsSinkDeviceName && stored.ttsSinkDeviceName) {
-    s.ttsSinkDeviceName = stored.ttsSinkDeviceName;
-  }
+function getActiveCommandPayload() {
   return {
-    type: "START",
-    tabId,
-    serverUrl: s.serverUrl || "http://127.0.0.1:8799",
-    authToken: s.authToken || "",
-    sourceLang: s.sourceLang || "auto",
-    targetLang: s.targetLang || "en",
-    chunkSeconds: s.chunkSeconds || 3,
-    ttsEnabled: !!s.ttsEnabled,
-    ttsVoice: s.ttsVoice || "onyx",
-    ttsSpeed: s.ttsSpeed || 1.0,
-    micTxEnabled: !!s.micTxEnabled,
-    micTxSourceLang: s.micTxSourceLang || "en",
-    micTxTargetLang: s.micTxTargetLang || "en",
-    micDeviceId: s.micDeviceId || "",
-    ttsSinkDeviceId: s.ttsSinkDeviceId || "",
-    ttsSinkDeviceName: s.ttsSinkDeviceName || "",
-    micTxChunkSeconds: s.micTxChunkSeconds || 5,
-    outVoiceStyle: s.outVoiceStyle || "openai",
-    rvcModelTag: s.rvcModelTag || "",
-    showOutgoingSubtitles: !!s.showOutgoingSubtitles
+    clientId: extensionClientId,
+    sessionId: desktopSessionId,
+    lastSeq: desktopCommandSeq,
+    visible: activeTabVisible,
+    url: activeTabUrl
   };
 }
 
-chrome.runtime.onMessage.addListener((incomingMsg, sender, sendResponse) => {
-  (async () => {
-    let msg = incomingMsg;
-    try {
-      if (msg?.type === "ARM_CURRENT_TAB") {
-        const tabId = msg.tabId;
-        if (!tabId) return sendResponse({ ok:false, error:"No active meeting tab. Open Meet/Zoom/Teams tab first." });
-        let tab = null;
-        try { tab = await chrome.tabs.get(tabId); } catch (_) {}
-        if (!tab || !isSupportedMeetingUrl(tab.url)) {
-          return sendResponse({ ok:false, error:"Open the popup from a Meet/Zoom/Teams meeting tab, not from this page: " + String(tab && tab.url || "unknown") });
-        }
-        await ensureTabNotMuted(tabId);
-        status("ok", "Meeting tab connected", "Meeting tab connected. Now use Start/Stop from the desktop app.");
-        sendResponse({ ok:true, tabId, url: tab.url });
-        return;
-      }
+async function loadExtensionIdentity() {
+  const obj = await browser.storage.local.get([
+    "desktopExtensionToken",
+    "desktopExtensionClientId",
+    "desktopExtensionSessionId",
+    "desktopExtensionCommandSeq",
+    "desktopExtensionPairedAt"
+  ]);
+  desktopExtensionToken = String(obj.desktopExtensionToken || "");
+  extensionClientId = String(obj.desktopExtensionClientId || "");
+  desktopSessionId = String(obj.desktopExtensionSessionId || "");
+  desktopCommandSeq = Number(obj.desktopExtensionCommandSeq || 0) || 0;
+  if (!extensionClientId) {
+    extensionClientId = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    await browser.storage.local.set({ desktopExtensionClientId: extensionClientId });
+  }
+  return {
+    paired: !!desktopExtensionToken,
+    desktopExtensionToken,
+    extensionClientId,
+    desktopSessionId,
+    desktopCommandSeq
+  };
+}
 
-      if (msg?.type === "CONNECT_AND_START") {
-        const tabId = msg.tabId;
-        if (!tabId) return sendResponse({ ok:false, error:"No active meeting tab. Open Meet/Zoom/Teams tab first." });
-        let tab = null;
-        try { tab = await chrome.tabs.get(tabId); } catch (_) {}
-        if (!tab || !isSupportedMeetingUrl(tab.url)) {
-          return sendResponse({ ok:false, error:"Open the popup from a Meet/Zoom/Teams meeting tab, not from this page: " + String(tab && tab.url || "unknown") });
-        }
-        if (running) await stopCaptureForRestart();
-        msg = await getStartMessageFromStorage(msg, tabId);
-        try {
-          const { type, tabId: _tabId, ...settings } = msg;
-          await chrome.storage.local.set({ settings });
-        } catch (_) {}
-      }
+async function storeDesktopIdentity(next) {
+  if (next.desktopExtensionToken !== undefined) desktopExtensionToken = String(next.desktopExtensionToken || "");
+  if (next.desktopSessionId !== undefined) desktopSessionId = String(next.desktopSessionId || "");
+  if (next.desktopCommandSeq !== undefined) desktopCommandSeq = Number(next.desktopCommandSeq || 0) || 0;
+  await browser.storage.local.set({
+    ...(next.desktopExtensionToken !== undefined ? { desktopExtensionToken } : {}),
+    ...(next.desktopSessionId !== undefined ? { desktopExtensionSessionId: desktopSessionId } : {}),
+    ...(next.desktopCommandSeq !== undefined ? { desktopExtensionCommandSeq: desktopCommandSeq } : {})
+  });
+}
 
-      if (msg?.type === "DESKTOP_COMMAND") {
-        const tabId = sender && sender.tab && sender.tab.id;
-        if (!tabId) return sendResponse({ ok:false, error:"Desktop command came without sender tab" });
-        if (msg.action === "start") {
-          if (running) await stopCaptureForRestart();
-          msg = await getStartMessageFromStorage(msg, tabId);
-          try {
-            const { type, tabId: _tabId, ...settings } = msg;
-            await chrome.storage.local.set({ settings });
-          } catch (_) {}
-        } else if (msg.action === "stop") {
-          msg = { type: "STOP" };
-        } else {
-          return sendResponse({ ok:false, error:"Unknown desktop command: " + String(msg.action) });
-        }
-      }
+function authHeaders() {
+  return desktopExtensionToken ? { "X-Desktop-Extension-Token": desktopExtensionToken } : {};
+}
 
-      if (msg?.type === "START") {
-        if (running) await stopCaptureForRestart();
-        const tabId = msg.tabId;
-        if (!tabId) return sendResponse({ ok: false, error: "No tabId" });
-        await ensureTabNotMuted(tabId);
-        const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
-        await ensureOffscreen();
-        await chrome.runtime.sendMessage({
-          type: "OFFSCREEN_START",
-          streamId,
-          tabId,
-          serverUrl: msg.serverUrl,
-          authToken: msg.authToken,
-          sourceLang: msg.sourceLang,
-          targetLang: msg.targetLang,
-          chunkSeconds: msg.chunkSeconds,
-          ttsEnabled: msg.ttsEnabled,
-          ttsVoice: msg.ttsVoice,
-          ttsSpeed: msg.ttsSpeed,
-          micTxEnabled: msg.micTxEnabled,
-          micTxSourceLang: msg.micTxSourceLang,
-          micTxTargetLang: msg.micTxTargetLang,
-          micDeviceId: msg.micDeviceId,
-          micDeviceName: msg.micDeviceName,
-          ttsSinkDeviceId: msg.ttsSinkDeviceId,
-          ttsSinkDeviceName: msg.ttsSinkDeviceName,
-          micTxChunkSeconds: msg.micTxChunkSeconds,
-          outVoiceStyle: msg.outVoiceStyle,
-          rvcModelTag: msg.rvcModelTag,
-          showOutgoingSubtitles: msg.showOutgoingSubtitles
-        });
-        running = true;
-        status("run", "Running", "Started capture.");
-        sendResponse({ ok: true });
-        return;
-      }
+function isPairingCodeValid(value) {
+  return normalizePairingCode(value).length >= 6;
+}
 
-      if (msg?.type === "STOP") {
-        if (!running) {
-          await closeOffscreenIfPossible();
-          return sendResponse({ ok: true, already: true });
-        }
-        await chrome.runtime.sendMessage({ type: "OFFSCREEN_STOP" });
-        running = false;
-        await closeOffscreenIfPossible();
-        status("ok", "Stopped", "Stopped capture.");
-        sendResponse({ ok: true });
-        return;
-      }
+async function postDesktopJson(path, body, allowNoToken = false) {
+  if (!allowNoToken && !desktopExtensionToken) {
+    throw new Error("Desktop extension token is missing. Pair the extension first.");
+  }
+  const resp = await fetch(`${desktopBaseUrl()}${path}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders()
+    },
+    body: JSON.stringify(body || {})
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok && data.ok !== false, status: resp.status, data };
+}
 
-      if (msg?.type === "SUBTITLE" && msg.tabId) {
-        chrome.tabs.sendMessage(msg.tabId, msg).catch(() => {});
-        sendResponse({ ok: true });
-        return;
-      }
-      sendResponse({ ok: true });
-    } catch (e) {
-      running = false;
-      const error = friendlyError(e);
-      status("err", "Error", error);
-      sendResponse({ ok: false, error });
+async function getDesktopJson(path, params = {}) {
+  if (!desktopExtensionToken) {
+    throw new Error("Desktop extension token is missing. Pair the extension first.");
+  }
+  const url = new URL(`${desktopBaseUrl()}${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    url.searchParams.set(key, String(value));
+  }
+  const resp = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store",
+    headers: authHeaders()
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok && data.ok !== false, status: resp.status, data };
+}
+
+async function forwardSubtitleToDesktop(message) {
+  const paired = desktopExtensionToken ? { ok: true } : await loadExtensionIdentity();
+  if (!desktopExtensionToken && !(paired && paired.paired)) {
+    return { ok: false, error: "Desktop extension token is missing. Pair the extension first." };
+  }
+  const body = {
+    id: String(message && message.id || ""),
+    channel: message && message.channel === "outgoing" ? "outgoing" : "incoming",
+    translation: String(message && message.translation || ""),
+    transcript: String(message && message.transcript || ""),
+    ts: Number(message && message.ts || Date.now()),
+    tabId: message && message.tabId !== undefined ? String(message.tabId) : String(activeTabId || ""),
+    url: String(message && message.url || activeTabUrl || ""),
+    clientId: String(extensionClientId || "")
+  };
+  let result = await postDesktopJson("/extension/subtitle", body);
+  if (!result.ok && (result.status === 401 || result.status === 403)) {
+    await loadExtensionIdentity();
+    result = await postDesktopJson("/extension/subtitle", body);
+  }
+  return result.ok
+    ? { ok: true, eventId: String(result.data && result.data.eventId || "") }
+    : { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Desktop subtitle delivery failed.") };
+}
+
+globalThis.LMTDesktopSubtitles = Object.freeze({ send: forwardSubtitleToDesktop });
+
+function friendlyError(error) {
+  const text = String(error && (error.message || error) || "");
+  if (text.includes("Could not establish connection") || text.includes("Receiving end does not exist")) {
+    return "Firefox meeting bridge is not connected. Reload the Meet/Zoom/Teams tab after loading the extension.";
+  }
+  return text || "Unknown Firefox extension error";
+}
+
+function isSupportedMeetingUrl(url) {
+  const value = String(url || "").toLowerCase();
+  return value.startsWith("https://meet.google.com/")
+    || value.includes(".zoom.us/")
+    || value.startsWith("https://app.zoom.us/")
+    || value.startsWith("https://teams.microsoft.com/")
+    || value.startsWith("https://teams.live.com/");
+}
+
+async function getStartSettings(overrides, tabId) {
+  const storedObject = await browser.storage.local.get("settings");
+  const stored = storedObject.settings || {};
+  const incoming = overrides || {};
+  const settings = { ...stored, ...incoming };
+
+  if (!incoming.ttsSinkDeviceId && stored.ttsSinkDeviceId) settings.ttsSinkDeviceId = stored.ttsSinkDeviceId;
+  if (!incoming.ttsSinkDeviceName && stored.ttsSinkDeviceName) settings.ttsSinkDeviceName = stored.ttsSinkDeviceName;
+
+  const audioIsolationMode = settings.audioIsolationMode !== false;
+  return {
+    tabId,
+    serverUrl: settings.serverUrl || "http://127.0.0.1:8799",
+    authToken: settings.authToken || "",
+    sourceLang: settings.sourceLang || "auto",
+    targetLang: settings.targetLang || "en",
+    chunkSeconds: settings.chunkSeconds || 3,
+    audioIsolationMode,
+    ttsEnabled: audioIsolationMode ? false : !!settings.ttsEnabled,
+    ttsVoice: settings.ttsVoice || "onyx",
+    ttsSpeed: settings.ttsSpeed || 1.0,
+    micTxEnabled: !!settings.micTxEnabled,
+    micTxSourceLang: settings.micTxSourceLang || "en",
+    micTxTargetLang: settings.micTxTargetLang || "en",
+    micDeviceId: settings.micDeviceId || "",
+    micDeviceName: settings.micDeviceName || "",
+    ttsSinkDeviceId: settings.ttsSinkDeviceId || "",
+    ttsSinkDeviceName: settings.ttsSinkDeviceName || (audioIsolationMode && !!settings.micTxEnabled ? "CABLE Input" : ""),
+    micTxChunkSeconds: settings.micTxChunkSeconds || 5,
+    outVoiceStyle: settings.outVoiceStyle || "openai",
+    rvcModelTag: settings.rvcModelTag || "",
+    showOutgoingSubtitles: !!settings.showOutgoingSubtitles
+  };
+}
+
+async function rememberActiveTab(tabId) {
+  if (!tabId) return null;
+  const tab = await browser.tabs.get(tabId);
+  if (!tab || !isSupportedMeetingUrl(tab.url)) {
+    return null;
+  }
+  activeTabId = tabId;
+  activeTabUrl = String(tab.url || "");
+  activeTabVisible = !!tab.active;
+  return tab;
+}
+
+async function notifyDesktopArmed(tab) {
+  if (!desktopExtensionToken || !tab) return { ok: false, skipped: true };
+  const clientId = extensionClientId || (await loadExtensionIdentity()).extensionClientId;
+  const result = await postDesktopJson("/extension-client/armed", {
+    clientId,
+    url: String(tab.url || activeTabUrl || ""),
+    visible: !!tab.active
+  });
+  if (result.ok) {
+    status("ok", "Meeting tab connected", "Desktop pairing is ready for the selected meeting tab.");
+  }
+  return result;
+}
+
+async function pairWithDesktop(pairingCode) {
+  const code = normalizePairingCode(pairingCode);
+  if (!isPairingCodeValid(code)) {
+    return { ok: false, error: "Enter the pairing code shown in the desktop app." };
+  }
+  const clientId = extensionClientId || (await loadExtensionIdentity()).extensionClientId;
+  const result = await postDesktopJson("/extension/pair", { pairingCode: code, clientId }, true);
+  if (!result.ok || !result.data || !result.data.token) {
+    return { ok: false, error: result.data && (result.data.error || result.data.message) || "Pairing failed." };
+  }
+  await storeDesktopIdentity({
+    desktopExtensionToken: String(result.data.token || ""),
+    desktopSessionId: String(result.data.sessionId || desktopSessionId || ""),
+    desktopCommandSeq: 0
+  });
+  desktopCommandSeq = 0;
+  desktopSessionId = String(result.data.sessionId || desktopSessionId || "");
+  if (activeTabId) {
+    const tab = await browser.tabs.get(activeTabId).catch(() => null);
+    if (tab && isSupportedMeetingUrl(tab.url)) {
+      activeTabUrl = String(tab.url || activeTabUrl || "");
+      activeTabVisible = !!tab.active;
+      await notifyDesktopArmed(tab).catch(() => {});
     }
-  })();
-  return true;
+  }
+  status("ok", "Paired", "Desktop extension token stored in browser.storage.local.");
+  return { ok: true, tokenStored: true };
+}
+
+async function ackDesktopCommand(command, result) {
+  if (!desktopExtensionToken || !command) return;
+  const payload = {
+    clientId: extensionClientId,
+    sessionId: desktopSessionId,
+    seq: command.seq,
+    action: command.action,
+    ok: !!(result && result.ok),
+    message: result && (result.message || (result.already ? "already running/stopped" : "")),
+    error: result && result.error,
+    details: result && result.details
+  };
+  const ack = await postDesktopJson("/extension-command/ack", payload);
+  if (!ack.ok) {
+    status("err", "Desktop ACK rejected", String(ack.data && (ack.data.error || ack.data.message) || "ACK failed"));
+  }
+}
+
+async function runDesktopCommand(command, tabId) {
+  if (!command || !command.action) return { ok: false, error: "Unknown desktop command." };
+  if (command.action === "start") return startCapture(tabId, command);
+  if (command.action === "stop") {
+    await stopCapture();
+    status("ok", "Stopped", "Firefox capture stopped.");
+    return { ok: true };
+  }
+  return { ok: false, error: "Unknown desktop command: " + String(command.action) };
+}
+
+async function syncDesktopCommand() {
+  if (desktopPollBusy || !desktopExtensionToken || !activeTabId) return;
+  desktopPollBusy = true;
+  try {
+    const tab = await browser.tabs.get(activeTabId).catch(() => null);
+    if (!tab || !isSupportedMeetingUrl(tab.url)) {
+      await stopCapture();
+      activeTabId = null;
+      activeTabUrl = "";
+      activeTabVisible = false;
+      return;
+    }
+    activeTabUrl = String(tab.url || activeTabUrl || "");
+    activeTabVisible = !!tab.active;
+    const result = await getDesktopJson("/extension-command", {
+      ...getActiveCommandPayload()
+    });
+    if (!result.ok || !result.data || !result.data.ok) return;
+    if (result.data.sessionId && result.data.sessionId !== desktopSessionId) {
+      desktopSessionId = String(result.data.sessionId || "");
+      desktopCommandSeq = 0;
+      await storeDesktopIdentity({ desktopSessionId, desktopCommandSeq: 0 });
+    }
+    if (!result.data.hasCommand || !result.data.command) return;
+    const command = result.data.command;
+    if (!command.seq || command.seq <= desktopCommandSeq) return;
+    const outcome = await runDesktopCommand(command, activeTabId);
+    desktopCommandSeq = command.seq;
+    await storeDesktopIdentity({ desktopCommandSeq });
+    await ackDesktopCommand({
+      seq: command.seq,
+      action: command.action,
+      targetClientId: result.data.clientId || command.targetClientId || extensionClientId
+    }, outcome);
+  } catch (error) {
+    status("err", "Desktop control", String(error && (error.message || error)));
+  } finally {
+    desktopPollBusy = false;
+  }
+}
+
+function ensureDesktopPolling() {
+  if (desktopPollTimer) return;
+  desktopPollTimer = setInterval(() => {
+    syncDesktopCommand().catch(() => {});
+  }, 400);
+}
+
+function stopDesktopPolling() {
+  if (!desktopPollTimer) return;
+  clearInterval(desktopPollTimer);
+  desktopPollTimer = null;
+}
+
+async function stopCapture() {
+  const tabId = activeTabId;
+  activeTabId = null;
+  activeTabUrl = "";
+  activeTabVisible = false;
+  activeSessionId = "";
+  running = false;
+
+  if (tabId) {
+    try {
+      await browser.tabs.sendMessage(tabId, { type: "FIREFOX_CAPTURE_STOP" });
+    } catch (_) {}
+  }
+  if (globalThis.LMTFirefoxAudio) {
+    await globalThis.LMTFirefoxAudio.stop();
+  }
+}
+
+async function armTab(tabId) {
+  if (!tabId) return { ok: false, error: "No active meeting tab." };
+  const tab = await rememberActiveTab(tabId);
+  if (!tab || !isSupportedMeetingUrl(tab.url)) {
+    return { ok: false, error: "Open the popup from a Meet/Zoom/Teams meeting tab." };
+  }
+  if (desktopExtensionToken) {
+    await notifyDesktopArmed(tab).catch(() => {});
+  } else {
+    status("warn", "Pair extension first", "Open the pairing popup and enter the desktop pairing code.");
+  }
+  return { ok: true, tabId, url: tab.url, paired: !!desktopExtensionToken };
+}
+
+async function startCapture(tabId, overrides) {
+  if (!globalThis.LMTFirefoxAudio) {
+    return { ok: false, error: "Firefox background audio pipeline was not loaded." };
+  }
+  const tab = await browser.tabs.get(tabId);
+  if (!tab || !isSupportedMeetingUrl(tab.url)) {
+    return { ok: false, error: "The selected tab is not a supported Meet/Zoom/Teams page." };
+  }
+
+  await stopCapture();
+  const settings = await getStartSettings(overrides, tabId);
+  await browser.storage.local.set({ settings });
+
+  const sessionId = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  try {
+    const audioResult = await globalThis.LMTFirefoxAudio.start(settings);
+    activeTabId = tabId;
+    activeSessionId = sessionId;
+    running = true;
+    const pageResult = await browser.tabs.sendMessage(tabId, {
+      type: "FIREFOX_CAPTURE_START",
+      sessionId,
+      chunkSeconds: settings.chunkSeconds
+    });
+    if (!pageResult || !pageResult.ok) {
+      throw new Error(pageResult && pageResult.error || "Firefox page audio bridge did not start.");
+    }
+
+    const details = {
+      ...(audioResult.details || {}),
+      incomingReady: true,
+      firefoxWebRtcTracks: Number(pageResult.trackCount || 0)
+    };
+    const message = settings.micTxEnabled
+      ? "Firefox WebRTC capture and outgoing voice translation are ready."
+      : "Firefox WebRTC incoming translation is ready.";
+    status("run", settings.micTxEnabled ? "Voice ready" : "Running", message);
+    return { ok: true, message, details };
+  } catch (error) {
+    await stopCapture();
+    const text = friendlyError(error);
+    status("err", "Firefox capture failed", text);
+    return { ok: false, error: text, details: { incomingReady: false, micTxReady: false, sinkReady: false } };
+  }
+}
+
+async function handleRemoteAudio(message, sender) {
+  const senderTabId = sender && sender.tab && sender.tab.id;
+  if (!running || senderTabId !== activeTabId || message.sessionId !== activeSessionId) {
+    return { ok: false, ignored: true };
+  }
+  return globalThis.LMTFirefoxAudio.enqueueIncomingAudio(message.arrayBuffer, message.mimeType);
+}
+
+browser.runtime.onMessage.addListener((message, sender) => {
+  if (!message) return undefined;
+  if (message.type === "ARM_CURRENT_TAB") return armTab(message.tabId);
+  if (message.type === "PAIR_DESKTOP") return pairWithDesktop(message.pairingCode);
+  if (message.type === "GET_PAIR_STATUS") {
+    return loadExtensionIdentity().then((state) => ({ ok: true, ...state, activeTabId, activeTabUrl }));
+  }
+  if (message.type === "DESKTOP_COMMAND") {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (!tabId) return Promise.resolve({ ok: false, error: "Desktop command came without a meeting tab." });
+    return runDesktopCommand(message, tabId);
+  }
+  if (message.type === "FIREFOX_REMOTE_AUDIO_CHUNK") return handleRemoteAudio(message, sender);
+  if (message.type === "FIREFOX_CAPTURE_ERROR") {
+    if (message.sessionId === activeSessionId) {
+      status("err", "Firefox capture error", String(message.error || "Unknown page capture error"));
+    }
+    return Promise.resolve({ ok: true });
+  }
+  if (message.type === "STOP") {
+    return stopCapture().then(() => ({ ok: true }));
+  }
+  return undefined;
+});
+
+browser.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === activeTabId) stopCapture().catch(() => {});
+});
+
+browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (tabId === activeTabId && changeInfo.status === "loading") {
+    stopCapture().catch(() => {});
+  }
+});
+
+loadExtensionIdentity().then(() => {
+  ensureDesktopPolling();
+  if (desktopExtensionToken && activeTabId) {
+    syncDesktopCommand().catch(() => {});
+  }
+}).catch(() => {});
+
+// Keep the latest payload until a newly-created Firefox sidebar is ready.
+let pendingSidebarTranslation = null;
+
+browser.commands.onCommand.addListener((command, tab) => {
+  if (command !== "translate-selection") return;
+
+  // Call open() synchronously inside the shortcut handler. Firefox requires
+  // sidebarAction.open() to run while the user-action permission is active.
+  const openingSidebar = browser.sidebarAction.open();
+  const tabId = tab && tab.id;
+
+  Promise.resolve(openingSidebar)
+    .then(async () => {
+      if (!tabId) throw new Error("No active page tab is available.");
+
+      // Manifest V2 uses tabs.executeScript. This expression only reads the
+      // current selection and does not write to the page DOM.
+      const results = await browser.tabs.executeScript(tabId, {
+        code: "window.getSelection().toString()"
+      });
+
+      pendingSidebarTranslation = {
+        type: "LMT_TRANSLATE_SELECTION",
+        text: String(results && results[0] || "")
+      };
+    })
+    .catch((error) => {
+      pendingSidebarTranslation = {
+        type: "LMT_TRANSLATE_SELECTION",
+        text: "",
+        error: String(error && (error.message || error) || "Could not read the selection.")
+      };
+    })
+    .then(() => browser.runtime.sendMessage(pendingSidebarTranslation).catch(() => {}));
+});
+
+browser.runtime.onMessage.addListener((message) => {
+  if (message && message.type === "LMT_SIDE_PANEL_READY" && pendingSidebarTranslation) {
+    browser.runtime.sendMessage(pendingSidebarTranslation).catch(() => {});
+  }
+  return undefined;
 });
