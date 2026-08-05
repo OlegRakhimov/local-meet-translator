@@ -32,10 +32,18 @@ function scoreAnswerEntry(question, entry = {}) {
 
   const queryTokens = meaningfulTokens(normalizedQuestion);
   const savedTokens = meaningfulTokens(normalizedSaved);
+  const aliases = Array.isArray(entry.aliases) ? entry.aliases.filter(Boolean) : [];
+  const normalizedAliases = aliases.map(alias => normalizeQuestionText(alias)).filter(Boolean);
+  if (normalizedAliases.includes(normalizedQuestion)) return 0.99;
+  const aliasScore = normalizedAliases.reduce((best, alias) => {
+    const score = overlapScore(queryTokens, meaningfulTokens(alias));
+    const containsBonus = normalizedQuestion.includes(alias) || alias.includes(normalizedQuestion) ? 0.12 : 0;
+    return Math.max(best, score + containsBonus);
+  }, 0);
   const keywordTokens = meaningfulTokens((Array.isArray(entry.keywords) ? entry.keywords : [entry.keywords || '']).map(englishSide).join(' '));
   const phraseTokens = meaningfulTokens((Array.isArray(entry.usefulPhrases) ? entry.usefulPhrases : [entry.usefulPhrases || '']).map(englishSide).join(' '));
   const intentTokens = meaningfulTokens(entry.intent || '');
-  let score = overlapScore(queryTokens, savedTokens) * 0.62;
+  let score = Math.max(overlapScore(queryTokens, savedTokens), aliasScore) * 0.62;
   score += overlapScore(queryTokens, keywordTokens) * 0.22;
   score += overlapScore(queryTokens, phraseTokens) * 0.08;
   score += overlapScore(queryTokens, intentTokens) * 0.08;

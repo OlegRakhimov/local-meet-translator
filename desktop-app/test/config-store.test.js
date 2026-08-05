@@ -51,6 +51,7 @@ test('config store generates security values and writes atomically', () => {
     });
     const initial = store.loadSettings();
     assert.equal(initial.EXT_TARGET_LANG, 'ru');
+    assert.equal(initial.INTERVIEW_ASSISTANT_PROFILE_MODE, 'general');
     assert.match(initial.LOCAL_MEET_TRANSLATOR_TOKEN, /^[a-f0-9]{48}$/);
     assert.match(initial.DESKTOP_EXTENSION_PAIRING_CODE, /^[A-Z2-9]{4}(?:-[A-Z2-9]{4}){2}$/);
     assert.ok(fs.existsSync(envPath));
@@ -58,12 +59,14 @@ test('config store generates security values and writes atomically', () => {
     const saved = store.saveSettings({
       OPENAI_API_KEY: 'test-key',
       INTERVIEW_ASSISTANT_ENABLED: 'true',
+      INTERVIEW_ASSISTANT_PROFILE_MODE: 'speakit_polish_support',
       INTERVIEW_ASSISTANT_AUTO_ANALYZE: 'true',
       INTERVIEW_TELEPROMPTER_ENABLED: 'true',
       INTERVIEW_ASSISTANT_CONTENT_PROTECTION: 'true',
       SUBTITLE_WINDOW_CONTENT_PROTECTION: 'true'
     });
     assert.equal(saved.OPENAI_API_KEY, 'test-key');
+    assert.equal(saved.INTERVIEW_ASSISTANT_PROFILE_MODE, 'speakit_polish_support');
     const compliance = store.saveSettings({
       EXAM_COMPLIANCE_MODE: 'true',
       INTERVIEW_ASSISTANT_ENABLED: 'false',

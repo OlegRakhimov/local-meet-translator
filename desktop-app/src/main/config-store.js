@@ -52,6 +52,7 @@ const SETTINGS_ORDER = [
   'SUBTITLE_WINDOW_HOTKEY',
   'SUBTITLE_WINDOW_CLICK_THROUGH_HOTKEY',
   'INTERVIEW_ASSISTANT_ENABLED',
+  'INTERVIEW_ASSISTANT_PROFILE_MODE',
   'INTERVIEW_ASSISTANT_AUTO_ANALYZE',
   'INTERVIEW_ASSISTANT_CONTENT_PROTECTION',
   'INTERVIEW_ASSISTANT_ALWAYS_ON_TOP',
@@ -303,6 +304,7 @@ function createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPat
     result.SUBTITLE_WINDOW_HOTKEY ||= 'CommandOrControl+Shift+S';
     result.SUBTITLE_WINDOW_CLICK_THROUGH_HOTKEY ||= 'CommandOrControl+Shift+X';
     result.INTERVIEW_ASSISTANT_ENABLED ||= 'true';
+    result.INTERVIEW_ASSISTANT_PROFILE_MODE ||= 'general';
     result.INTERVIEW_ASSISTANT_AUTO_ANALYZE ||= 'false';
     result.INTERVIEW_ASSISTANT_CONTENT_PROTECTION ||= process.platform === 'win32' || process.platform === 'darwin' ? 'true' : 'false';
     result.INTERVIEW_ASSISTANT_ALWAYS_ON_TOP ||= 'true';

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const MAX_ENTRIES = 500;
 const MAX_TEXT = 20000;
 const LEVELS = new Set(['A2', 'B1', 'B2']);
@@ -45,6 +45,7 @@ function sanitizeEntry(input = {}, index = 0) {
   return {
     id,
     question: cleanText(source.question, 4000),
+    aliases: uniqueLines(source.aliases, 120),
     intent: cleanText(source.intent, 240),
     level: LEVELS.has(level) ? level : 'B1',
     style: STYLES.has(style) ? style : 'simple',
@@ -63,6 +64,7 @@ function sanitizeEntry(input = {}, index = 0) {
 function defaultLibrary() {
   return {
     schemaVersion: SCHEMA_VERSION,
+    profileMode: 'general',
     entries: [],
     updatedAt: ''
   };
@@ -83,6 +85,7 @@ function sanitizeLibrary(input = {}) {
   entries.sort((a, b) => (a.order - b.order) || a.question.localeCompare(b.question));
   return {
     schemaVersion: SCHEMA_VERSION,
+    profileMode: cleanText(source.profileMode, 80).toLowerCase() || 'general',
     entries,
     updatedAt: cleanText(source.updatedAt, 64) || new Date().toISOString()
   };
@@ -96,8 +99,9 @@ function writeJsonAtomic(filePath, value) {
   fs.renameSync(temporaryPath, filePath);
 }
 
-function readJsonSafe(filePath) {
-  if (!fs.existsSync(filePath)) return { library: defaultLibrary(), recovered: false, warning: '' };
+function readJsonSafe(filePath, fallbackLibrary = defaultLibrary()) {
+  const fallback = sanitizeLibrary(fallbackLibrary);
+  if (!fs.existsSync(filePath)) return { library: fallback, recovered: false, warning: '' };
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     return { library: sanitizeLibrary(parsed), recovered: false, warning: '' };
@@ -105,18 +109,19 @@ function readJsonSafe(filePath) {
     const corruptPath = `${filePath}.corrupt-${Date.now()}`;
     try { fs.renameSync(filePath, corruptPath); } catch (_) {}
     return {
-      library: defaultLibrary(),
+      library: fallback,
       recovered: true,
       warning: `Answer library was unreadable and was moved to ${corruptPath}: ${error.message}`
     };
   }
 }
 
-function createAnswerLibraryStore({ libraryPath }) {
+function createAnswerLibraryStore({ libraryPath, presetLibrary = null }) {
   if (!libraryPath) throw new TypeError('libraryPath is required.');
+  const initialLibrary = sanitizeLibrary(presetLibrary || defaultLibrary());
 
   function load() {
-    const result = readJsonSafe(libraryPath);
+    const result = readJsonSafe(libraryPath, initialLibrary);
     return { ok: true, path: libraryPath, ...result };
   }
 
@@ -127,7 +132,7 @@ function createAnswerLibraryStore({ libraryPath }) {
   }
 
   function reset() {
-    const library = defaultLibrary();
+    const library = sanitizeLibrary(initialLibrary);
     writeJsonAtomic(libraryPath, library);
     return { ok: true, path: libraryPath, library };
   }

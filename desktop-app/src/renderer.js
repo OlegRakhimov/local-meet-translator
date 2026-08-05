@@ -94,9 +94,19 @@ let liveInterviewPath = '';
 let selectedReviewSessionId = '';
 let postSessionReviewDirty = false;
 let diagnosticsReport = null;
+let activeInterviewProfileDefinition = { id: 'general', label: 'General interview assistant' };
 
 function stableJson(value) {
   return JSON.stringify(value || {});
+}
+
+function usesBundledInterviewPreset() {
+  return activeInterviewProfileDefinition?.id === 'speakit_polish_support';
+}
+
+function renderInterviewProfileActions() {
+  if ($('resetCandidateProfile')) $('resetCandidateProfile').textContent = t(usesBundledInterviewPreset() ? 'restorePresetProfile' : 'resetCandidateProfile');
+  if ($('resetAnswerLibrary')) $('resetAnswerLibrary').textContent = t(usesBundledInterviewPreset() ? 'restorePresetLibrary' : 'resetAnswerLibrary');
 }
 
 function notifyWorkspaceDirtyState() {
@@ -366,6 +376,7 @@ function apply(s) {
   if ($('subtitleBackgroundOpacity')) $('subtitleBackgroundOpacity').value = s.SUBTITLE_WINDOW_BACKGROUND_OPACITY || '0.82';
   if ($('subtitleMaxLines')) $('subtitleMaxLines').value = s.SUBTITLE_WINDOW_MAX_LINES || '3';
   if ($('subtitleHotkey')) $('subtitleHotkey').value = s.SUBTITLE_WINDOW_HOTKEY || 'CommandOrControl+Shift+S';
+  if ($('assistantProfileMode')) $('assistantProfileMode').value = s.INTERVIEW_ASSISTANT_PROFILE_MODE || 'general';
   if ($('assistantEnabled')) $('assistantEnabled').checked = String(s.INTERVIEW_ASSISTANT_ENABLED || 'true') === 'true';
   if ($('assistantAutoAnalyze')) { $('assistantAutoAnalyze').checked = true; $('assistantAutoAnalyze').disabled = true; }
   if ($('assistantContentProtection')) $('assistantContentProtection').checked = String(s.INTERVIEW_ASSISTANT_CONTENT_PROTECTION || 'true') === 'true';
@@ -434,6 +445,7 @@ function readSettings() {
     SUBTITLE_WINDOW_BACKGROUND_OPACITY: val('subtitleBackgroundOpacity') || '0.82',
     SUBTITLE_WINDOW_MAX_LINES: val('subtitleMaxLines') || '3',
     SUBTITLE_WINDOW_HOTKEY: val('subtitleHotkey') || 'CommandOrControl+Shift+S',
+    INTERVIEW_ASSISTANT_PROFILE_MODE: $('assistantProfileMode') ? val('assistantProfileMode') || 'general' : 'general',
     INTERVIEW_ASSISTANT_ENABLED: $('assistantEnabled') && checked('assistantEnabled') ? 'true' : 'false',
     INTERVIEW_ASSISTANT_AUTO_ANALYZE: 'true',
     INTERVIEW_ASSISTANT_CONTENT_PROTECTION: $('assistantContentProtection') && checked('assistantContentProtection') ? 'true' : 'false',
@@ -475,6 +487,7 @@ function candidateProfileFromUi() {
   const confirmed = $('candidateFactsConfirmed') ? checked('candidateFactsConfirmed') : false;
   const locked = $('candidateFactsLocked') ? checked('candidateFactsLocked') : false;
   return {
+    profileMode: $('assistantProfileMode') ? val('assistantProfileMode') || 'general' : (candidateProfileStoredProfile.profileMode || 'general'),
     fullName: val('candidateFullName'),
     targetRole: val('candidateTargetRole'),
     location: val('candidateLocation'),
@@ -486,6 +499,9 @@ function candidateProfileFromUi() {
     education: val('candidateEducation'),
     resumeText: val('candidateResumeText'),
     resumeSource: $('candidateResumeSource') ? String($('candidateResumeSource').textContent || '').trim().replace(/^—$/, '') : '',
+    vacancyContext: val('candidateVacancyContext'),
+    interviewInstructions: val('candidateInterviewInstructions'),
+    unsupportedClaims: splitProfileLines(val('candidateUnsupportedClaims')),
     confirmedFacts: splitProfileLines(val('candidateFacts')).map(text => ({
       text,
       source: 'manual',
@@ -508,6 +524,9 @@ function applyCandidateProfile(profile = {}, options = {}) {
     if ($('candidateExperience')) $('candidateExperience').value = profile.experience || '';
     if ($('candidateProjects')) $('candidateProjects').value = profile.projects || '';
     if ($('candidateEducation')) $('candidateEducation').value = profile.education || '';
+    if ($('candidateVacancyContext')) $('candidateVacancyContext').value = profile.vacancyContext || '';
+    if ($('candidateInterviewInstructions')) $('candidateInterviewInstructions').value = profile.interviewInstructions || '';
+    if ($('candidateUnsupportedClaims')) $('candidateUnsupportedClaims').value = Array.isArray(profile.unsupportedClaims) ? profile.unsupportedClaims.join('\n') : String(profile.unsupportedClaims || '');
     if ($('candidateResumeText')) $('candidateResumeText').value = profile.resumeText || '';
     if ($('candidateResumeSource')) $('candidateResumeSource').textContent = profile.resumeSource || '—';
     const facts = Array.isArray(profile.confirmedFacts) ? profile.confirmedFacts : [];
@@ -530,7 +549,7 @@ function renderCandidateProfileStatus(result = {}) {
   const profile = result.profile || result || {};
   const facts = Array.isArray(profile.confirmedFacts) ? profile.confirmedFacts : [];
   const confirmedCount = facts.filter(item => item && item.confirmed !== false).length;
-  const loaded = !!(profile.fullName || profile.targetRole || profile.resumeText || facts.length);
+  const loaded = !!(profile.fullName || profile.targetRole || profile.resumeText || profile.vacancyContext || facts.length);
   const statusText = loaded
     ? `${t('candidateProfileLoaded')} · ${confirmedCount} ${t('candidateConfirmedFactsCount')}`
     : t('candidateProfileEmpty');
@@ -558,9 +577,11 @@ function renderCandidateProfileStatus(result = {}) {
 
 async function loadCandidateProfile() {
   const result = await window.lmt.candidateProfileLoad();
+  if (result.profileDefinition) activeInterviewProfileDefinition = result.profileDefinition;
   candidateProfileStoragePath = result.path || candidateProfileStoragePath;
   applyCandidateProfile(result.profile || {}, { markClean: true });
   renderCandidateProfileStatus(result);
+  renderInterviewProfileActions();
   return result;
 }
 
@@ -568,6 +589,7 @@ function emptyAnswerEntry() {
   return {
     id: '',
     question: '',
+    aliases: [],
     intent: '',
     level: 'B1',
     style: 'simple',
@@ -586,6 +608,7 @@ function answerEntryFromUi() {
   return {
     id: val('answerEntryId'),
     question: val('answerQuestion'),
+    aliases: splitProfileLines(val('answerAliases')),
     intent: val('answerIntent'),
     level: val('answerLevel') || 'B1',
     style: val('answerStyle') || 'simple',
@@ -604,6 +627,7 @@ function applyAnswerEntry(entry = {}, options = {}) {
   try {
     $('answerEntryId').value = value.id || '';
     $('answerQuestion').value = value.question || '';
+    $('answerAliases').value = Array.isArray(value.aliases) ? value.aliases.join('\n') : String(value.aliases || '');
     $('answerIntent').value = value.intent || '';
     $('answerLevel').value = value.level || 'B1';
     $('answerStyle').value = value.style || 'simple';
@@ -679,6 +703,7 @@ function selectAnswerEntry(id, options = {}) {
 function applyAnswerLibrary(library = {}, options = {}) {
   answerLibraryState = {
     schemaVersion: Number(library.schemaVersion) || 1,
+    profileMode: library.profileMode || ($('assistantProfileMode') ? val('assistantProfileMode') || 'general' : 'general'),
     entries: Array.isArray(library.entries) ? library.entries.map(entry => ({ ...entry })) : [],
     updatedAt: library.updatedAt || ''
   };
@@ -696,7 +721,9 @@ function applyAnswerLibrary(library = {}, options = {}) {
 
 async function loadAnswerLibrary() {
   const result = await window.lmt.answerLibraryLoad();
+  if (result.profileDefinition) activeInterviewProfileDefinition = result.profileDefinition;
   applyAnswerLibrary(result.library || {}, { ...result, markClean: true });
+  renderInterviewProfileActions();
   return result;
 }
 
@@ -981,6 +1008,7 @@ function renderAssistantState(state = {}) {
             : t('assistantWaitingForQuestion');
   }
   if (assistantState.settings) {
+    if ($('assistantProfileMode')) $('assistantProfileMode').value = assistantState.settings.profileMode || 'general';
     if ($('assistantClickThrough')) $('assistantClickThrough').checked = !!assistantState.settings.clickThrough;
     if ($('assistantCompactOverlay')) $('assistantCompactOverlay').checked = assistantState.settings.compactOverlay !== false;
   }
@@ -1001,6 +1029,26 @@ async function saveAssistantSettings() {
   apply(saved.settings || {});
   renderAssistantState(saved.assistant || await window.lmt.interviewAssistantStatus());
   log(`[ASSISTANT] ${t('assistantSettingsSaved')}`);
+  return saved;
+}
+
+async function switchAssistantProfileMode() {
+  const select = $('assistantProfileMode');
+  if (!select) return { ok: false };
+  const previousMode = assistantState.settings?.profileMode || 'general';
+  if ((candidateProfileDirty || answerEditorDirty) && !window.confirm(t('assistantProfileDiscardChangesConfirm'))) {
+    select.value = previousMode;
+    return { ok: false, canceled: true };
+  }
+  if (candidateProfileDirty) applyCandidateProfile(candidateProfileStoredProfile, { markClean: true });
+  if (answerEditorDirty) setAnswerEditorDirty(false);
+  const saved = await saveAssistantSettings();
+  await loadCandidateProfile();
+  await loadAnswerLibrary();
+  assistantQuestionHistory = [];
+  renderAssistantQuestionHistory();
+  if ($('assistantQuestionInput')) $('assistantQuestionInput').value = '';
+  log(`[ASSISTANT] ${t('assistantProfileChanged')}: ${activeInterviewProfileDefinition.label || select.value}`);
   return saved;
 }
 
@@ -2045,13 +2093,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
   };
   if ($('resetCandidateProfile')) $('resetCandidateProfile').onclick = async () => {
-    if (!window.confirm(t('candidateProfileResetConfirm'))) return;
+    if (!window.confirm(t(usesBundledInterviewPreset() ? 'restorePresetProfileConfirm' : 'candidateProfileResetConfirm'))) return;
     await runUiAction('Reset candidate profile clicked.', 'resetCandidateProfile', async () => {
       const result = await window.lmt.candidateProfileReset();
       candidateProfileStoragePath = result.path || candidateProfileStoragePath;
       applyCandidateProfile(result.profile || {}, { markClean: true });
       renderCandidateProfileStatus(result);
-      log(`[PROFILE] ${t('candidateProfileCleared')}`);
+      log(`[PROFILE] ${t(usesBundledInterviewPreset() ? 'presetProfileRestored' : 'candidateProfileCleared')}`);
       return result;
     });
   };
@@ -2101,12 +2149,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
   };
   if ($('resetAnswerLibrary')) $('resetAnswerLibrary').onclick = async () => {
-    if (!window.confirm(t('resetAnswerLibraryConfirm'))) return;
+    if (!window.confirm(t(usesBundledInterviewPreset() ? 'restorePresetLibraryConfirm' : 'resetAnswerLibraryConfirm'))) return;
     await runUiAction('Reset Answer Library clicked.', 'resetAnswerLibrary', async () => {
       const result = await window.lmt.answerLibraryReset();
       selectedAnswerId = '';
       applyAnswerLibrary(result.library || {}, { ...result, markClean: true });
-      log(`[ANSWER LIBRARY] ${t('answerLibraryCleared')}`);
+      log(`[ANSWER LIBRARY] ${t(usesBundledInterviewPreset() ? 'presetLibraryRestored' : 'answerLibraryCleared')}`);
       return result;
     });
   };
@@ -2152,6 +2200,9 @@ window.addEventListener('DOMContentLoaded', async () => {
   if ($('assistantSaveToLibrary')) $('assistantSaveToLibrary').onclick = async () => renderAssistantState(await window.lmt.interviewAssistantControl('saveCurrentToLibrary'));
   if ($('assistantTeleprompterFrozen')) $('assistantTeleprompterFrozen').onchange = async () => {
     renderAssistantState(await window.lmt.interviewAssistantControl('freezeTeleprompter', { enabled: checked('assistantTeleprompterFrozen') }));
+  };
+  if ($('assistantProfileMode')) $('assistantProfileMode').onchange = async () => {
+    await runUiAction('Interview profile changed.', 'assistantProfileMode', switchAssistantProfileMode);
   };
   if ($('assistantClickThrough')) $('assistantClickThrough').onchange = async () => {
     const saved = await saveAssistantSettings();

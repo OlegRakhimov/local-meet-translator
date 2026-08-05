@@ -177,6 +177,11 @@
     candidateProjects: "Projects",
     candidateResumeText: "Imported resume/source text",
     candidateResumeSource: "Imported source:",
+    profileInterviewContextSection: "Vacancy and interview rules",
+    candidateVacancyContext: "Vacancy context",
+    candidateInterviewInstructions: "Interview answer instructions",
+    candidateUnsupportedClaims: "Unsupported claims, one per line",
+    candidateInterviewContextHint: "These fields guide AI answers for questions not found in the prepared library. They do not replace confirmed facts.",
     confirmedFactsTitle: "Confirmed facts",
     confirmedFactsDescription: "Enter one fact per line. The future assistant may use only facts explicitly marked as confirmed.",
     confirmedFactsCheckbox: "I confirm that these facts are accurate",
@@ -193,7 +198,10 @@
     candidateProfileImportedReview: "Imported content loaded for review. Save only after checking it.",
     candidateProfileExported: "Candidate profile exported",
     candidateProfileResetConfirm: "Clear the local candidate profile and confirmed facts?",
-    candidateProfileCleared: "Local candidate profile cleared."
+    candidateProfileCleared: "Local candidate profile cleared.",
+    restorePresetProfile: "Restore bundled vacancy profile",
+    restorePresetProfileConfirm: "Restore the bundled SpeakIT vacancy profile and replace local changes in this mode?",
+    presetProfileRestored: "Bundled SpeakIT vacancy profile restored."
   });
   Object.assign(S.ru, {
     candidateProfileTitle: "2. Профиль кандидата и подтверждённые факты",
@@ -210,6 +218,11 @@
     candidateProjects: "Проекты",
     candidateResumeText: "Импортированный текст резюме / источника",
     candidateResumeSource: "Импортированный источник:",
+    profileInterviewContextSection: "Вакансия и правила ответов",
+    candidateVacancyContext: "Контекст вакансии",
+    candidateInterviewInstructions: "Правила подготовки ответов",
+    candidateUnsupportedClaims: "Неподтверждённые утверждения — по одному на строку",
+    candidateInterviewContextHint: "Эти поля направляют ИИ при ответах на вопросы, которых нет в библиотеке. Они не заменяют подтверждённые факты.",
     confirmedFactsTitle: "Подтверждённые факты",
     confirmedFactsDescription: "Введите по одному факту на строку. Будущий помощник сможет использовать только явно подтверждённые факты.",
     confirmedFactsCheckbox: "Я подтверждаю, что эти факты точны",
@@ -226,7 +239,10 @@
     candidateProfileImportedReview: "Импортированный материал загружен для проверки. Сохраняйте его только после проверки.",
     candidateProfileExported: "Профиль кандидата экспортирован",
     candidateProfileResetConfirm: "Очистить локальный профиль кандидата и подтверждённые факты?",
-    candidateProfileCleared: "Локальный профиль кандидата очищен."
+    candidateProfileCleared: "Локальный профиль кандидата очищен.",
+    restorePresetProfile: "Восстановить профиль вакансии",
+    restorePresetProfileConfirm: "Восстановить встроенный профиль вакансии SpeakIT и заменить локальные изменения в этом режиме?",
+    presetProfileRestored: "Встроенный профиль вакансии SpeakIT восстановлен."
   });
   Object.assign(S.en, {
     interviewWorkspace: "Interview workspace",
@@ -261,6 +277,7 @@
     unsavedAnswerChanges: "There are unsaved answer changes.",
     discardUnsavedAnswerChanges: "Discard the unsaved answer changes?",
     answerQuestion: "Interview question",
+    answerAliases: "Alternative English or Polish formulations, one per line",
     answerIntent: "Intent / category",
     answerLevel: "English level",
     answerStyle: "Answer style",
@@ -304,7 +321,10 @@
     answerLibraryImported: "Answer Library imported and saved locally.",
     answerLibraryExported: "Answer Library exported",
     resetAnswerLibraryConfirm: "Clear all locally saved prepared answers?",
-    answerLibraryCleared: "Local Answer Library cleared."
+    answerLibraryCleared: "Local Answer Library cleared.",
+    restorePresetLibrary: "Restore bundled vacancy library",
+    restorePresetLibraryConfirm: "Restore the bundled SpeakIT question library and replace local changes in this mode?",
+    presetLibraryRestored: "Bundled SpeakIT question library restored."
   });
   Object.assign(S.ru, {
     interviewWorkspace: "Подготовка к собеседованию",
@@ -339,6 +359,7 @@
     unsavedAnswerChanges: "В ответе есть несохранённые изменения.",
     discardUnsavedAnswerChanges: "Отменить несохранённые изменения ответа?",
     answerQuestion: "Вопрос собеседования",
+    answerAliases: "Другие формулировки на английском или польском — по одной на строку",
     answerIntent: "Намерение / категория",
     answerLevel: "Уровень английского",
     answerStyle: "Стиль ответа",
@@ -382,7 +403,10 @@
     answerLibraryImported: "Библиотека ответов импортирована и сохранена локально.",
     answerLibraryExported: "Библиотека ответов экспортирована",
     resetAnswerLibraryConfirm: "Удалить все локально сохранённые подготовленные ответы?",
-    answerLibraryCleared: "Локальная библиотека ответов очищена."
+    answerLibraryCleared: "Локальная библиотека ответов очищена.",
+    restorePresetLibrary: "Восстановить библиотеку вакансии",
+    restorePresetLibraryConfirm: "Восстановить встроенную библиотеку вопросов SpeakIT и заменить локальные изменения в этом режиме?",
+    presetLibraryRestored: "Встроенная библиотека вопросов SpeakIT восстановлена."
   });
   Object.assign(S.en, {
     liveAssistantTitle: "Live Interview Assistant",
@@ -400,6 +424,12 @@
     showAssistantWindow: "Show assistant window",
     hideAssistantWindow: "Hide assistant window",
     assistantWindowSettings: "Assistant window and analysis",
+    assistantInterviewProfile: "Interview profile",
+    assistantProfileGeneral: "General interview assistant",
+    assistantProfileSpeakit: "SpeakIT — Polish Customer Support",
+    assistantProfileModeHint: "Each profile has a separate candidate profile and Answer Library. Changing the profile does not overwrite the other mode.",
+    assistantProfileDiscardChangesConfirm: "Changing the interview profile will discard unsaved profile or answer edits. Continue?",
+    assistantProfileChanged: "Interview profile changed",
     assistantEnabled: "Enable Live Assistant",
     assistantAutoAnalyze: "Answers are prepared automatically",
     assistantContentProtection: "Protect assistant window from screen capture",
@@ -453,6 +483,12 @@
     showAssistantWindow: "Показать окно помощника",
     hideAssistantWindow: "Скрыть окно помощника",
     assistantWindowSettings: "Окно помощника и анализ",
+    assistantInterviewProfile: "Профиль собеседования",
+    assistantProfileGeneral: "Общий помощник",
+    assistantProfileSpeakit: "SpeakIT — Polish Customer Support",
+    assistantProfileModeHint: "У каждого режима отдельные профиль кандидата и Answer Library. Переключение не перезаписывает другой режим.",
+    assistantProfileDiscardChangesConfirm: "При переключении режима несохранённые изменения профиля или ответа будут потеряны. Продолжить?",
+    assistantProfileChanged: "Профиль собеседования переключён",
     assistantEnabled: "Включить помощника на собеседовании",
     assistantAutoAnalyze: "Ответы готовятся автоматически",
     assistantContentProtection: "Защищать окно помощника от захвата экрана",

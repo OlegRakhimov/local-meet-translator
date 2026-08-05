@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const MAX_TEXT = 20000;
 const MAX_RESUME_TEXT = 200000;
 const MAX_FACTS = 300;
@@ -49,6 +49,7 @@ function createFact(value, index = 0) {
 function defaultProfile() {
   return {
     schemaVersion: SCHEMA_VERSION,
+    profileMode: 'general',
     fullName: '',
     targetRole: '',
     location: '',
@@ -60,6 +61,9 @@ function defaultProfile() {
     education: '',
     resumeText: '',
     resumeSource: '',
+    vacancyContext: '',
+    interviewInstructions: '',
+    unsupportedClaims: [],
     confirmedFacts: [],
     updatedAt: ''
   };
@@ -77,6 +81,7 @@ function sanitizeProfile(input = {}) {
   }
   return {
     schemaVersion: SCHEMA_VERSION,
+    profileMode: cleanText(source.profileMode, 80).toLowerCase() || 'general',
     fullName: cleanText(source.fullName, 200),
     targetRole: cleanText(source.targetRole, 240),
     location: cleanText(source.location, 240),
@@ -88,6 +93,9 @@ function sanitizeProfile(input = {}) {
     education: cleanText(source.education, MAX_TEXT),
     resumeText: cleanText(source.resumeText, MAX_RESUME_TEXT),
     resumeSource: cleanText(source.resumeSource, 1024),
+    vacancyContext: cleanText(source.vacancyContext, MAX_TEXT),
+    interviewInstructions: cleanText(source.interviewInstructions, MAX_TEXT),
+    unsupportedClaims: uniqueLines(source.unsupportedClaims, 200),
     confirmedFacts: facts,
     updatedAt: cleanText(source.updatedAt, 64) || new Date().toISOString()
   };
@@ -101,8 +109,9 @@ function writeJsonAtomic(filePath, value) {
   fs.renameSync(temporaryPath, filePath);
 }
 
-function readJsonSafe(filePath) {
-  if (!fs.existsSync(filePath)) return { profile: defaultProfile(), recovered: false, warning: '' };
+function readJsonSafe(filePath, fallbackProfile = defaultProfile()) {
+  const fallback = sanitizeProfile(fallbackProfile);
+  if (!fs.existsSync(filePath)) return { profile: fallback, recovered: false, warning: '' };
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     return { profile: sanitizeProfile(parsed), recovered: false, warning: '' };
@@ -110,18 +119,19 @@ function readJsonSafe(filePath) {
     const corruptPath = `${filePath}.corrupt-${Date.now()}`;
     try { fs.renameSync(filePath, corruptPath); } catch (_) {}
     return {
-      profile: defaultProfile(),
+      profile: fallback,
       recovered: true,
       warning: `Candidate profile was unreadable and was moved to ${corruptPath}: ${error.message}`
     };
   }
 }
 
-function createCandidateProfileStore({ profilePath, extractDocumentText = null }) {
+function createCandidateProfileStore({ profilePath, extractDocumentText = null, presetProfile = null }) {
   if (!profilePath) throw new TypeError('profilePath is required.');
+  const initialProfile = sanitizeProfile(presetProfile || defaultProfile());
 
   function load() {
-    const result = readJsonSafe(profilePath);
+    const result = readJsonSafe(profilePath, initialProfile);
     return { ok: true, path: profilePath, ...result };
   }
 
@@ -132,7 +142,7 @@ function createCandidateProfileStore({ profilePath, extractDocumentText = null }
   }
 
   function reset() {
-    const profile = defaultProfile();
+    const profile = sanitizeProfile(initialProfile);
     writeJsonAtomic(profilePath, profile);
     return { ok: true, path: profilePath, profile };
   }

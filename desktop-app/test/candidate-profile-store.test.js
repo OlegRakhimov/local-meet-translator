@@ -81,3 +81,28 @@ test('moves corrupt local profile aside and starts empty', () => {
   assert.equal(loaded.profile.fullName, '');
   assert.match(loaded.warning, /unreadable/i);
 });
+
+test('vacancy profile keeps interview context and restores its bundled preset', () => {
+  const directory = tempDir();
+  const profilePath = path.join(directory, 'candidate-profile-speakit.json');
+  const store = createCandidateProfileStore({
+    profilePath,
+    presetProfile: {
+      profileMode: 'speakit_polish_support',
+      fullName: 'Oleg Rakhimov',
+      vacancyContext: 'Polish customer support vacancy in Serbia.',
+      interviewInstructions: 'Answer in B1 English.',
+      unsupportedClaims: ['Fluent English', 'Direct jewellery experience']
+    }
+  });
+
+  const initial = store.load().profile;
+  assert.equal(initial.profileMode, 'speakit_polish_support');
+  assert.equal(initial.fullName, 'Oleg Rakhimov');
+  assert.deepEqual(initial.unsupportedClaims, ['Fluent English', 'Direct jewellery experience']);
+
+  store.save({ fullName: 'Temporary edit' });
+  const restored = store.reset().profile;
+  assert.equal(restored.fullName, 'Oleg Rakhimov');
+  assert.match(restored.interviewInstructions, /B1 English/);
+});

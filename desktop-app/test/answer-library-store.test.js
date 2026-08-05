@@ -55,3 +55,29 @@ test('answer library store recovers from invalid JSON', () => {
   assert.equal(loaded.library.entries.length, 0);
   assert.match(loaded.warning, /unreadable/i);
 });
+
+test('answer library preserves aliases and restores a bundled vacancy preset', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lmt-answer-library-preset-'));
+  const libraryPath = path.join(directory, 'answer-library-speakit.json');
+  const store = createAnswerLibraryStore({
+    libraryPath,
+    presetLibrary: {
+      profileMode: 'speakit_polish_support',
+      entries: [{
+        id: 'intro',
+        question: 'Tell me about yourself.',
+        aliases: ['Could you introduce yourself?', 'Proszę opowiedzieć coś o sobie.'],
+        answer: 'My background combines legal, business and technical experience.'
+      }]
+    }
+  });
+
+  const initial = store.load().library;
+  assert.equal(initial.profileMode, 'speakit_polish_support');
+  assert.deepEqual(initial.entries[0].aliases, ['Could you introduce yourself?', 'Proszę opowiedzieć coś o sobie.']);
+
+  store.save({ entries: [] });
+  const restored = store.reset().library;
+  assert.equal(restored.entries.length, 1);
+  assert.equal(restored.entries[0].id, 'intro');
+});

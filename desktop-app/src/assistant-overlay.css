@@ -6,7 +6,8 @@ button { font: inherit; }
 .dragBar { -webkit-app-region: drag; display:flex; justify-content:space-between; align-items:center; gap:16px; padding:4px 2px 16px; border-bottom:1px solid rgba(148,163,184,.18); }
 .dragBar strong { display:block; font-size:18px; letter-spacing:.01em; }
 .eyebrow,.label { color:#8fa6c7; font-size:11px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
-.statusBadge,.sourceBadge,.confidenceBadge,.freezeBadge,.moveBadge,.chunkModeBadge { padding:6px 9px; border-radius:999px; font-size:10px; font-weight:900; letter-spacing:.08em; background:#17233a; color:#b9c9e4; }
+.statusBadge,.sourceBadge,.confidenceBadge,.freezeBadge,.moveBadge,.chunkModeBadge,.profileBadge { padding:6px 9px; border-radius:999px; font-size:10px; font-weight:900; letter-spacing:.08em; background:#17233a; color:#b9c9e4; }
+.profileBadge { display:inline-block; margin-top:7px; background:#173858; color:#b7dcff; }
 .freezeBadge { background:#533712; color:#ffd982; }.moveBadge{background:#123b59;color:#9ad9ff}.assistantRoot.moveMode{outline:3px solid #5bbcff;outline-offset:-3px}.assistantRoot.moveMode .dragBar{cursor:move}
 .ready .statusBadge { background:#0d3d32; color:#77efc7; }.analyzing .statusBadge { background:#3b2e0c;color:#ffd970;}.error .statusBadge{background:#431b24;color:#ff9bab;}
 .questionBlock,.suggestionBlock,.emptyState,.errorState,.pendingBlock { margin-top:16px; border:1px solid rgba(148,163,184,.18); border-radius:16px; background:rgba(13,23,39,.88); box-shadow:0 18px 42px rgba(0,0,0,.28); }

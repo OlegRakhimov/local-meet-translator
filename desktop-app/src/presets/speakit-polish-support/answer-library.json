@@ -1,0 +1,1827 @@
+{
+  "schemaVersion": 3,
+  "profileMode": "speakit_polish_support",
+  "entries": [
+    {
+      "id": "speakit-001",
+      "question": "Tell me about yourself.",
+      "aliases": [
+        "Could you introduce yourself?",
+        "Please walk me through your background.",
+        "Proszę opowiedzieć coś o sobie.",
+        "Czy może Pan krótko się przedstawić?"
+      ],
+      "intent": "introduction",
+      "level": "B1",
+      "style": "simple",
+      "answer": "My name is Oleg Rakhimov. My background combines legal, business, technical and customer-facing experience. I worked as a lawyer, managed businesses in advertising and ventilation installation, and later developed software projects in Poland. Throughout these roles, I communicated with clients, investigated problems, explained solutions and followed work through to completion. I use Polish every day and now want to apply this experience in an international customer support role.",
+      "firstSentence": "My name is Oleg Rakhimov.",
+      "keywords": [
+        "legal background",
+        "business experience",
+        "client communication",
+        "Polish daily",
+        "problem-solving"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Lawyer 2004–2006",
+        "Advertising business 2006–2008",
+        "Ventilation business 2015–2021",
+        "Lives in Poland since 2021"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 0
+    },
+    {
+      "id": "speakit-002",
+      "question": "Could you walk me through your professional background?",
+      "aliases": [
+        "Describe your work history.",
+        "What is your professional experience?",
+        "Jak wyglądało Pana doświadczenie zawodowe?"
+      ],
+      "intent": "career history",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I started as a lawyer in a road construction organisation from 2004 to 2006. I then managed an advertising production business from 2006 to 2008. After several technical and creative roles, I ran a ventilation installation organisation from 2015 to 2021. Since moving to Poland in 2021, I completed a qualification in administration and continued developing software and technical support skills.",
+      "firstSentence": "I started as a lawyer in a road construction organisation from 2004 to 2006.",
+      "keywords": [
+        "lawyer",
+        "advertising business",
+        "ventilation business",
+        "Poland",
+        "administration"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Verified career periods",
+        "Polish education 2021–2023"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 1
+    },
+    {
+      "id": "speakit-003",
+      "question": "Why are you interested in customer support?",
+      "aliases": [
+        "Why do you want to work in customer service?",
+        "Co interesuje Pana w obsłudze klienta?"
+      ],
+      "intent": "motivation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I enjoy solving practical problems and helping people understand what to do next. In my previous businesses and legal work, I communicated directly with clients, identified their needs, explained options and supported them until the matter was completed. My technical work also involves investigating problems and giving clear follow-up. Customer support lets me use these skills more directly.",
+      "firstSentence": "I enjoy solving practical problems and helping people understand what to do next.",
+      "keywords": [
+        "helping people",
+        "practical problems",
+        "clear explanations",
+        "follow-up"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Direct client experience",
+        "Problem investigation",
+        "Service support"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 2
+    },
+    {
+      "id": "speakit-004",
+      "question": "Why do you want to move from software development to customer support?",
+      "aliases": [
+        "Why are you changing careers?",
+        "Why leave development for support?",
+        "Dlaczego chce Pan przejść z programowania do obsługi klienta?"
+      ],
+      "intent": "career change",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I do not see it as a complete change of direction. My technical work already includes user feedback, troubleshooting, clear explanations, documentation and follow-up. I have also spent many years communicating with clients through legal work and my own businesses. I realised that I enjoy the communication and problem-solving side of work, and I want to use it in a more customer-focused role.",
+      "firstSentence": "I do not see it as a complete change of direction.",
+      "keywords": [
+        "transferable skills",
+        "troubleshooting",
+        "communication",
+        "customer focus"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Technical support skills",
+        "Direct client experience"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 3
+    },
+    {
+      "id": "speakit-005",
+      "question": "Why are you interested in our company and this vacancy?",
+      "aliases": [
+        "Why do you want to work for us?",
+        "What attracted you to this role?",
+        "Dlaczego interesuje Pana ta oferta?"
+      ],
+      "intent": "company motivation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "This vacancy combines three things that fit my background: daily communication in Polish, practical problem-solving and work in an international environment. I also value the clear responsibilities, remote format and opportunity to learn a professional customer support process. The role would let me use my existing experience while developing further in an international company.",
+      "firstSentence": "This vacancy combines three things that fit my background: daily communication in Polish, practical problem-solving and work in an international environment.",
+      "keywords": [
+        "Polish",
+        "problem-solving",
+        "international team",
+        "professional growth"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Uses Polish daily",
+        "Remote work readiness"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 4
+    },
+    {
+      "id": "speakit-006",
+      "question": "Why would you like to work in the jewellery industry?",
+      "aliases": [
+        "What interests you about jewellery products?",
+        "Dlaczego branża jubilerska?"
+      ],
+      "intent": "industry motivation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I do not yet have direct jewellery-industry experience, so I would not pretend to be a product expert from the first day. What interests me is learning a detailed product catalogue and helping customers make important personal purchases with accurate information. My experience learning technical products and explaining them clearly would help me build the required product knowledge.",
+      "firstSentence": "I do not yet have direct jewellery-industry experience, so I would not pretend to be a product expert from the first day.",
+      "keywords": [
+        "honest experience gap",
+        "product learning",
+        "accurate information"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "No direct jewellery experience",
+        "Technical product learning"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 5
+    },
+    {
+      "id": "speakit-007",
+      "question": "What are your main strengths?",
+      "aliases": [
+        "What would you say are your strengths?",
+        "Jakie są Pana mocne strony?"
+      ],
+      "intent": "strengths",
+      "level": "B1",
+      "style": "simple",
+      "answer": "My main strengths are calm communication, practical problem-solving and responsibility for follow-up. I listen carefully, clarify what the customer actually needs and explain the next step in clear language. My legal, business and technical experience also helps me look at a problem from several angles without losing attention to documentation and deadlines.",
+      "firstSentence": "My main strengths are calm communication, practical problem-solving and responsibility for follow-up.",
+      "keywords": [
+        "calm communication",
+        "problem-solving",
+        "responsibility",
+        "documentation"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Legal, business and technical experience"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 6
+    },
+    {
+      "id": "speakit-008",
+      "question": "What is one area you are currently improving?",
+      "aliases": [
+        "What is your weakness?",
+        "What would you like to improve?",
+        "Jaka jest Pana słaba strona?"
+      ],
+      "intent": "development area",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I am continuing to improve my spoken English. I can communicate at an intermediate level and work with professional information, but I want to become faster and more natural in live conversations. I practise regularly and focus on clear, accurate language rather than complicated expressions.",
+      "firstSentence": "I am continuing to improve my spoken English.",
+      "keywords": [
+        "spoken English",
+        "continuous learning",
+        "clear language"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "English is intermediate"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 7
+    },
+    {
+      "id": "speakit-009",
+      "question": "Why should we hire you?",
+      "aliases": [
+        "What makes you suitable for this position?",
+        "Why are you the right candidate?",
+        "Dlaczego powinniśmy Pana zatrudnić?"
+      ],
+      "intent": "fit",
+      "level": "B1",
+      "style": "simple",
+      "answer": "You should consider me because I combine strong Polish communication with real client-facing, business and technical experience. I know how to listen, identify a problem, explain a solution, document the case and complete follow-up. I am comfortable with digital tools, ready for rotating shifts and serious about relocating to Serbia and building long-term experience in customer support.",
+      "firstSentence": "You should consider me because I combine strong Polish communication with real client-facing, business and technical experience.",
+      "keywords": [
+        "Polish communication",
+        "client experience",
+        "digital tools",
+        "rotating shifts",
+        "relocation"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Uses Polish daily",
+        "Ready for shifts",
+        "Open to Serbia relocation"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 8
+    },
+    {
+      "id": "speakit-010",
+      "question": "What does excellent customer service mean to you?",
+      "aliases": [
+        "How do you define good customer service?",
+        "Co oznacza dla Pana dobra obsługa klienta?"
+      ],
+      "intent": "service quality",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Excellent customer service means listening carefully, giving accurate information and taking responsibility for the next step. The customer should feel heard and understand what will happen, when it will happen and who is responsible. Even when the answer is not what the customer hoped for, communication should remain respectful, clear and honest.",
+      "firstSentence": "Excellent customer service means listening carefully, giving accurate information and taking responsibility for the next step.",
+      "keywords": [
+        "listen",
+        "accurate information",
+        "ownership",
+        "clear next step"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 9
+    },
+    {
+      "id": "speakit-011",
+      "question": "How would you handle an angry customer?",
+      "aliases": [
+        "How do you deal with an upset customer?",
+        "Tell me how you handle difficult clients.",
+        "Jak poradziłby Pan sobie ze zdenerwowanym klientem?"
+      ],
+      "intent": "difficult customer",
+      "level": "B1",
+      "style": "simple",
+      "answer": "First, I would let the customer explain the problem without interrupting. I would acknowledge the frustration, confirm the important facts and explain what I can do. I would avoid arguing or making promises I cannot guarantee. If another team was needed, I would escalate the case, give a realistic update and make sure the promised follow-up was completed.",
+      "firstSentence": "First, I would let the customer explain the problem without interrupting.",
+      "keywords": [
+        "listen",
+        "acknowledge",
+        "verify facts",
+        "realistic update",
+        "follow-up"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 10
+    },
+    {
+      "id": "speakit-012",
+      "question": "How would you deal with an impatient customer?",
+      "aliases": [
+        "What if a customer keeps demanding an immediate answer?",
+        "Jak obsłużyłby Pan niecierpliwego klienta?"
+      ],
+      "intent": "impatient customer",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would stay calm and show that I understand the urgency. I would give the customer the information already available, explain what still needs to be checked and provide a realistic time for the next update. Regular, honest communication is usually more helpful than promising an immediate solution that may not be possible.",
+      "firstSentence": "I would stay calm and show that I understand the urgency.",
+      "keywords": [
+        "calm",
+        "urgency",
+        "realistic time",
+        "honest communication"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 11
+    },
+    {
+      "id": "speakit-013",
+      "question": "What would you do if a customer complained about a delayed order?",
+      "aliases": [
+        "How would you handle a late delivery?",
+        "Co zrobiłby Pan w przypadku opóźnionego zamówienia?"
+      ],
+      "intent": "delayed order",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would verify the customer and order details, check the latest delivery status and explain clearly what information is available. I would not promise a delivery date unless it was confirmed. If the logistics team needed to investigate, I would escalate the case, tell the customer when to expect an update and document the follow-up.",
+      "firstSentence": "I would verify the customer and order details, check the latest delivery status and explain clearly what information is available.",
+      "keywords": [
+        "verify order",
+        "delivery status",
+        "no false promise",
+        "escalate",
+        "document"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "No confirmed retail order experience; answer is procedural"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 12
+    },
+    {
+      "id": "speakit-014",
+      "question": "How would you handle an incorrect order?",
+      "aliases": [
+        "What if the customer received the wrong item?",
+        "Klient otrzymał zły produkt — co Pan zrobi?"
+      ],
+      "intent": "incorrect order",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would confirm the order number, the item ordered and the item received. Then I would check the company procedure for replacement or return and explain the next steps clearly. I would document the evidence, arrange the appropriate escalation if authorisation was needed and keep the customer informed until the case was resolved.",
+      "firstSentence": "I would confirm the order number, the item ordered and the item received.",
+      "keywords": [
+        "confirm details",
+        "replacement",
+        "procedure",
+        "keep informed"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 13
+    },
+    {
+      "id": "speakit-015",
+      "question": "What would you do if a product arrived damaged?",
+      "aliases": [
+        "How would you manage a damaged-item complaint?",
+        "Co zrobić, gdy produkt jest uszkodzony?"
+      ],
+      "intent": "damaged product",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would apologise for the situation, verify the order and ask for the information required by company procedure, such as a description or photographs. I would explain the replacement or return process, avoid blaming the customer or delivery company and make sure the case was documented and followed through.",
+      "firstSentence": "I would apologise for the situation, verify the order and ask for the information required by company procedure, such as a description or photographs.",
+      "keywords": [
+        "apologise",
+        "verify",
+        "evidence",
+        "return process",
+        "follow-through"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 14
+    },
+    {
+      "id": "speakit-016",
+      "question": "How would you help a customer who cannot clearly explain the problem?",
+      "aliases": [
+        "What if the customer is confused?",
+        "Jak pomóc klientowi, który nie potrafi dokładnie opisać problemu?"
+      ],
+      "intent": "clarification",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would ask short, specific questions one at a time and repeat my understanding in simple words. For example, I would confirm what the customer expected, what actually happened and when it happened. This helps reduce confusion and makes the customer feel that I am listening rather than rushing to an assumption.",
+      "firstSentence": "I would ask short, specific questions one at a time and repeat my understanding in simple words.",
+      "keywords": [
+        "specific questions",
+        "repeat understanding",
+        "expected versus actual"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 15
+    },
+    {
+      "id": "speakit-017",
+      "question": "What would you do if you did not know the answer?",
+      "aliases": [
+        "How do you respond when you are unsure?",
+        "Co Pan zrobi, jeśli nie zna odpowiedzi?"
+      ],
+      "intent": "unknown answer",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would be honest that I need to check the information instead of guessing. I would use the knowledge base or ask the appropriate colleague, give the customer a realistic time for an update and record the question so the follow-up was not missed. Accuracy is more important than giving a fast but incorrect answer.",
+      "firstSentence": "I would be honest that I need to check the information instead of guessing.",
+      "keywords": [
+        "do not guess",
+        "knowledge base",
+        "ask colleague",
+        "follow-up",
+        "accuracy"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 16
+    },
+    {
+      "id": "speakit-018",
+      "question": "How would you explain a complicated process to a non-technical customer?",
+      "aliases": [
+        "How do you simplify technical information?",
+        "Jak wyjaśnia Pan skomplikowane rzeczy klientowi?"
+      ],
+      "intent": "clear explanation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would divide the process into a few clear steps, avoid unnecessary technical terms and check after each important point that the customer understands. I would use an example when helpful and finish by confirming the exact next action. This is something I already do when explaining technical or legal matters in ordinary language.",
+      "firstSentence": "I would divide the process into a few clear steps, avoid unnecessary technical terms and check after each important point that the customer understands.",
+      "keywords": [
+        "simple steps",
+        "avoid jargon",
+        "check understanding",
+        "next action"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Explains technical and legal matters clearly"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 17
+    },
+    {
+      "id": "speakit-019",
+      "question": "How do you make sure that a customer feels heard?",
+      "aliases": [
+        "How do you show empathy?",
+        "Jak sprawić, aby klient czuł się wysłuchany?"
+      ],
+      "intent": "empathy",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I let the customer finish, summarise the issue in my own words and acknowledge the effect it has had. Then I explain what I can do and what the next step will be. The important point is not only to use polite words, but to show through accurate action and follow-up that the customer’s concern was understood.",
+      "firstSentence": "I let the customer finish, summarise the issue in my own words and acknowledge the effect it has had.",
+      "keywords": [
+        "listen",
+        "summarise",
+        "acknowledge",
+        "action",
+        "follow-up"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 18
+    },
+    {
+      "id": "speakit-020",
+      "question": "How would you refuse an unreasonable request professionally?",
+      "aliases": [
+        "What if a customer asks for something outside policy?",
+        "Jak odmówić klientowi w profesjonalny sposób?"
+      ],
+      "intent": "professional refusal",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would acknowledge what the customer wants, explain the relevant policy calmly and avoid blaming language. Then I would offer any available alternative or explain the correct escalation route. I would not promise an exception that I was not authorised to make, but I would still try to leave the customer with a clear next step.",
+      "firstSentence": "I would acknowledge what the customer wants, explain the relevant policy calmly and avoid blaming language.",
+      "keywords": [
+        "policy",
+        "calm explanation",
+        "alternative",
+        "authority"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 19
+    },
+    {
+      "id": "speakit-021",
+      "question": "Tell me about a difficult problem you solved.",
+      "aliases": [
+        "Give me an example of your problem-solving.",
+        "Proszę opowiedzieć o trudnym problemie, który Pan rozwiązał."
+      ],
+      "intent": "problem example",
+      "level": "B1",
+      "style": "simple",
+      "answer": "In my technical work, I often need to investigate an issue that is described only by its symptoms. I first reproduce the problem, separate technical facts from assumptions and check the workflow step by step. Then I implement or coordinate a practical fix, verify the result and explain it clearly to the people affected. This structured approach also applies well to customer cases.",
+      "firstSentence": "In my technical work, I often need to investigate an issue that is described only by its symptoms.",
+      "keywords": [
+        "reproduce",
+        "facts",
+        "step by step",
+        "verify",
+        "explain"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Investigates technical and workflow problems"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 20
+    },
+    {
+      "id": "speakit-022",
+      "question": "How do you investigate a customer problem?",
+      "aliases": [
+        "What is your troubleshooting process?",
+        "Jak analizuje Pan problem klienta?"
+      ],
+      "intent": "troubleshooting",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I first collect the basic facts: who is affected, what was expected, what happened, when it started and what has already been tried. Then I check the available records, reproduce the issue when possible and compare it with the correct process. I document the findings, resolve what I can and escalate with complete information when necessary.",
+      "firstSentence": "I first collect the basic facts: who is affected, what was expected, what happened, when it started and what has already been tried.",
+      "keywords": [
+        "collect facts",
+        "expected result",
+        "records",
+        "reproduce",
+        "document",
+        "escalate"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 21
+    },
+    {
+      "id": "speakit-023",
+      "question": "How do you decide whether to resolve or escalate an issue?",
+      "aliases": [
+        "When do you escalate a case?",
+        "Kiedy przekazuje Pan sprawę dalej?"
+      ],
+      "intent": "escalation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I resolve the issue myself when it is within my knowledge, authority and company procedure. I escalate when there is financial or legal risk, a system problem, missing authorisation or a specialist decision is required. Before escalating, I collect the relevant facts and explain clearly what has already been checked so the customer does not have to start again.",
+      "firstSentence": "I resolve the issue myself when it is within my knowledge, authority and company procedure.",
+      "keywords": [
+        "authority",
+        "risk",
+        "specialist",
+        "complete facts",
+        "no repetition"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 22
+    },
+    {
+      "id": "speakit-024",
+      "question": "What information would you collect before escalating a case?",
+      "aliases": [
+        "What should an escalation contain?",
+        "Jakie informacje zbiera Pan przed eskalacją?"
+      ],
+      "intent": "escalation details",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would include the customer and order identifiers, a concise description of the issue, the expected and actual result, important dates, actions already taken, available evidence and the exact decision or help required. A clear escalation saves time for the next team and leads to a faster answer for the customer.",
+      "firstSentence": "I would include the customer and order identifiers, a concise description of the issue, the expected and actual result, important dates, actions already taken, available evidence and the exact decision or help required.",
+      "keywords": [
+        "identifiers",
+        "issue summary",
+        "dates",
+        "actions taken",
+        "evidence",
+        "required decision"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 23
+    },
+    {
+      "id": "speakit-025",
+      "question": "What would you do if a customer reported the same problem repeatedly?",
+      "aliases": [
+        "How would you handle a recurring issue?",
+        "Co zrobić, gdy problem klienta ciągle wraca?"
+      ],
+      "intent": "recurring issue",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would review the full history instead of treating each contact as a separate new case. I would confirm what solutions were already attempted, look for a common cause and escalate with the complete history if the previous solution did not work. I would also keep the customer informed and avoid asking for information already recorded.",
+      "firstSentence": "I would review the full history instead of treating each contact as a separate new case.",
+      "keywords": [
+        "review history",
+        "previous attempts",
+        "root cause",
+        "complete escalation"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 24
+    },
+    {
+      "id": "speakit-026",
+      "question": "What would you do if the customer support system was unavailable?",
+      "aliases": [
+        "How would you work during a system outage?",
+        "Co Pan zrobi w razie awarii systemu?"
+      ],
+      "intent": "system outage",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would follow the company’s outage procedure, inform the responsible team and keep only the minimum temporary notes allowed by policy. I would tell customers honestly that the system is temporarily unavailable without exposing internal details. When service returned, I would enter the records correctly and complete any pending follow-up.",
+      "firstSentence": "I would follow the company’s outage procedure, inform the responsible team and keep only the minimum temporary notes allowed by policy.",
+      "keywords": [
+        "outage procedure",
+        "temporary notes",
+        "honest update",
+        "backfill records"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 25
+    },
+    {
+      "id": "speakit-027",
+      "question": "How would you answer a question about a product you do not know well?",
+      "aliases": [
+        "What if you do not know the product?",
+        "Co Pan zrobi, jeśli nie zna produktu?"
+      ],
+      "intent": "product knowledge gap",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would not guess. I would check the approved product information or consult a knowledgeable colleague, then return with an accurate answer. At the same time, I would note the topic for further study so that I could answer similar questions faster in the future.",
+      "firstSentence": "I would not guess.",
+      "keywords": [
+        "approved information",
+        "do not guess",
+        "consult",
+        "learn"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "No direct jewellery product experience"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 26
+    },
+    {
+      "id": "speakit-028",
+      "question": "How would you learn a large product catalogue?",
+      "aliases": [
+        "How do you build product knowledge?",
+        "Jak nauczy się Pan dużego katalogu produktów?"
+      ],
+      "intent": "product learning",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would first learn the main product categories, the most common customer questions and the important differences between similar products. I would use the knowledge base, create short notes and practise typical scenarios. I would also record unfamiliar questions from real contacts and review them regularly with feedback from experienced colleagues.",
+      "firstSentence": "I would first learn the main product categories, the most common customer questions and the important differences between similar products.",
+      "keywords": [
+        "categories",
+        "common questions",
+        "differences",
+        "notes",
+        "scenarios",
+        "feedback"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 27
+    },
+    {
+      "id": "speakit-029",
+      "question": "What would you do if an item was out of stock?",
+      "aliases": [
+        "How would you help when a product is unavailable?",
+        "Co zrobić, gdy produktu nie ma w magazynie?"
+      ],
+      "intent": "out of stock",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would confirm the current availability and avoid promising a restock date unless it was official. I would explain the available options, such as a similar product, notification when stock returns or cancellation according to policy. The goal would be to give the customer a useful choice without creating false expectations.",
+      "firstSentence": "I would confirm the current availability and avoid promising a restock date unless it was official.",
+      "keywords": [
+        "availability",
+        "no false promise",
+        "alternative",
+        "notification",
+        "policy"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 28
+    },
+    {
+      "id": "speakit-030",
+      "question": "How would you explain a return or exchange policy?",
+      "aliases": [
+        "How do you handle return questions?",
+        "Jak wyjaśni Pan zasady zwrotu lub wymiany?"
+      ],
+      "intent": "return policy",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would first verify the order and then explain the policy in simple steps: eligibility, time limit, required condition of the product, documents or packaging, shipping method and expected processing time. I would check that the customer understood the next action and document the guidance I provided.",
+      "firstSentence": "I would first verify the order and then explain the policy in simple steps: eligibility, time limit, required condition of the product, documents or packaging, shipping method and expected processing time.",
+      "keywords": [
+        "eligibility",
+        "time limit",
+        "condition",
+        "shipping",
+        "processing time"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "No confirmed direct retail return processing"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 29
+    },
+    {
+      "id": "speakit-031",
+      "question": "What would you do if a customer demanded a refund outside the policy?",
+      "aliases": [
+        "How would you manage an exception request?",
+        "Klient żąda zwrotu poza regulaminem — co Pan zrobi?"
+      ],
+      "intent": "refund outside policy",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would listen, verify the facts and explain the policy calmly. I would check whether any authorised exception or alternative solution was available, but I would not promise a refund without authority. If the case required a supervisor’s decision, I would escalate it with complete information and give the customer a realistic update.",
+      "firstSentence": "I would listen, verify the facts and explain the policy calmly.",
+      "keywords": [
+        "verify",
+        "policy",
+        "authorised exception",
+        "supervisor",
+        "realistic update"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "No confirmed direct retail refund experience"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 30
+    },
+    {
+      "id": "speakit-032",
+      "question": "How would you handle a payment-related complaint?",
+      "aliases": [
+        "What if a payment failed or was charged twice?",
+        "Jak obsłuży Pan problem z płatnością?"
+      ],
+      "intent": "payment issue",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would verify the customer and order details without asking for sensitive information that support is not allowed to collect. I would identify whether the issue was a failed payment, duplicate charge or missing refund, check the available records and follow the company’s secure payment procedure. Financial cases should be documented carefully and escalated when authorisation or a payment specialist is required.",
+      "firstSentence": "I would verify the customer and order details without asking for sensitive information that support is not allowed to collect.",
+      "keywords": [
+        "secure verification",
+        "payment type",
+        "records",
+        "procedure",
+        "escalation"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "No confirmed payment-dispute experience"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 31
+    },
+    {
+      "id": "speakit-033",
+      "question": "How would you protect customer information?",
+      "aliases": [
+        "What does data privacy mean in customer support?",
+        "Jak chroniłby Pan dane klienta?"
+      ],
+      "intent": "data privacy",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would verify identity according to company procedure, access only the information needed for the case and never share customer data with an unauthorised person. I would use approved systems, avoid copying sensitive information into unsafe notes and report any suspected data issue immediately.",
+      "firstSentence": "I would verify identity according to company procedure, access only the information needed for the case and never share customer data with an unauthorised person.",
+      "keywords": [
+        "identity verification",
+        "minimum access",
+        "approved systems",
+        "report incident"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 32
+    },
+    {
+      "id": "speakit-034",
+      "question": "Why is accurate documentation important?",
+      "aliases": [
+        "Why should every contact be documented?",
+        "Dlaczego dokładna dokumentacja jest ważna?"
+      ],
+      "intent": "documentation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Accurate documentation gives the next employee the full context, prevents the customer from repeating the story and makes promised follow-up visible. It also helps the company identify recurring problems and verify what was communicated. My technical and administrative work has taught me to keep information clear, factual and complete.",
+      "firstSentence": "Accurate documentation gives the next employee the full context, prevents the customer from repeating the story and makes promised follow-up visible.",
+      "keywords": [
+        "continuity",
+        "no repetition",
+        "follow-up",
+        "recurring problems",
+        "factual"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Documentation experience"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 33
+    },
+    {
+      "id": "speakit-035",
+      "question": "What information should be recorded after a customer interaction?",
+      "aliases": [
+        "What would you write in a ticket?",
+        "Co powinno znaleźć się w notatce po kontakcie z klientem?"
+      ],
+      "intent": "ticket documentation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would record the reason for contact, verified customer or order references, the important facts, actions taken, information given, any promised deadline, escalation details and the next owner of the case. Notes should be concise and factual, without personal opinions or unnecessary sensitive data.",
+      "firstSentence": "I would record the reason for contact, verified customer or order references, the important facts, actions taken, information given, any promised deadline, escalation details and the next owner of the case.",
+      "keywords": [
+        "reason",
+        "references",
+        "facts",
+        "actions",
+        "deadline",
+        "owner"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 34
+    },
+    {
+      "id": "speakit-036",
+      "question": "How do you make sure follow-up is completed?",
+      "aliases": [
+        "How do you avoid forgetting customer promises?",
+        "Jak pilnuje Pan dalszego kontaktu z klientem?"
+      ],
+      "intent": "follow-up",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I record the exact next action, responsible person and expected time in the system. I review open cases regularly and do not close a case until the promised action is completed or clearly transferred. If there is a delay, I update the customer before the promised time rather than waiting for another complaint.",
+      "firstSentence": "I record the exact next action, responsible person and expected time in the system.",
+      "keywords": [
+        "next action",
+        "owner",
+        "deadline",
+        "review open cases",
+        "proactive update"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 35
+    },
+    {
+      "id": "speakit-037",
+      "question": "Have you worked with CRM or ticketing systems?",
+      "aliases": [
+        "Do you know Zendesk or Salesforce?",
+        "What customer-support software have you used?",
+        "Czy pracował Pan w CRM lub systemie zgłoszeń?"
+      ],
+      "intent": "CRM experience",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I have not yet worked extensively with a dedicated customer support platform such as Zendesk or Salesforce. However, I understand that CRM and ticketing systems are used to record interactions, assign requests, manage statuses, escalation and follow-up. I have strong experience with digital tools, documentation and managing issues to completion, so I am confident that I can learn the company’s system quickly.",
+      "firstSentence": "I have not yet worked extensively with a dedicated customer support platform such as Zendesk or Salesforce.",
+      "keywords": [
+        "honest gap",
+        "CRM purpose",
+        "tickets",
+        "statuses",
+        "quick learning"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "No confirmed dedicated CRM experience",
+        "Confident with digital tools"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 36
+    },
+    {
+      "id": "speakit-038",
+      "question": "How do you organise several open customer cases?",
+      "aliases": [
+        "How do you manage multiple tickets?",
+        "Jak organizuje Pan wiele otwartych spraw?"
+      ],
+      "intent": "case management",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I classify cases by urgency, customer impact, deadlines and dependency on other teams. I record a clear next action and review waiting cases so they are not forgotten. I also separate quick tasks from cases that need investigation, while keeping customers updated when a solution will take longer.",
+      "firstSentence": "I classify cases by urgency, customer impact, deadlines and dependency on other teams.",
+      "keywords": [
+        "urgency",
+        "impact",
+        "deadlines",
+        "next action",
+        "waiting cases"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 37
+    },
+    {
+      "id": "speakit-039",
+      "question": "How do you prioritise phone, email and chat requests?",
+      "aliases": [
+        "How do you manage several support channels?",
+        "Jak ustala Pan priorytety między telefonem, e-mailem i czatem?"
+      ],
+      "intent": "channel prioritisation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would follow the company’s service levels and consider urgency and risk rather than simply choosing the oldest channel. Live calls and chats need immediate acknowledgement, while emails can be organised by deadline and impact. If a financial or safety-related case appeared, I would prioritise or escalate it according to procedure while making sure other customers still received an update.",
+      "firstSentence": "I would follow the company’s service levels and consider urgency and risk rather than simply choosing the oldest channel.",
+      "keywords": [
+        "service levels",
+        "urgency",
+        "risk",
+        "acknowledgement",
+        "update"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 38
+    },
+    {
+      "id": "speakit-040",
+      "question": "What would you do if you made an error in a customer record?",
+      "aliases": [
+        "How do you handle a documentation mistake?",
+        "Co Pan zrobi, jeśli popełni błąd w dokumentacji?"
+      ],
+      "intent": "record error",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would correct the record according to the system procedure, keep the audit history intact and inform a supervisor if the error could affect the customer or another team. I would not hide the mistake. I would also check whether any follow-up message or action needed correction and learn how to prevent the same error.",
+      "firstSentence": "I would correct the record according to the system procedure, keep the audit history intact and inform a supervisor if the error could affect the customer or another team.",
+      "keywords": [
+        "correct transparently",
+        "audit history",
+        "inform",
+        "customer impact",
+        "prevention"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 39
+    },
+    {
+      "id": "speakit-041",
+      "question": "Are you comfortable working remotely?",
+      "aliases": [
+        "Do you have experience with remote work?",
+        "Czy odpowiada Panu praca zdalna?"
+      ],
+      "intent": "remote readiness",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Yes. I am comfortable working independently with digital communication tools and clear written documentation. I currently have a quiet place to work and reliable internet. When relocating to Serbia, a quiet workspace and stable high-speed internet will be important requirements when I choose accommodation.",
+      "firstSentence": "Yes.",
+      "keywords": [
+        "remote work",
+        "quiet workspace",
+        "reliable internet",
+        "digital tools"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Quiet workspace confirmed",
+        "Reliable internet confirmed"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 40
+    },
+    {
+      "id": "speakit-042",
+      "question": "How do you organise your working day at home?",
+      "aliases": [
+        "How do you stay productive remotely?",
+        "Jak organizuje Pan dzień pracy zdalnej?"
+      ],
+      "intent": "remote organisation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I start by reviewing priorities, scheduled commitments and open follow-ups. I keep my workspace free from distractions, update records as I work and use clear task lists rather than relying on memory. I also communicate early when I need information from another person so that remote work does not create unnecessary delays.",
+      "firstSentence": "I start by reviewing priorities, scheduled commitments and open follow-ups.",
+      "keywords": [
+        "priorities",
+        "follow-ups",
+        "task list",
+        "early communication"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 41
+    },
+    {
+      "id": "speakit-043",
+      "question": "How do you stay focused while working remotely?",
+      "aliases": [
+        "How do you avoid distractions at home?",
+        "Jak utrzymuje Pan koncentrację w domu?"
+      ],
+      "intent": "remote focus",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I use a dedicated quiet workspace, keep a clear task list and work in focused blocks with planned breaks. During working hours I remove personal distractions and keep communication tools available. For customer support, I would also prepare the headset, connection and required systems before the shift begins.",
+      "firstSentence": "I use a dedicated quiet workspace, keep a clear task list and work in focused blocks with planned breaks.",
+      "keywords": [
+        "dedicated workspace",
+        "task list",
+        "focus blocks",
+        "prepare before shift"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Quiet workspace confirmed"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 42
+    },
+    {
+      "id": "speakit-044",
+      "question": "What would you do if your internet connection failed?",
+      "aliases": [
+        "How would you handle a remote-work connection problem?",
+        "Co Pan zrobi w razie awarii internetu?"
+      ],
+      "intent": "internet failure",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would immediately inform the responsible supervisor through an available backup channel and follow the company’s continuity procedure. I would try the approved backup connection if available and document any customer work that needed reassignment. I understand that reliable internet is essential, so I will also choose accommodation in Serbia with stable service.",
+      "firstSentence": "I would immediately inform the responsible supervisor through an available backup channel and follow the company’s continuity procedure.",
+      "keywords": [
+        "inform supervisor",
+        "backup channel",
+        "continuity procedure",
+        "reassign"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Reliable internet is a housing requirement"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 43
+    },
+    {
+      "id": "speakit-045",
+      "question": "How do you work with international teams?",
+      "aliases": [
+        "Are you comfortable in a multicultural team?",
+        "Jak pracuje Pan w międzynarodowym zespole?"
+      ],
+      "intent": "international teamwork",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I focus on clear communication, respectful language and written confirmation of important decisions. I have lived and worked in Poland since 2021, use Polish daily and cooperate with people from different professional backgrounds. When something is unclear, I ask a direct question instead of relying on cultural assumptions.",
+      "firstSentence": "I focus on clear communication, respectful language and written confirmation of important decisions.",
+      "keywords": [
+        "clear communication",
+        "respect",
+        "written confirmation",
+        "ask questions"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Lives in Poland since 2021",
+        "Uses Polish daily"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 44
+    },
+    {
+      "id": "speakit-046",
+      "question": "Tell me about a time you received critical feedback.",
+      "aliases": [
+        "How do you respond to feedback?",
+        "Jak reaguje Pan na krytyczną informację zwrotną?"
+      ],
+      "intent": "feedback",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I try to separate the useful information from the emotion of the moment. I ask for a specific example, confirm what result is expected and then change the process or work product. In technical projects, feedback is essential because testing and user comments often reveal something that was not visible during development.",
+      "firstSentence": "I try to separate the useful information from the emotion of the moment.",
+      "keywords": [
+        "specific example",
+        "expected result",
+        "change process",
+        "user feedback"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Uses testing and user feedback"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 45
+    },
+    {
+      "id": "speakit-047",
+      "question": "Tell me about a mistake you made.",
+      "aliases": [
+        "How do you handle your mistakes?",
+        "Proszę opowiedzieć o popełnionym błędzie."
+      ],
+      "intent": "mistake",
+      "level": "B1",
+      "style": "simple",
+      "answer": "When I make a mistake, I first correct the immediate effect and communicate it honestly to the people concerned. Then I identify why it happened and add a practical prevention step, such as a checklist, clearer documentation or another verification. I believe responsibility means not only admitting a mistake, but reducing the chance that it happens again.",
+      "firstSentence": "When I make a mistake, I first correct the immediate effect and communicate it honestly to the people concerned.",
+      "keywords": [
+        "correct",
+        "communicate honestly",
+        "root cause",
+        "prevention"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 46
+    },
+    {
+      "id": "speakit-048",
+      "question": "How do you deal with stress?",
+      "aliases": [
+        "How do you work under pressure?",
+        "Jak radzi Pan sobie ze stresem?"
+      ],
+      "intent": "stress",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I focus on facts, priorities and the next controllable action. I avoid reacting emotionally, especially when another person is upset. In technical, business and legal work I learned that a calm structure—understand the issue, decide what is urgent, act and communicate—usually reduces pressure for everyone.",
+      "firstSentence": "I focus on facts, priorities and the next controllable action.",
+      "keywords": [
+        "facts",
+        "priorities",
+        "calm",
+        "next action"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Legal, business and technical background"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 47
+    },
+    {
+      "id": "speakit-049",
+      "question": "How do you handle conflict with a colleague?",
+      "aliases": [
+        "What would you do if you disagreed with a teammate?",
+        "Jak rozwiązuje Pan konflikt z kolegą?"
+      ],
+      "intent": "team conflict",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would discuss the specific facts and desired result rather than judging the person. I would listen to the colleague’s reasoning, explain my concern and look for a solution consistent with company procedure and customer needs. If we could not resolve an important issue, I would involve the appropriate manager without turning it into a personal conflict.",
+      "firstSentence": "I would discuss the specific facts and desired result rather than judging the person.",
+      "keywords": [
+        "facts",
+        "listen",
+        "shared result",
+        "procedure",
+        "manager"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 48
+    },
+    {
+      "id": "speakit-050",
+      "question": "How do you respond to changing procedures?",
+      "aliases": [
+        "Are you adaptable?",
+        "Jak reaguje Pan na zmiany procedur?"
+      ],
+      "intent": "adaptability",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I first make sure I understand what changed, why it changed and from which date it applies. Then I update my notes and follow the new process consistently. My career has included legal, business, technical and creative roles, so learning new requirements and adapting to different environments is familiar to me.",
+      "firstSentence": "I first make sure I understand what changed, why it changed and from which date it applies.",
+      "keywords": [
+        "understand change",
+        "effective date",
+        "update notes",
+        "adaptability"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Varied professional background"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 49
+    },
+    {
+      "id": "speakit-051",
+      "question": "How quickly do you learn new systems?",
+      "aliases": [
+        "How would you learn our tools?",
+        "Jak szybko uczy się Pan nowych systemów?"
+      ],
+      "intent": "learning systems",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I learn best by understanding the workflow, practising common tasks and checking my results against the correct procedure. My software work requires me to learn new tools regularly, and my previous businesses required practical learning in different technical areas. I would use training materials, take structured notes and ask focused questions when necessary.",
+      "firstSentence": "I learn best by understanding the workflow, practising common tasks and checking my results against the correct procedure.",
+      "keywords": [
+        "workflow",
+        "practice",
+        "verify",
+        "structured notes",
+        "focused questions"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Confident with digital tools"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 50
+    },
+    {
+      "id": "speakit-052",
+      "question": "Are you ready to work rotating shifts?",
+      "aliases": [
+        "Can you work different shifts?",
+        "Czy jest Pan gotowy do pracy zmianowej?"
+      ],
+      "intent": "shift availability",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Yes, I am ready to work rotating shifts. I understand that customer support requires flexibility, especially when customers and team members may work at different times. I would organise my routine and workspace around the published schedule so that I could be reliable for each shift.",
+      "firstSentence": "Yes, I am ready to work rotating shifts.",
+      "keywords": [
+        "yes",
+        "flexibility",
+        "reliable schedule"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Ready for rotating shifts"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 51
+    },
+    {
+      "id": "speakit-053",
+      "question": "Why are you considering relocation to Serbia?",
+      "aliases": [
+        "Why Serbia?",
+        "Dlaczego rozważa Pan przeprowadzkę do Serbii?"
+      ],
+      "intent": "relocation motivation",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I am seriously considering Serbia as a realistic place to continue my professional development and build a stable life. This position would give me a clear employment basis and the opportunity to work in an international environment. I am currently in Poznań and I am ready to discuss the practical relocation and residence process with the employer.",
+      "firstSentence": "I am seriously considering Serbia as a realistic place to continue my professional development and build a stable life.",
+      "keywords": [
+        "Serbia",
+        "professional development",
+        "stable life",
+        "employment basis"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Open to Serbia relocation",
+        "Currently in Poznań"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 52
+    },
+    {
+      "id": "speakit-054",
+      "question": "When could you relocate and start work?",
+      "aliases": [
+        "What is your availability?",
+        "How soon can you move?",
+        "Kiedy może Pan rozpocząć pracę i przeprowadzić się?"
+      ],
+      "intent": "availability",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I could normally start within one month. If the company needs me earlier, I will make every effort to be available within two or three weeks, although I do not want to promise a date before the practical arrangements are confirmed. I expect relocation to take about one to one and a half months, possibly earlier depending on administrative circumstances.",
+      "firstSentence": "I could normally start within one month.",
+      "keywords": [
+        "one month",
+        "two to three weeks if possible",
+        "relocation 1–1.5 months",
+        "no false guarantee"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Confirmed availability and relocation timeline"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 53
+    },
+    {
+      "id": "speakit-055",
+      "question": "Are you legally able to work in Serbia?",
+      "aliases": [
+        "Do you already have a Serbian work permit?",
+        "What is your work authorisation status?",
+        "Czy ma Pan prawo do pracy w Serbii?"
+      ],
+      "intent": "legal status",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I do not currently claim an existing unrestricted right to work in Serbia. I understand the general residence and employment procedure, and my preferred option would be to obtain temporary residence based on employment. I am ready to provide the required documents and cooperate with the employer on the formalities.",
+      "firstSentence": "I do not currently claim an existing unrestricted right to work in Serbia.",
+      "keywords": [
+        "honest current status",
+        "employment-based residence",
+        "documents",
+        "formalities"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "No current unrestricted work right claimed",
+        "Understands procedure"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 54
+    },
+    {
+      "id": "speakit-056",
+      "question": "What are your salary expectations?",
+      "aliases": [
+        "Is the advertised salary acceptable?",
+        "Jakie są Pana oczekiwania finansowe?"
+      ],
+      "intent": "salary",
+      "level": "B1",
+      "style": "simple",
+      "answer": "The advertised salary of one thousand two hundred and sixty euros gross per month, together with the stated benefits and possible performance bonus, is acceptable to me at the initial stage. My immediate priorities are to join an international company, gain direct customer support experience and establish myself professionally in Serbia.",
+      "firstSentence": "The advertised salary of one thousand two hundred and sixty euros gross per month, together with the stated benefits and possible performance bonus, is acceptable to me at the initial stage.",
+      "keywords": [
+        "EUR 1260 gross",
+        "acceptable initially",
+        "international experience",
+        "Serbia"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Advertised salary acceptable initially"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 55
+    },
+    {
+      "id": "speakit-057",
+      "question": "Do you have direct experience communicating with clients?",
+      "aliases": [
+        "Tell me about your customer contact experience.",
+        "Czy ma Pan doświadczenie w kontakcie z klientami?"
+      ],
+      "intent": "client experience",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Yes. I communicated directly with clients while working as a lawyer and while managing my advertising and ventilation businesses. My responsibilities included understanding customer needs, explaining services and options, sales, negotiations, coordinating work and supporting customers until the matter or order was completed.",
+      "firstSentence": "Yes.",
+      "keywords": [
+        "lawyer",
+        "business owner",
+        "needs",
+        "sales",
+        "negotiations",
+        "support"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Direct client experience confirmed"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 56
+    },
+    {
+      "id": "speakit-058",
+      "question": "Do you have sales experience?",
+      "aliases": [
+        "Tell me about your experience in sales.",
+        "Czy ma Pan doświadczenie w sprzedaży?"
+      ],
+      "intent": "sales",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Yes. In my advertising and ventilation businesses, I communicated directly with customers, identified their needs, explained available services, discussed price and conditions and helped them choose an appropriate solution. I focused on understanding the real requirement and building trust rather than simply trying to sell something.",
+      "firstSentence": "Yes.",
+      "keywords": [
+        "customer needs",
+        "services",
+        "price",
+        "conditions",
+        "trust"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Sales experience in own businesses"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 57
+    },
+    {
+      "id": "speakit-059",
+      "question": "Do you have experience processing orders?",
+      "aliases": [
+        "Have you handled customer orders?",
+        "Czy ma Pan doświadczenie w obsłudze zamówień?"
+      ],
+      "intent": "order experience",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I have experience processing and coordinating service orders rather than retail product orders. In my advertising and ventilation businesses, I received requests, clarified requirements, discussed scope, price and timeline, organised the work and supported the customer until completion. I understand that retail order processing also requires accuracy, clear communication, documentation and follow-up.",
+      "firstSentence": "I have experience processing and coordinating service orders rather than retail product orders.",
+      "keywords": [
+        "service orders",
+        "requirements",
+        "scope",
+        "price",
+        "timeline",
+        "follow-up"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Service-order experience confirmed",
+        "No confirmed retail product order experience"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 58
+    },
+    {
+      "id": "speakit-060",
+      "question": "What did you do between 2008 and 2015?",
+      "aliases": [
+        "Can you explain this period in your career?",
+        "Czym zajmował się Pan w latach 2008–2015?"
+      ],
+      "intent": "career period 2008-2015",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Between 2008 and 2015, I worked in several technical, operational and creative roles. My experience included working with television broadcast equipment as a broadcast video engineer, composing music for television, ventilation installation and security work. It was a varied period that strengthened my responsibility, adaptability and practical problem-solving skills.",
+      "firstSentence": "Between 2008 and 2015, I worked in several technical, operational and creative roles.",
+      "keywords": [
+        "broadcast equipment",
+        "television music",
+        "ventilation installation",
+        "security",
+        "adaptability"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Verified roles 2008–2015"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 59
+    },
+    {
+      "id": "speakit-061",
+      "question": "What did you do as a broadcast video engineer?",
+      "aliases": [
+        "Tell me about your television technical work.",
+        "Na czym polegała Pana praca jako inżyniera wideo?"
+      ],
+      "intent": "broadcast video engineering",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I worked with television broadcast equipment as a broadcast video engineer. The role was connected with the technical operation of broadcasting equipment and required concentration, responsibility and a calm response when a technical issue had to be handled quickly. I would keep the description at this level unless the interviewer asks about a specific system or task.",
+      "firstSentence": "I worked with television broadcast equipment as a broadcast video engineer.",
+      "keywords": [
+        "television",
+        "broadcast equipment",
+        "concentration",
+        "technical issues"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Worked with television broadcast equipment"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 60
+    },
+    {
+      "id": "speakit-062",
+      "question": "What have you been doing since 2021?",
+      "aliases": [
+        "Tell me about your time in Poland.",
+        "Czym zajmuje się Pan od 2021 roku?"
+      ],
+      "intent": "Poland period",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I have been living in Poland since 2021. From 2021 to 2023, I studied at a Polish post-secondary vocational school and qualified as an Administration Technician. I also continued developing technical and software skills, started independent mobile and backend projects and now use Polish in daily and professional communication.",
+      "firstSentence": "I have been living in Poland since 2021.",
+      "keywords": [
+        "Poland",
+        "Administration Technician",
+        "software projects",
+        "Polish daily"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Lives in Poland since 2021",
+        "Education 2021–2023",
+        "Projects since 2022"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 61
+    },
+    {
+      "id": "speakit-063",
+      "question": "How would you describe your English level?",
+      "aliases": [
+        "Are you comfortable working in English?",
+        "Jaki jest Pana poziom angielskiego?"
+      ],
+      "intent": "English level",
+      "level": "B1",
+      "style": "simple",
+      "answer": "My English is at an intermediate level. I can communicate in writing and speaking, understand professional information and cooperate with an international team. I am continuing to improve my spoken English, and I focus on communicating clearly and accurately rather than using unnecessarily complicated language.",
+      "firstSentence": "My English is at an intermediate level.",
+      "keywords": [
+        "intermediate",
+        "written and spoken",
+        "international team",
+        "improving"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "English is intermediate; not fluent"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 62
+    },
+    {
+      "id": "speakit-064",
+      "question": "How often do you use Polish?",
+      "aliases": [
+        "In what situations do you use Polish?",
+        "Jak często używa Pan języka polskiego?"
+      ],
+      "intent": "Polish language",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I have lived in Poland since 2021 and use Polish every day in practical and professional situations. I completed a Polish post-secondary vocational programme in administration and cooperate with Polish-speaking users and colleagues. I am comfortable explaining issues, discussing work and handling normal professional communication in Polish.",
+      "firstSentence": "I have lived in Poland since 2021 and use Polish every day in practical and professional situations.",
+      "keywords": [
+        "Polish daily",
+        "Polish education",
+        "professional communication"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Uses Polish daily",
+        "Polish school 2021–2023"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 63
+    },
+    {
+      "id": "speakit-065",
+      "question": "Are you comfortable speaking with Polish customers by phone?",
+      "aliases": [
+        "Can you provide telephone support in Polish?",
+        "Czy może Pan obsługiwać klientów telefonicznie po polsku?"
+      ],
+      "intent": "Polish phone support",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Yes. I use Polish daily and I am ready to communicate with customers by phone. On a call, I would listen carefully, confirm important names or numbers and summarise the next step before ending the conversation. If a specialised product term was unfamiliar, I would verify it rather than guess.",
+      "firstSentence": "Yes.",
+      "keywords": [
+        "Polish phone",
+        "confirm details",
+        "summarise",
+        "verify terms"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Polish advanced working proficiency"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 64
+    },
+    {
+      "id": "speakit-066",
+      "question": "What would you do if you did not understand the interviewer or customer?",
+      "aliases": [
+        "What if you do not understand an accent?",
+        "Co Pan zrobi, jeśli nie zrozumie rozmówcy?"
+      ],
+      "intent": "communication clarification",
+      "level": "B1",
+      "style": "simple",
+      "answer": "I would ask politely for the person to repeat or rephrase the point and then confirm my understanding. For important details such as a name, order number or date, I would repeat them back. It is better to clarify one sentence than to continue with an incorrect assumption.",
+      "firstSentence": "I would ask politely for the person to repeat or rephrase the point and then confirm my understanding.",
+      "keywords": [
+        "ask to repeat",
+        "rephrase",
+        "confirm understanding",
+        "repeat details"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 65
+    },
+    {
+      "id": "speakit-067",
+      "question": "Do you have any questions for us?",
+      "aliases": [
+        "What would you like to ask us?",
+        "Czy ma Pan pytania do nas?"
+      ],
+      "intent": "candidate questions",
+      "level": "B1",
+      "style": "simple",
+      "answer": "Yes. I would like to understand how the initial training is organised, which CRM or ticketing system the team uses and what the usual shift pattern looks like. I would also like to ask how the company supports the employment-based residence process in Serbia and how performance is measured during the first months.",
+      "firstSentence": "Yes.",
+      "keywords": [
+        "training",
+        "CRM",
+        "shift pattern",
+        "residence support",
+        "performance"
+      ],
+      "usefulPhrases": [],
+      "groundingFacts": [
+        "Prefers employment-based residence"
+      ],
+      "locked": true,
+      "createdAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "order": 66
+    }
+  ],
+  "updatedAt": "2026-08-05T13:56:00.000Z"
+}

@@ -19,3 +19,18 @@ test('does not force an unrelated library match', () => {
   assert.equal(result.matched, false);
   assert.ok(scoreAnswerEntry('How do you optimize Room database queries?', entries[0]) < 0.52);
 });
+
+test('matches a Polish vacancy question through a reviewed alias', () => {
+  const result = matchAnswerLibrary('Proszę opowiedzieć coś o sobie.', [{
+    id: 'speakit-intro',
+    question: 'Tell me about yourself.',
+    aliases: ['Could you introduce yourself?', 'Proszę opowiedzieć coś o sobie.'],
+    intent: 'introduction',
+    answer: 'My background combines legal, business and technical experience.',
+    firstSentence: 'My background combines legal, business and technical experience.',
+    locked: true
+  }]);
+  assert.equal(result.matched, true);
+  assert.equal(result.suggestion.sourceEntryId, 'speakit-intro');
+  assert.ok(result.score >= 0.9);
+});

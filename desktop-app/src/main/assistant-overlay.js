@@ -10,9 +10,11 @@ const {
 } = require('./teleprompter');
 const { createCodingFocusState } = require('./coding-focus-state');
 const { isExamComplianceModeEnabled } = require('./compliance-mode');
+const { normalizeInterviewProfileMode } = require('./interview-profile-mode');
 
 const DEFAULT_ASSISTANT_SETTINGS = Object.freeze({
   enabled: true,
+  profileMode: 'general',
   autoAnalyze: true,
   contentProtection: true,
   alwaysOnTop: true,
@@ -85,6 +87,7 @@ function normalizeAssistantSettings(settings = {}, platform = process.platform) 
   return {
     complianceMode,
     enabled,
+    profileMode: normalizeInterviewProfileMode(settings.INTERVIEW_ASSISTANT_PROFILE_MODE ?? settings.profileMode ?? DEFAULT_ASSISTANT_SETTINGS.profileMode),
     autoAnalyze: enabled && (autoAnalyzeRequested || DEFAULT_ASSISTANT_SETTINGS.autoAnalyze),
     contentProtection: complianceMode ? false : boolValue(settings.INTERVIEW_ASSISTANT_CONTENT_PROTECTION ?? settings.contentProtection, contentProtectionDefault),
     alwaysOnTop: boolValue(settings.INTERVIEW_ASSISTANT_ALWAYS_ON_TOP ?? settings.alwaysOnTop, DEFAULT_ASSISTANT_SETTINGS.alwaysOnTop),

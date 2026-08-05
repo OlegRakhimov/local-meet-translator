@@ -356,6 +356,16 @@
         </div>
       </details>
 
+      <details class="editorSection" open>
+        <summary data-i18n="profileInterviewContextSection">Vacancy and interview rules</summary>
+        <div class="sectionBody">
+          <label><span data-i18n="candidateVacancyContext">Vacancy context</span><textarea id="candidateVacancyContext" rows="8"></textarea></label>
+          <label><span data-i18n="candidateInterviewInstructions">Interview answer instructions</span><textarea id="candidateInterviewInstructions" rows="8"></textarea></label>
+          <label><span data-i18n="candidateUnsupportedClaims">Unsupported claims, one per line</span><textarea id="candidateUnsupportedClaims" rows="8"></textarea></label>
+          <p class="hint" data-i18n="candidateInterviewContextHint">These fields guide AI answers for questions not found in the prepared library. They do not replace confirmed facts.</p>
+        </div>
+      </details>
+
       <details class="editorSection">
         <summary data-i18n="profileImportedSourceSection">Imported resume source</summary>
         <div class="sectionBody">
@@ -422,6 +432,15 @@
       <div class="assistantWorkspaceGrid">
         <section class="card assistantControlCard">
           <h3 data-i18n="assistantWindowSettings">Assistant window and analysis</h3>
+          <div class="subcard interviewProfileSelectorCard">
+            <label><span data-i18n="assistantInterviewProfile">Interview profile</span>
+              <select id="assistantProfileMode">
+                <option value="general" data-i18n="assistantProfileGeneral">General interview assistant</option>
+                <option value="speakit_polish_support" data-i18n="assistantProfileSpeakit">SpeakIT — Polish Customer Support</option>
+              </select>
+            </label>
+            <p id="assistantProfileModeHint" class="hint" data-i18n="assistantProfileModeHint">Each profile has a separate candidate profile and Answer Library. Changing the profile does not overwrite the other mode.</p>
+          </div>
           <div class="grid">
             <label class="check"><input id="assistantEnabled" type="checkbox" /> <span data-i18n="assistantEnabled">Enable Live Assistant</span></label>
             <label class="check"><input id="assistantAutoAnalyze" type="checkbox" checked disabled /> <span data-i18n="assistantAutoAnalyze">Ответы готовятся автоматически</span></label>
@@ -807,6 +826,7 @@
           <div id="answerLibraryDirtyBanner" class="dirtyBanner" hidden data-i18n="unsavedAnswerChanges">There are unsaved answer changes.</div>
           <input id="answerEntryId" type="hidden" />
           <label><span data-i18n="answerQuestion">Interview question</span><textarea id="answerQuestion" rows="3" placeholder="Tell me about yourself"></textarea></label>
+          <label><span data-i18n="answerAliases">Alternative English or Polish formulations, one per line</span><textarea id="answerAliases" rows="5" placeholder="Could you introduce yourself?&#10;Proszę opowiedzieć coś o sobie."></textarea></label>
           <div class="grid threeColumns">
             <label><span data-i18n="answerIntent">Intent / category</span><input id="answerIntent" placeholder="introduction / experience / conflict" /></label>
             <label><span data-i18n="answerLevel">English level</span>

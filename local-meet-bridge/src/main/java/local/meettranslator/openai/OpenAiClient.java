@@ -320,6 +320,7 @@ public final class OpenAiClient implements AiClient {
 
         boolean hasStructuredCodingContext = !request.currentTask().isBlank() && !request.latestUtterance().isBlank();
         String contextualRules = "";
+        String profileRules = profileSpecificInterviewRules(request);
         if (hasStructuredCodingContext && "coding-task".equals(request.taskKind())) {
             contextualRules = """
                     Structured coding revision mode:
@@ -363,8 +364,26 @@ public final class OpenAiClient implements AiClient {
                 + "- edgeCases must list important edge cases.\n"
                 + "- speakingNotes must be short phrases the candidate can say while coding, including what will be done first, next, and why.\n"
                 + "- Do not claim the candidate has used a technology unless supplied evidence supports that claim.\n\n"
+                + profileRules
                 + contextualRules
                 + "Input JSON:\n" + MAPPER.writeValueAsString(evidence);
+    }
+
+    static String profileSpecificInterviewRules(InterviewSuggestionRequest request) {
+        if (request == null || request.candidateProfile() == null) return "";
+        String profileMode = request.candidateProfile().path("profileMode").asText("").trim();
+        if (!"speakit_polish_support".equals(profileMode)) return "";
+        return """
+                SpeakIT Polish customer support profile rules:
+                - For every non-coding interview question, answer in natural spoken English even when the detected question is in Polish.
+                - Use clear B1 English. Give the direct answer first and normally keep the answer suitable for about 25 to 45 seconds of speech.
+                - Use vacancyContext and interviewInstructions from candidateProfile to understand the role and answer policy.
+                - The prepared library is not a closed list. For an unfamiliar question, infer the interviewer’s intent and construct a safe answer from verified facts and transferable experience.
+                - If direct experience is not supported, state that briefly and connect the answer to genuine related experience.
+                - Treat unsupportedClaims as prohibited claims. In particular, do not invent fluent English, jewellery-industry experience, retail e-commerce experience, named CRM experience, refunds, payment disputes, Serbian residence, or Serbian work authorisation.
+                - Do not expose phone numbers, email addresses or other contact details unless the interviewer explicitly asks for them.
+
+                """;
     }
 
     private static JsonNode stringArraySchema(int maxItems) {

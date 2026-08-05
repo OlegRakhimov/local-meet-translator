@@ -77,6 +77,10 @@ function renderMode(state = {}) {
   const ui = MODE_UI[mode] || MODE_UI.WAITING;
   text('modeBadge', ui.title);
   text('modeDescription', ui.description);
+  const profileMode = state.settings?.profileMode || 'general';
+  text('interviewProfileBadge', profileMode === 'speakit_polish_support'
+    ? 'SPEAKIT · POLISH CUSTOMER SUPPORT'
+    : 'ОБЩИЙ ПРОФИЛЬ');
   const modePanel = $('modeBadge')?.closest('.modePanel');
   if (modePanel) modePanel.dataset.mode = mode;
 }

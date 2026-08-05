@@ -13,6 +13,7 @@ const { createSubtitleDedupeGuard } = require('./main/subtitle-dedupe');
 const { createCandidateProfileStore } = require('./main/candidate-profile-store');
 const { createDocumentTextExtractor } = require('./main/document-text-extractor');
 const { createAnswerLibraryStore } = require('./main/answer-library-store');
+const { INTERVIEW_PROFILE_MODES, normalizeInterviewProfileMode, interviewProfileDefinition } = require('./main/interview-profile-mode');
 const { createInterviewTrainingStore } = require('./main/interview-training-store');
 const { createLiveInterviewStore } = require('./main/live-interview-store');
 const { createQuestionDetector, cleanQuestionText, classifyInterviewUtterance, detectCodingLanguage, looksLikeAnswerEcho } = require('./main/question-detector');
@@ -40,8 +41,10 @@ const userConfigDir = path.join(app.getPath('appData'), 'Local Meet Translator')
 const envPath = path.join(userConfigDir, '.env');
 const legacyEnvPath = path.join(repoRoot, '.env');
 const subtitleWindowStatePath = path.join(userConfigDir, 'subtitle-window-state.json');
-const candidateProfilePath = path.join(userConfigDir, 'candidate-profile.json');
-const answerLibraryPath = path.join(userConfigDir, 'answer-library.json');
+const generalCandidateProfilePath = path.join(userConfigDir, 'candidate-profile.json');
+const generalAnswerLibraryPath = path.join(userConfigDir, 'answer-library.json');
+const speakitCandidateProfilePath = path.join(userConfigDir, 'candidate-profile-speakit-polish-support.json');
+const speakitAnswerLibraryPath = path.join(userConfigDir, 'answer-library-speakit-polish-support.json');
 const interviewTrainingPath = path.join(userConfigDir, 'interview-training.json');
 const liveInterviewPath = path.join(userConfigDir, 'live-interviews.json');
 const assistantWindowStatePath = path.join(userConfigDir, 'assistant-window-state.json');
@@ -55,11 +58,38 @@ const diagnosticsTracker = createDiagnosticsTracker();
 const pairingRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 10 });
 const subtitleRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 180 });
 const controlRateLimiter = createSlidingWindowRateLimiter({ windowMs: 60_000, maxAttempts: 600 });
-const candidateProfileStore = createCandidateProfileStore({
-  profilePath: candidateProfilePath,
-  extractDocumentText: documentTextExtractor.extractFromPath
-});
-const answerLibraryStore = createAnswerLibraryStore({ libraryPath: answerLibraryPath });
+const speakitCandidateProfilePreset = require('./presets/speakit-polish-support/candidate-profile.json');
+const speakitAnswerLibraryPreset = require('./presets/speakit-polish-support/answer-library.json');
+const candidateProfileStores = new Map([
+  [INTERVIEW_PROFILE_MODES.GENERAL, createCandidateProfileStore({
+    profilePath: generalCandidateProfilePath,
+    extractDocumentText: documentTextExtractor.extractFromPath
+  })],
+  [INTERVIEW_PROFILE_MODES.SPEAKIT_POLISH_SUPPORT, createCandidateProfileStore({
+    profilePath: speakitCandidateProfilePath,
+    extractDocumentText: documentTextExtractor.extractFromPath,
+    presetProfile: speakitCandidateProfilePreset
+  })]
+]);
+const answerLibraryStores = new Map([
+  [INTERVIEW_PROFILE_MODES.GENERAL, createAnswerLibraryStore({ libraryPath: generalAnswerLibraryPath })],
+  [INTERVIEW_PROFILE_MODES.SPEAKIT_POLISH_SUPPORT, createAnswerLibraryStore({
+    libraryPath: speakitAnswerLibraryPath,
+    presetLibrary: speakitAnswerLibraryPreset
+  })]
+]);
+function currentInterviewProfileMode(settings = loadSettings()) {
+  return normalizeInterviewProfileMode(settings && settings.INTERVIEW_ASSISTANT_PROFILE_MODE);
+}
+function activeCandidateProfileStore(settings = loadSettings()) {
+  return candidateProfileStores.get(currentInterviewProfileMode(settings)) || candidateProfileStores.get(INTERVIEW_PROFILE_MODES.GENERAL);
+}
+function activeAnswerLibraryStore(settings = loadSettings()) {
+  return answerLibraryStores.get(currentInterviewProfileMode(settings)) || answerLibraryStores.get(INTERVIEW_PROFILE_MODES.GENERAL);
+}
+function activeInterviewProfileDefinition(settings = loadSettings()) {
+  return interviewProfileDefinition(currentInterviewProfileMode(settings));
+}
 const interviewTrainingStore = createInterviewTrainingStore({ trainingPath: interviewTrainingPath });
 const liveInterviewStore = createLiveInterviewStore({ historyPath: liveInterviewPath });
 const questionDetector = createQuestionDetector();
@@ -190,7 +220,11 @@ function buildInterviewGrounding(profile = {}) {
     languages: Array.isArray(profile.languages) ? profile.languages.slice(0, 40) : [],
     experience: String(profile.experience || '').trim(),
     projects: String(profile.projects || '').trim(),
-    education: String(profile.education || '').trim()
+    education: String(profile.education || '').trim(),
+    profileMode: String(profile.profileMode || currentInterviewProfileMode()).trim(),
+    vacancyContext: String(profile.vacancyContext || '').trim(),
+    interviewInstructions: String(profile.interviewInstructions || '').trim(),
+    unsupportedClaims: Array.isArray(profile.unsupportedClaims) ? profile.unsupportedClaims.slice(0, 120) : []
   };
 }
 
@@ -248,7 +282,7 @@ function saveCurrentAnswerToLibrary() {
   }
   assistantOverlay.setLibrarySaveStatus('saving', 'Сохраняю в Answer Library…');
   try {
-    const loaded = answerLibraryStore.load();
+    const loaded = activeAnswerLibraryStore().load();
     const library = loaded.library || { entries: [] };
     const normalized = questionText.toLocaleLowerCase('ru-RU').replace(/\s+/g, ' ').trim();
     const entries = Array.isArray(library.entries) ? [...library.entries] : [];
@@ -276,7 +310,7 @@ function saveCurrentAnswerToLibrary() {
       return { ok: true, duplicate: true, locked: true, ...assistantOverlay.snapshot() };
     }
     if (index >= 0) entries[index] = entry; else entries.push(entry);
-    const saved = answerLibraryStore.save({ ...library, entries });
+    const saved = activeAnswerLibraryStore().save({ ...library, entries });
     assistantOverlay.setLibrarySaveStatus('saved', 'Сохранено в Answer Library');
     return { ok: true, library: saved.library, ...assistantOverlay.snapshot() };
   } catch (cause) {
@@ -342,8 +376,9 @@ async function createDiagnosticsSnapshot() {
     tracker: diagnosticsTracker.snapshot(),
     paths: {
       config: envPath,
-      profile: candidateProfilePath,
-      answerLibrary: answerLibraryPath,
+      profileMode: currentInterviewProfileMode(settings),
+      profile: activeCandidateProfileStore(settings).profilePath,
+      answerLibrary: activeAnswerLibraryStore(settings).libraryPath,
       interviewHistory: liveInterviewPath
     },
     homeDirectory: app.getPath('home')
@@ -470,8 +505,8 @@ async function analyzeInterviewQuestion(questionInput, options = {}) {
     recordDetectedQuestion(manualQuestion);
   }
   const generation = ++assistantAnalysisGeneration;
-  const profileResult = candidateProfileStore.load();
-  const libraryResult = answerLibraryStore.load();
+  const profileResult = activeCandidateProfileStore().load();
+  const libraryResult = activeAnswerLibraryStore().load();
   const profile = profileResult.profile || {};
   const library = libraryResult.library || { entries: [] };
   const localMatch = taskKind === 'coding-task'
@@ -559,7 +594,7 @@ async function analyzeCodingFollowUp(questionInput) {
     return { ok: false, message: bridge.message };
   }
 
-  const profile = candidateProfileStore.load().profile || {};
+  const profile = activeCandidateProfileStore().load().profile || {};
   const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
   const currentSuggestion = overlayState.suggestion || {};
   const contextParts = buildCodingRequestParts({
@@ -626,7 +661,7 @@ async function applyCodingChange(changeInput = null) {
 
   const overlayState = assistantOverlay.snapshot();
   const currentSuggestion = overlayState.suggestion || {};
-  const profile = candidateProfileStore.load().profile || {};
+  const profile = activeCandidateProfileStore().load().profile || {};
   const assistantSettings = normalizeAssistantSettings(loadSettings(), process.platform);
   const contextParts = buildCodingRequestParts({
     focus,
@@ -1719,9 +1754,9 @@ ipcMain.handle('interview-assistant:analyze', async (_event, question) => {
 });
 ipcMain.handle('interview-assistant:last-question', () => lastDetectedQuestion ? { ok:true, question:{ ...lastDetectedQuestion } } : { ok:true, question:null });
 
-ipcMain.handle('candidate-profile:load', () => candidateProfileStore.load());
-ipcMain.handle('candidate-profile:save', (_event, profile) => candidateProfileStore.save(profile || {}));
-ipcMain.handle('candidate-profile:reset', () => candidateProfileStore.reset());
+ipcMain.handle('candidate-profile:load', () => ({ ...activeCandidateProfileStore().load(), profileMode: currentInterviewProfileMode(), profileDefinition: activeInterviewProfileDefinition() }));
+ipcMain.handle('candidate-profile:save', (_event, profile) => activeCandidateProfileStore().save(profile || {}));
+ipcMain.handle('candidate-profile:reset', () => activeCandidateProfileStore().reset());
 ipcMain.handle('candidate-profile:import', async () => {
   const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
   const options = {
@@ -1739,7 +1774,7 @@ ipcMain.handle('candidate-profile:import', async () => {
     return { ok: false, canceled: true };
   }
   try {
-    return await candidateProfileStore.importFromPath(selection.filePaths[0]);
+    return await activeCandidateProfileStore().importFromPath(selection.filePaths[0]);
   } catch (error) {
     return { ok: false, error: error.message || String(error) };
   }
@@ -1748,7 +1783,9 @@ ipcMain.handle('candidate-profile:export', async (_event, profile) => {
   const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
   const options = {
     title: 'Export candidate profile',
-    defaultPath: 'local-meet-translator-candidate-profile.json',
+    defaultPath: currentInterviewProfileMode() === INTERVIEW_PROFILE_MODES.SPEAKIT_POLISH_SUPPORT
+      ? 'local-meet-translator-speakit-polish-support-candidate-profile.json'
+      : 'local-meet-translator-candidate-profile.json',
     filters: [{ name: 'JSON', extensions: ['json'] }]
   };
   const selection = parent
@@ -1756,13 +1793,13 @@ ipcMain.handle('candidate-profile:export', async (_event, profile) => {
     : await dialog.showSaveDialog(options);
   if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
   try {
-    return candidateProfileStore.exportToPath(selection.filePath, profile || {});
+    return activeCandidateProfileStore().exportToPath(selection.filePath, profile || {});
   } catch (error) {
     return { ok: false, error: error.message || String(error) };
   }
 });
-ipcMain.handle('answer-library:load', () => answerLibraryStore.load());
-ipcMain.handle('answer-library:save', (_event, library) => answerLibraryStore.save(library || {}));
+ipcMain.handle('answer-library:load', () => ({ ...activeAnswerLibraryStore().load(), profileMode: currentInterviewProfileMode(), profileDefinition: activeInterviewProfileDefinition() }));
+ipcMain.handle('answer-library:save', (_event, library) => activeAnswerLibraryStore().save(library || {}));
 ipcMain.handle('answer-library:generate-learning-aids', async (_event, entry) => {
   if (examComplianceModeActive()) return complianceBlockedResult('AI learning-aid generation');
   const bridge = await ensureBridgeForAssistant();
@@ -1784,7 +1821,7 @@ ipcMain.handle('answer-library:generate-learning-aids', async (_event, entry) =>
     return { ok: false, error: response.json?.message || response.body || `Learning aids request failed with HTTP ${response.status}.`, requestId: response.requestId };
   }
   return { ok: true, learningAids: response.json.learningAids, requestId: response.requestId };
-});ipcMain.handle('answer-library:reset', () => answerLibraryStore.reset());
+});ipcMain.handle('answer-library:reset', () => activeAnswerLibraryStore().reset());
 ipcMain.handle('answer-library:import', async () => {
   const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
   const options = {
@@ -1802,7 +1839,7 @@ ipcMain.handle('answer-library:import', async () => {
     return { ok: false, canceled: true };
   }
   try {
-    return answerLibraryStore.importFromPath(selection.filePaths[0]);
+    return activeAnswerLibraryStore().importFromPath(selection.filePaths[0]);
   } catch (error) {
     return { ok: false, error: error.message || String(error) };
   }
@@ -1811,7 +1848,9 @@ ipcMain.handle('answer-library:export', async (_event, library) => {
   const parent = windowManager && windowManager.getMainWindow ? windowManager.getMainWindow() : undefined;
   const options = {
     title: 'Export Answer Library',
-    defaultPath: 'local-meet-translator-answer-library.json',
+    defaultPath: currentInterviewProfileMode() === INTERVIEW_PROFILE_MODES.SPEAKIT_POLISH_SUPPORT
+      ? 'local-meet-translator-speakit-polish-support-answer-library.json'
+      : 'local-meet-translator-answer-library.json',
     filters: [{ name: 'JSON', extensions: ['json'] }]
   };
   const selection = parent
@@ -1819,7 +1858,7 @@ ipcMain.handle('answer-library:export', async (_event, library) => {
     : await dialog.showSaveDialog(options);
   if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
   try {
-    return answerLibraryStore.exportToPath(selection.filePath, library || {});
+    return activeAnswerLibraryStore().exportToPath(selection.filePath, library || {});
   } catch (error) {
     return { ok: false, error: error.message || String(error) };
   }
@@ -1892,7 +1931,17 @@ ipcMain.handle('interview-training:export', async (_event, format, data) => {
 
 ipcMain.handle('settings:load', () => loadSettings());
 ipcMain.handle('settings:save', (_e, settings) => {
+  const previousProfileMode = currentInterviewProfileMode();
   const saved = saveSettings(settings);
+  const nextProfileMode = currentInterviewProfileMode(saved);
+  if (previousProfileMode !== nextProfileMode) {
+    assistantAnalysisGeneration += 1;
+    codingFollowUpGeneration += 1;
+    codingClassificationGeneration += 1;
+    if (assistantAutoAnalysis) assistantAutoAnalysis.clear();
+    if (assistantOverlay) assistantOverlay.clear();
+    sendLog(`[ASSISTANT] Interview profile changed: ${previousProfileMode} -> ${nextProfileMode}.`);
+  }
   if (isExamComplianceModeEnabled(saved)) {
     assistantAnalysisGeneration += 1;
     codingFollowUpGeneration += 1;
