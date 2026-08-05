@@ -14,6 +14,7 @@ import local.meettranslator.model.TtsRequest;
 import local.meettranslator.openai.AiClient;
 import local.meettranslator.openai.EnglishExpectedRecognition;
 import local.meettranslator.openai.OpenAiClient;
+import local.meettranslator.openai.TranscriptionResult;
 import local.meettranslator.voice.VoiceConversionClient;
 
 import java.io.IOException;
@@ -132,50 +133,103 @@ public final class BridgeServer implements AutoCloseable {
             boolean promptEchoDetected = false;
             boolean transcriptDropped = false;
             String dropReason = "";
-            String transcript;
+            TranscriptionResult firstResult;
+            TranscriptionResult retryResult = TranscriptionResult.unknown("");
+            TranscriptionResult chosenResult;
             try {
-                String firstPassLanguage = englishExpected ? "auto" : request.sourceLang();
-                transcript = aiClient.transcribe(context, request.audio(), request.audioMime(), firstPassLanguage);
-                promptEchoDetected = EnglishExpectedRecognition.isPromptEcho(transcript);
-                if (englishExpected && EnglishExpectedRecognition.shouldRetry(transcript)) {
+                String firstPassLanguage = englishExpected
+                        ? EnglishExpectedRecognition.PRIMARY_MODE
+                        : request.sourceLang();
+                firstResult = aiClient.transcribeDetailed(
+                        context,
+                        request.audio(),
+                        request.audioMime(),
+                        firstPassLanguage,
+                        request.transcriptionContext()
+                );
+                promptEchoDetected = EnglishExpectedRecognition.isPromptEcho(firstResult.text());
+                if (englishExpected && EnglishExpectedRecognition.shouldRetry(firstResult)) {
                     transcriptionRetried = true;
                     try {
-                        String strictEnglish = aiClient.transcribe(context, request.audio(), request.audioMime(), EnglishExpectedRecognition.RETRY_MODE);
-                        promptEchoDetected = promptEchoDetected || EnglishExpectedRecognition.isPromptEcho(strictEnglish);
-                        transcript = EnglishExpectedRecognition.chooseBetterCandidate(transcript, strictEnglish);
+                        retryResult = aiClient.transcribeDetailed(
+                                context,
+                                request.audio(),
+                                request.audioMime(),
+                                EnglishExpectedRecognition.RETRY_MODE,
+                                request.transcriptionContext()
+                        );
+                        promptEchoDetected = promptEchoDetected || EnglishExpectedRecognition.isPromptEcho(retryResult.text());
                     } catch (IOException retryFailure) {
-                        if (transcript == null || transcript.isBlank()) throw retryFailure;
+                        if (firstResult.text().isBlank()) throw retryFailure;
                     }
                 }
+                chosenResult = transcriptionRetried
+                        ? EnglishExpectedRecognition.chooseBetterCandidate(firstResult, retryResult)
+                        : firstResult;
             } catch (IOException cause) {
                 throw HttpSupport.upstream("openai_transcription_failed", cause);
             }
+
+            String transcript = chosenResult.text();
             if (EnglishExpectedRecognition.isPromptEcho(transcript)
-                    || ((transcript == null || transcript.isBlank()) && promptEchoDetected)) {
+                    || (transcript.isBlank() && promptEchoDetected)) {
                 transcript = "";
                 transcriptDropped = true;
                 dropReason = "prompt-echo";
             }
+
+            boolean choseFirstResult = chosenResult == firstResult;
+            double candidateAgreement = transcriptionRetried
+                    ? EnglishExpectedRecognition.candidateAgreement(firstResult.text(), retryResult.text())
+                    : 1.0;
+            boolean transcriptionTrusted = !englishExpected
+                    || EnglishExpectedRecognition.isTrusted(
+                            chosenResult,
+                            choseFirstResult ? retryResult : firstResult
+                    );
+            boolean transcriptionUncertain = englishExpected && !transcriptDropped && !transcriptionTrusted;
+            String alternativeTranscript = transcriptionRetried
+                    ? (choseFirstResult ? retryResult.text() : firstResult.text())
+                    : "";
+
             String translation = "";
             String translationSourceLanguage = EnglishExpectedRecognition.translationSourceLanguage(request.sourceLang());
-            if (transcript != null && !transcript.isBlank()) {
+            if (!transcript.isBlank()) {
                 try {
                     translation = aiClient.translateText(context, translationSourceLanguage, request.targetLang(), transcript);
                 } catch (IOException cause) {
                     throw HttpSupport.upstream("openai_translation_failed", cause);
                 }
             }
-            HttpSupport.writeJson(ex, 200, HttpSupport.MAPPER.createObjectNode()
+
+            var responseJson = HttpSupport.MAPPER.createObjectNode()
                     .put("audioMime", request.audioMime())
                     .put("sourceLang", request.sourceLang())
                     .put("effectiveSourceLang", translationSourceLanguage)
                     .put("recognitionMode", englishExpected ? EnglishExpectedRecognition.MODE : request.sourceLang())
                     .put("transcriptionRetried", transcriptionRetried)
+                    .put("transcriptionTrusted", transcriptionTrusted)
+                    .put("transcriptionUncertain", transcriptionUncertain)
+                    .put("transcriptionConfidence", chosenResult.confidenceLevel())
+                    .put("transcriptionAgreement", candidateAgreement)
+                    .put("detectedLanguage", chosenResult.detectedLanguage())
+                    .put("alternativeTranscript", alternativeTranscript)
                     .put("transcriptDropped", transcriptDropped)
                     .put("dropReason", dropReason)
                     .put("targetLang", request.targetLang())
-                    .put("transcript", Objects.requireNonNullElse(transcript, ""))
-                    .put("translation", translation), context.requestId());
+                    .put("transcript", transcript)
+                    .put("translation", translation);
+            if (Double.isFinite(chosenResult.averageLogprob())) {
+                responseJson.put("transcriptionAverageLogprob", chosenResult.averageLogprob());
+            } else {
+                responseJson.putNull("transcriptionAverageLogprob");
+            }
+            if (Double.isFinite(chosenResult.lowConfidenceTokenRatio())) {
+                responseJson.put("transcriptionLowTokenRatio", chosenResult.lowConfidenceTokenRatio());
+            } else {
+                responseJson.putNull("transcriptionLowTokenRatio");
+            }
+            HttpSupport.writeJson(ex, 200, responseJson, context.requestId());
         }));
         server.createContext("/interview/generate-learning-aids", exchange -> HttpSupport.handle(exchange, "POST", config.authToken(), requestRegistry, (ex, context) -> {
             InterviewLearningAidsRequest request = InterviewLearningAidsRequest.from(HttpSupport.readJsonBody(ex, 1_500_000));

@@ -34,3 +34,23 @@ test('matches a Polish vacancy question through a reviewed alias', () => {
   assert.equal(result.suggestion.sourceEntryId, 'speakit-intro');
   assert.ok(result.score >= 0.9);
 });
+
+test('matches the common ASR pronoun error to the first-person customer-support answer', () => {
+  const result = matchAnswerLibrary('Why do we want to go to customer support?', [{
+    id: 'speakit-003',
+    question: 'Why do you want to work in customer support?',
+    aliases: [
+      'Why are you interested in customer support?',
+      'Why do we want to go to customer support?'
+    ],
+    intent: 'motivation for customer support',
+    answer: 'I want to work in customer support because I enjoy helping people and solving practical problems.',
+    firstSentence: 'I want to work in customer support because I enjoy helping people and solving practical problems.',
+    locked: true
+  }]);
+
+  assert.equal(result.matched, true);
+  assert.equal(result.suggestion.sourceEntryId, 'speakit-003');
+  assert.match(result.suggestion.firstSentence, /^I want to work/);
+  assert.doesNotMatch(result.suggestion.answer, /^We\b/);
+});

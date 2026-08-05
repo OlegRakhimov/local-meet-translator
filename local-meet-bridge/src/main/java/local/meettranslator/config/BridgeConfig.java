@@ -50,7 +50,7 @@ public record BridgeConfig(
                 required(environment, "OPENAI_API_KEY"),
                 value(environment, "OPENAI_BASE_URL", "https://api.openai.com"),
                 integer(environment, "LOCAL_MEET_TRANSLATOR_PORT", 8799, 0, 65_535),
-                value(environment, "OPENAI_TRANSCRIBE_MODEL", "whisper-1"),
+                value(environment, "OPENAI_TRANSCRIBE_MODEL", "gpt-4o-transcribe"),
                 value(environment, "OPENAI_TEXT_MODEL", "gpt-4o-mini"),
                 bool(environment, "ENABLE_TTS", false),
                 value(environment, "OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),

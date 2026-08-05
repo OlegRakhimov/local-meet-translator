@@ -43,6 +43,28 @@ test('subtitle event validation rejects empty data and bounds text', () => {
   assert.equal(event.ts, 10);
 });
 
+
+
+test('subtitle event preserves recognition uncertainty metadata', () => {
+  const event = sanitizeSubtitleEvent({
+    channel: 'incoming',
+    transcript: 'Why do we want to go to customer support?',
+    translation: 'Почему мы хотим перейти в поддержку клиентов?',
+    transcriptionTrusted: false,
+    transcriptionUncertain: true,
+    transcriptionConfidence: 'medium',
+    transcriptionAgreement: 0.31,
+    detectedLanguage: 'en',
+    alternativeTranscript: 'Why do you want to work in customer support?'
+  });
+  assert.equal(event.transcriptionTrusted, false);
+  assert.equal(event.transcriptionUncertain, true);
+  assert.equal(event.transcriptionConfidence, 'medium');
+  assert.equal(event.transcriptionAgreement, 0.31);
+  assert.equal(event.detectedLanguage, 'en');
+  assert.equal(event.alternativeTranscript, 'Why do you want to work in customer support?');
+});
+
 test('off-screen window bounds are returned to the primary display', () => {
   const displays = [{ workArea: { x: 0, y: 0, width: 1920, height: 1040 } }];
   const bounds = clampBoundsToDisplays({ x: 9000, y: 9000, width: 900, height: 240 }, displays, displays[0]);

@@ -42,8 +42,26 @@ public final class OpenAiClient implements AiClient {
 
     @Override
     public String transcribe(RequestContext context, byte[] audio, String audioMime, String sourceLang) throws IOException {
+        return transcribeDetailed(context, audio, audioMime, sourceLang, "").text();
+    }
+
+    @Override
+    public TranscriptionResult transcribeDetailed(
+            RequestContext context,
+            byte[] audio,
+            String audioMime,
+            String sourceLang,
+            String transcriptionContext
+    ) throws IOException {
         String boundary = "----LocalMeetTranslatorBoundary" + randomToken(12);
-        byte[] multipart = buildMultipart(boundary, audio, normalizeTranscribeMime(audioMime), config.transcribeModel(), sourceLang);
+        byte[] multipart = buildMultipart(
+                boundary,
+                audio,
+                normalizeTranscribeMime(audioMime),
+                config.transcribeModel(),
+                sourceLang,
+                transcriptionContext
+        );
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(config.baseUrl() + "/v1/audio/transcriptions"))
                 .timeout(Duration.ofSeconds(120))
@@ -54,9 +72,9 @@ public final class OpenAiClient implements AiClient {
         HttpResponse<byte[]> response = context.await(http.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray()));
         ensureSuccess("OpenAI transcribe", response);
         JsonNode json = MAPPER.readTree(response.body());
-        JsonNode text = json.get("text");
-        if (text == null || text.isNull()) throw new IOException("OpenAI transcribe response has no text field");
-        return text.asText();
+        JsonNode textNode = json.get("text");
+        if (textNode == null || textNode.isNull()) throw new IOException("OpenAI transcribe response has no text field");
+        return parseTranscriptionResult(json);
     }
 
     @Override
@@ -376,6 +394,9 @@ public final class OpenAiClient implements AiClient {
         return """
                 SpeakIT Polish customer support profile rules:
                 - For every non-coding interview question, answer in natural spoken English even when the detected question is in Polish.
+                - Answer as the candidate in the first-person singular. Use I, me and my. Never use we, us or our unless verified evidence specifically describes a real team action.
+                - For motivation, experience, strengths and plans, answer the candidate's own reason or experience directly. Do not replace it with a generic definition of customer support.
+                - If speech recognition changes you to we, or produces awkward wording such as go to customer support, infer the intended interview question and correct the pronoun and wording in the answer.
                 - Use clear B1 English. Give the direct answer first and normally keep the answer suitable for about 25 to 45 seconds of speech.
                 - Use vacancyContext and interviewInstructions from candidateProfile to understand the role and answer policy.
                 - The prepared library is not a closed list. For an unfamiliar question, infer the interviewer’s intent and construct a safe answer from verified facts and transferable experience.
@@ -495,7 +516,8 @@ public final class OpenAiClient implements AiClient {
                 + "Rules:\n"
                 + "1) Return ONLY the translation.\n"
                 + "2) Preserve meaning, numbers, names, and formatting.\n"
-                + "3) If the source is already in target language, return it unchanged.\n\n"
+                + "3) Do not repair, complete, or infer words that are not present in the source transcript.\n"
+                + "4) If the source is already in target language, return it unchanged.\n\n"
                 + "Text:\n" + text;
     }
 
@@ -518,15 +540,26 @@ public final class OpenAiClient implements AiClient {
         return result.toString().trim();
     }
 
-    private static byte[] buildMultipart(String boundary, byte[] audio, String audioMime, String model, String sourceLang) throws IOException {
+    private static byte[] buildMultipart(
+            String boundary,
+            byte[] audio,
+            String audioMime,
+            String model,
+            String sourceLang,
+            String transcriptionContext
+    ) throws IOException {
         String filename = "audio" + guessExtension(audioMime);
         ByteArrayOutputStream output = new ByteArrayOutputStream();
+        String normalizedModel = Objects.requireNonNullElse(model, "").trim().toLowerCase(Locale.ROOT);
+        boolean modernTranscribe = normalizedModel.startsWith("gpt-4o") && !normalizedModel.contains("diarize");
         writePart(output, boundary, "model", model);
+        writePart(output, boundary, "temperature", "0");
+        writePart(output, boundary, "response_format", modernTranscribe ? "json" : "verbose_json");
+        if (modernTranscribe) writePart(output, boundary, "include[]", "logprobs");
         String language = normalizeLanguageForTranscription(sourceLang);
         if (!language.isBlank()) writePart(output, boundary, "language", language);
-        if (EnglishExpectedRecognition.isRetryMode(sourceLang)) {
-            writePart(output, boundary, "prompt", EnglishExpectedRecognition.TECHNICAL_TRANSCRIPTION_VOCABULARY);
-        }
+        String prompt = EnglishExpectedRecognition.transcriptionPrompt(sourceLang, transcriptionContext);
+        if (!prompt.isBlank()) writePart(output, boundary, "prompt", prompt);
         output.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
         output.write(("Content-Disposition: form-data; name=\"file\"; filename=\"" + filename + "\"\r\n").getBytes(StandardCharsets.UTF_8));
         output.write(("Content-Type: " + audioMime + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
@@ -541,6 +574,79 @@ public final class OpenAiClient implements AiClient {
         output.write(("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         output.write(value.getBytes(StandardCharsets.UTF_8));
         output.write("\r\n".getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static TranscriptionResult parseTranscriptionResult(JsonNode json) {
+        String text = json.path("text").asText("").trim();
+        String language = json.path("language").asText("").trim();
+        double averageLogprob = Double.NaN;
+        double lowTokenRatio = Double.NaN;
+
+        JsonNode logprobs = json.get("logprobs");
+        if (logprobs != null && logprobs.isArray() && !logprobs.isEmpty()) {
+            double sum = 0.0;
+            int count = 0;
+            int low = 0;
+            for (JsonNode item : logprobs) {
+                double value = item.path("logprob").asDouble(Double.NaN);
+                if (!Double.isFinite(value)) continue;
+                String token = item.path("token").asText("");
+                if (!containsLetterOrDigit(token)) continue;
+                sum += value;
+                count += 1;
+                if (value < -1.0) low += 1;
+            }
+            if (count > 0) {
+                averageLogprob = sum / count;
+                lowTokenRatio = (double) low / count;
+            }
+        }
+
+        if (!Double.isFinite(averageLogprob)) {
+            JsonNode segments = json.get("segments");
+            if (segments != null && segments.isArray() && !segments.isEmpty()) {
+                double weighted = 0.0;
+                double duration = 0.0;
+                int low = 0;
+                int count = 0;
+                for (JsonNode segment : segments) {
+                    double value = segment.path("avg_logprob").asDouble(Double.NaN);
+                    double start = segment.path("start").asDouble(0.0);
+                    double end = segment.path("end").asDouble(start + 1.0);
+                    double weight = Math.max(0.1, end - start);
+                    if (Double.isFinite(value)) {
+                        weighted += value * weight;
+                        duration += weight;
+                        count += 1;
+                        if (value < -1.0 || segment.path("no_speech_prob").asDouble(0.0) > 0.6) low += 1;
+                    }
+                }
+                if (duration > 0.0) averageLogprob = weighted / duration;
+                if (count > 0) lowTokenRatio = (double) low / count;
+            }
+        }
+
+        return new TranscriptionResult(text, language, averageLogprob, lowTokenRatio,
+                confidenceLevel(text, averageLogprob, lowTokenRatio));
+    }
+
+    private static String confidenceLevel(String text, double averageLogprob, double lowTokenRatio) {
+        if (text == null || text.isBlank()) return "low";
+        if (!Double.isFinite(averageLogprob)) return "unknown";
+        double lowRatio = Double.isFinite(lowTokenRatio) ? lowTokenRatio : 0.0;
+        if (averageLogprob >= -0.45 && lowRatio <= 0.15) return "high";
+        if (averageLogprob >= -0.90 && lowRatio <= 0.35) return "medium";
+        return "low";
+    }
+
+    private static boolean containsLetterOrDigit(String value) {
+        String text = Objects.requireNonNullElse(value, "");
+        for (int index = 0; index < text.length();) {
+            int codePoint = text.codePointAt(index);
+            index += Character.charCount(codePoint);
+            if (Character.isLetterOrDigit(codePoint)) return true;
+        }
+        return false;
     }
 
     private static String normalizeTranscribeMime(String mime) {
@@ -560,7 +666,7 @@ public final class OpenAiClient implements AiClient {
         if (sourceLang == null) return "";
         String result = sourceLang.trim().toLowerCase(Locale.ROOT);
         if (result.isBlank() || "auto".equals(result)) return "";
-        if (EnglishExpectedRecognition.isExpectedMode(result) || EnglishExpectedRecognition.isRetryMode(result)) return "en";
+        if (EnglishExpectedRecognition.isStrictEnglishMode(result)) return "en";
         int separator = result.indexOf('-');
         if (separator > 0) result = result.substring(0, separator);
         separator = result.indexOf('_');

@@ -17,13 +17,13 @@ const text = language === 'ru'
       title: 'Локальные субтитры', waiting: 'Ожидаю речь…', idle: 'Ожидание', listening: 'Слушаю',
       transcribing: 'Распознаю', paused: 'Пауза', error: 'Ошибка', protected: 'Защита от захвата включена',
       unprotected: 'Защита от захвата выключена', unsupported: 'Защита от захвата не поддерживается',
-      outgoing: 'Вы'
+      outgoing: 'Вы', uncertain: 'НЕУВЕРЕННОЕ РАСПОЗНАВАНИЕ'
     }
   : {
       title: 'Local subtitles', waiting: 'Waiting for speech…', idle: 'Idle', listening: 'Listening',
       transcribing: 'Transcribing', paused: 'Paused', error: 'Error', protected: 'Capture protection enabled',
       unprotected: 'Capture protection disabled', unsupported: 'Capture protection unsupported',
-      outgoing: 'You'
+      outgoing: 'You', uncertain: 'UNCERTAIN RECOGNITION'
     };
 
 let state = {
@@ -86,7 +86,13 @@ function renderHistory() {
 
   for (const item of visibleItems) {
     const article = document.createElement('article');
-    article.className = `subtitleLine ${item.channel === 'outgoing' ? 'outgoing' : 'incoming'}`;
+    article.className = `subtitleLine ${item.channel === 'outgoing' ? 'outgoing' : 'incoming'} ${item.transcriptionUncertain ? 'uncertain' : ''}`;
+    if (item.transcriptionUncertain) {
+      const warning = document.createElement('div');
+      warning.className = 'recognitionWarning';
+      warning.textContent = text.uncertain;
+      article.appendChild(warning);
+    }
     const translation = document.createElement('div');
     translation.className = 'translation';
     const translatedText = item.channel === 'outgoing' && item.translation ? `${text.outgoing}: ${item.translation}` : item.translation;

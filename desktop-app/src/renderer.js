@@ -338,7 +338,7 @@ function apply(s) {
   $('bridgePort').value = s.LOCAL_MEET_TRANSLATOR_PORT || '8799';
   $('voicePort').value = s.VOICE_CONVERSION_PORT || '18799';
   $('textModel').value = s.OPENAI_TEXT_MODEL || 'gpt-4o-mini';
-  $('transcribeModel').value = s.OPENAI_TRANSCRIBE_MODEL || 'whisper-1';
+  $('transcribeModel').value = s.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
   $('enableTts').checked = String(s.ENABLE_TTS || 'true') === 'true';
   $('enableVoiceConversion').checked = String(s.ENABLE_VOICE_CONVERSION || 'false') === 'true';
   $('token').value = s.LOCAL_MEET_TRANSLATOR_TOKEN || '';
@@ -410,7 +410,7 @@ function readSettings() {
     LOCAL_MEET_TRANSLATOR_PORT: val('bridgePort') || '8799',
     LOCAL_MEET_TRANSLATOR_TOKEN: val('token'),
     OPENAI_TEXT_MODEL: val('textModel') || 'gpt-4o-mini',
-    OPENAI_TRANSCRIBE_MODEL: val('transcribeModel') || 'whisper-1',
+    OPENAI_TRANSCRIBE_MODEL: val('transcribeModel') || 'gpt-4o-transcribe',
     ENABLE_TTS: checked('enableTts') ? 'true' : 'false',
     ENABLE_VOICE_CONVERSION: checked('enableVoiceConversion') ? 'true' : 'false',
     VOICE_CONVERSION_HOST: '127.0.0.1',

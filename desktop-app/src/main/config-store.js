@@ -10,6 +10,7 @@ const SETTINGS_ORDER = [
   'DESKTOP_EXTENSION_TOKEN',
   'DESKTOP_EXTENSION_PAIRING_CODE',
   'OPENAI_TRANSCRIBE_MODEL',
+  'INCOMING_ACCURACY_MIGRATED_20260805',
   'OPENAI_TEXT_MODEL',
   'EXAM_COMPLIANCE_MODE',
   'ENABLE_TTS',
@@ -248,7 +249,7 @@ function createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPat
       result.DESKTOP_EXTENSION_PAIRING_CODE = generatePairingCode();
       generatedSecurityValues = true;
     }
-    result.OPENAI_TRANSCRIBE_MODEL ||= 'whisper-1';
+    result.OPENAI_TRANSCRIBE_MODEL ||= 'gpt-4o-transcribe';
     result.OPENAI_TEXT_MODEL ||= 'gpt-4o-mini';
     result.EXAM_COMPLIANCE_MODE ||= 'false';
     result.ENABLE_TTS ||= 'true';
@@ -267,7 +268,17 @@ function createConfigStore({ app, repoRoot, userConfigDir, envPath, legacyEnvPat
     result.RVC_INFER_TIMEOUT_SEC ||= '180';
     result.EXT_SOURCE_LANG ||= 'en-expected';
     result.EXT_TARGET_LANG ||= getSystemLanguageCode();
-    if (!result.EXT_CHUNK_SECONDS || result.EXT_CHUNK_SECONDS === '5') result.EXT_CHUNK_SECONDS = '3';
+    if (result.INCOMING_ACCURACY_MIGRATED_20260805 !== 'true') {
+      if (!result.OPENAI_TRANSCRIBE_MODEL || result.OPENAI_TRANSCRIBE_MODEL === 'whisper-1') {
+        result.OPENAI_TRANSCRIBE_MODEL = 'gpt-4o-transcribe';
+      }
+      if (!result.EXT_CHUNK_SECONDS || result.EXT_CHUNK_SECONDS === '3' || result.EXT_CHUNK_SECONDS === '5') {
+        result.EXT_CHUNK_SECONDS = '7';
+      }
+      result.INCOMING_ACCURACY_MIGRATED_20260805 = 'true';
+      generatedSecurityValues = true;
+    }
+    result.EXT_CHUNK_SECONDS ||= '7';
     result.EXT_AUDIO_ISOLATION_MODE ||= 'true';
     result.EXT_TTS_ENABLED ||= 'false';
     result.EXT_TTS_VOICE ||= 'onyx';

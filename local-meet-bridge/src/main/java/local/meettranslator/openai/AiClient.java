@@ -15,6 +15,16 @@ public interface AiClient {
 
     String transcribe(RequestContext context, byte[] audio, String audioMime, String sourceLang) throws IOException;
 
+    default TranscriptionResult transcribeDetailed(
+            RequestContext context,
+            byte[] audio,
+            String audioMime,
+            String sourceLang,
+            String transcriptionContext
+    ) throws IOException {
+        return TranscriptionResult.unknown(transcribe(context, audio, audioMime, sourceLang));
+    }
+
     String translateText(RequestContext context, String sourceLang, String targetLang, String text) throws IOException;
 
     JsonNode suggestInterviewAnswer(RequestContext context, InterviewSuggestionRequest request) throws IOException;

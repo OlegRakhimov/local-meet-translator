@@ -65,14 +65,16 @@
     pairDesktop: "Pair with desktop",
     paired: "paired",
     pairedLog: "Desktop extension token stored in browser.storage.local.",
-    pairFailed: "Could not pair with desktop."
+    pairFailed: "Could not pair with desktop.",
+    pairingCodeLoaded: "Pairing code loaded from the desktop app."
   });
   Object.assign(S.ru, {
     pairingCode: "Код pairing",
     pairDesktop: "Соединить с desktop",
     paired: "соединено",
     pairedLog: "Desktop extension token сохранён в browser.storage.local.",
-    pairFailed: "Не удалось соединиться с desktop."
+    pairFailed: "Не удалось соединиться с desktop.",
+    pairingCodeLoaded: "Код pairing загружен из desktop-приложения."
   });
   for (const l of ["pl", "de", "es", "it"]) S[l] = S.en;
   window.LMT_I18N = { lang, t: (k) => (S[lang] && S[lang][k]) || S.en[k] || k };

@@ -94,6 +94,14 @@ function sanitizeSubtitleEvent(payload = {}) {
     channel,
     transcript,
     translation,
+    transcriptionTrusted: payload.transcriptionTrusted !== false,
+    transcriptionUncertain: !!payload.transcriptionUncertain,
+    transcriptionConfidence: ['high', 'medium', 'low'].includes(String(payload.transcriptionConfidence || '').toLowerCase())
+      ? String(payload.transcriptionConfidence).toLowerCase()
+      : 'unknown',
+    transcriptionAgreement: boundedFloat(payload.transcriptionAgreement, 0, 0, 1),
+    detectedLanguage: cleanText(payload.detectedLanguage, 32),
+    alternativeTranscript: cleanText(payload.alternativeTranscript, 2000),
     ts: Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now(),
     clientId: cleanText(payload.clientId, 256),
     tabId: cleanText(payload.tabId, 128),

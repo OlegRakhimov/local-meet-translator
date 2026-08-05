@@ -67,16 +67,22 @@
     },
     {
       "id": "speakit-003",
-      "question": "Why are you interested in customer support?",
+      "question": "Why do you want to work in customer support?",
       "aliases": [
+        "Why are you interested in customer support?",
         "Why do you want to work in customer service?",
-        "Co interesuje Pana w obsłudze klienta?"
+        "Why customer support?",
+        "Why do you want to go into customer support?",
+        "Why do we want to go to customer support?",
+        "Why do we want to work in customer support?",
+        "Co interesuje Pana w obsłudze klienta?",
+        "Dlaczego chce Pan pracować w obsłudze klienta?"
       ],
       "intent": "motivation",
       "level": "B1",
       "style": "simple",
-      "answer": "I enjoy solving practical problems and helping people understand what to do next. In my previous businesses and legal work, I communicated directly with clients, identified their needs, explained options and supported them until the matter was completed. My technical work also involves investigating problems and giving clear follow-up. Customer support lets me use these skills more directly.",
-      "firstSentence": "I enjoy solving practical problems and helping people understand what to do next.",
+      "answer": "I want to work in customer support because I enjoy helping people and solving practical problems. In my legal work and my own businesses, I communicated directly with clients, identified their needs, explained options and followed matters through to completion. My technical work also involves investigating problems, giving clear explanations and documenting the next step. This role would let me use these strengths directly while continuing to develop in an international environment.",
+      "firstSentence": "I want to work in customer support because I enjoy helping people and solving practical problems.",
       "keywords": [
         "helping people",
         "practical problems",
@@ -91,7 +97,7 @@
       ],
       "locked": true,
       "createdAt": "2026-08-05T13:56:00.000Z",
-      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T15:45:00.000Z",
       "order": 2
     },
     {
@@ -1094,8 +1100,8 @@
       "intent": "remote readiness",
       "level": "B1",
       "style": "simple",
-      "answer": "Yes. I am comfortable working independently with digital communication tools and clear written documentation. I currently have a quiet place to work and reliable internet. When relocating to Serbia, a quiet workspace and stable high-speed internet will be important requirements when I choose accommodation.",
-      "firstSentence": "Yes.",
+      "answer": "Yes, I am comfortable working remotely. I am used to working independently with digital communication tools and clear written documentation. I currently have a quiet place to work and reliable internet. When relocating to Serbia, I would make sure that I had the same stable working conditions before starting remote work.",
+      "firstSentence": "Yes, I am comfortable working remotely.",
       "keywords": [
         "remote work",
         "quiet workspace",
@@ -1109,7 +1115,7 @@
       ],
       "locked": true,
       "createdAt": "2026-08-05T13:56:00.000Z",
-      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T15:45:00.000Z",
       "order": 40
     },
     {
@@ -1415,8 +1421,8 @@
       "intent": "relocation motivation",
       "level": "B1",
       "style": "simple",
-      "answer": "I am seriously considering Serbia as a realistic place to continue my professional development and build a stable life. This position would give me a clear employment basis and the opportunity to work in an international environment. I am currently in Poznań and I am ready to discuss the practical relocation and residence process with the employer.",
-      "firstSentence": "I am seriously considering Serbia as a realistic place to continue my professional development and build a stable life.",
+      "answer": "I am considering Serbia because it offers a realistic opportunity to continue my professional development in an international environment. I am interested in building stable long-term experience, using Polish professionally and developing further in customer support. I am currently based in Poland, so I would discuss the required employment, residence and relocation steps openly and agree on a realistic timeline before making firm commitments.",
+      "firstSentence": "I am considering Serbia because it offers a realistic opportunity to continue my professional development in an international environment.",
       "keywords": [
         "Serbia",
         "professional development",
@@ -1430,7 +1436,7 @@
       ],
       "locked": true,
       "createdAt": "2026-08-05T13:56:00.000Z",
-      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T15:45:00.000Z",
       "order": 52
     },
     {
@@ -1527,8 +1533,8 @@
       "intent": "client experience",
       "level": "B1",
       "style": "simple",
-      "answer": "Yes. I communicated directly with clients while working as a lawyer and while managing my advertising and ventilation businesses. My responsibilities included understanding customer needs, explaining services and options, sales, negotiations, coordinating work and supporting customers until the matter or order was completed.",
-      "firstSentence": "Yes.",
+      "answer": "Yes, I have direct experience communicating with clients. I worked with clients as a lawyer and while managing my advertising and ventilation businesses. I listened to their needs, explained services and options, discussed practical conditions and followed the work until completion. This experience taught me to communicate clearly and take responsibility for follow-up.",
+      "firstSentence": "Yes, I have direct experience communicating with clients.",
       "keywords": [
         "lawyer",
         "business owner",
@@ -1543,7 +1549,7 @@
       ],
       "locked": true,
       "createdAt": "2026-08-05T13:56:00.000Z",
-      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T15:45:00.000Z",
       "order": 56
     },
     {
@@ -1556,8 +1562,8 @@
       "intent": "sales",
       "level": "B1",
       "style": "simple",
-      "answer": "Yes. In my advertising and ventilation businesses, I communicated directly with customers, identified their needs, explained available services, discussed price and conditions and helped them choose an appropriate solution. I focused on understanding the real requirement and building trust rather than simply trying to sell something.",
-      "firstSentence": "Yes.",
+      "answer": "Yes, I have practical sales experience from running my own businesses. I communicated directly with customers, identified their needs, explained available services, discussed price and conditions and helped them choose an appropriate solution. My approach was consultative rather than aggressive: first understand the need, then offer a suitable option and explain it clearly.",
+      "firstSentence": "Yes, I have practical sales experience from running my own businesses.",
       "keywords": [
         "customer needs",
         "services",
@@ -1571,7 +1577,7 @@
       ],
       "locked": true,
       "createdAt": "2026-08-05T13:56:00.000Z",
-      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T15:45:00.000Z",
       "order": 57
     },
     {
@@ -1698,7 +1704,7 @@
       "intent": "English level",
       "level": "B1",
       "style": "simple",
-      "answer": "My English is at an intermediate level. I can communicate in writing and speaking, understand professional information and cooperate with an international team. I am continuing to improve my spoken English, and I focus on communicating clearly and accurately rather than using unnecessarily complicated language.",
+      "answer": "My English is at an intermediate level. I can communicate in writing and in conversations, understand professional information and cooperate with an international team. I am continuing to improve my spoken English, and I focus on communicating clearly and accurately rather than using unnecessarily complicated language.",
       "firstSentence": "My English is at an intermediate level.",
       "keywords": [
         "intermediate",
@@ -1712,7 +1718,7 @@
       ],
       "locked": true,
       "createdAt": "2026-08-05T13:56:00.000Z",
-      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T15:45:00.000Z",
       "order": 62
     },
     {
@@ -1752,8 +1758,8 @@
       "intent": "Polish phone support",
       "level": "B1",
       "style": "simple",
-      "answer": "Yes. I use Polish daily and I am ready to communicate with customers by phone. On a call, I would listen carefully, confirm important names or numbers and summarise the next step before ending the conversation. If a specialised product term was unfamiliar, I would verify it rather than guess.",
-      "firstSentence": "Yes.",
+      "answer": "Yes, I am comfortable speaking with Polish customers by phone. I use Polish every day and I am ready to communicate with customers in live conversations. On a call, I would listen carefully, confirm important names or numbers and summarise the next step before ending the conversation. If a specific term was unclear, I would ask politely for clarification rather than guess.",
+      "firstSentence": "Yes, I am comfortable speaking with Polish customers by phone.",
       "keywords": [
         "Polish phone",
         "confirm details",
@@ -1766,7 +1772,7 @@
       ],
       "locked": true,
       "createdAt": "2026-08-05T13:56:00.000Z",
-      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T15:45:00.000Z",
       "order": 64
     },
     {
@@ -1804,8 +1810,8 @@
       "intent": "candidate questions",
       "level": "B1",
       "style": "simple",
-      "answer": "Yes. I would like to understand how the initial training is organised, which CRM or ticketing system the team uses and what the usual shift pattern looks like. I would also like to ask how the company supports the employment-based residence process in Serbia and how performance is measured during the first months.",
-      "firstSentence": "Yes.",
+      "answer": "Yes, I would like to ask about the training, systems and usual shift pattern. How is the initial training organised, and which CRM or ticketing system does the team use? I would also like to know how performance is measured during the first months and how the company supports the employment and relocation process for a candidate moving to Serbia.",
+      "firstSentence": "Yes, I would like to ask about the training, systems and usual shift pattern.",
       "keywords": [
         "training",
         "CRM",
@@ -1819,9 +1825,10 @@
       ],
       "locked": true,
       "createdAt": "2026-08-05T13:56:00.000Z",
-      "updatedAt": "2026-08-05T13:56:00.000Z",
+      "updatedAt": "2026-08-05T15:45:00.000Z",
       "order": 66
     }
   ],
-  "updatedAt": "2026-08-05T13:56:00.000Z"
+  "updatedAt": "2026-08-05T15:45:00.000Z",
+  "presetRevision": 2
 }
