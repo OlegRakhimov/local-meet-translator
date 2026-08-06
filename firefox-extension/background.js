@@ -9,6 +9,9 @@ let desktopSessionId = "";
 let desktopCommandSeq = 0;
 let desktopPollTimer = null;
 let desktopPollBusy = false;
+let desktopIdentitySyncTimer = null;
+let desktopIdentityVerified = false;
+const EXPECTED_DESKTOP_PRODUCT_ID = "local.meet.translator.desktop";
 
 function status(kind, text, log) {
   browser.runtime.sendMessage({ type: "STATUS", kind, text, log }).catch(() => {});
@@ -55,7 +58,7 @@ async function loadExtensionIdentity() {
     await browser.storage.local.set({ desktopExtensionClientId: extensionClientId });
   }
   return {
-    paired: !!desktopExtensionToken,
+    paired: !!desktopExtensionToken && desktopIdentityVerified,
     desktopExtensionToken,
     extensionClientId,
     desktopSessionId,
@@ -91,7 +94,7 @@ async function postDesktopJson(path, body, allowNoToken = false) {
     cache: "no-store",
     headers: {
       "Content-Type": "application/json",
-      ...authHeaders()
+      ...(!allowNoToken ? authHeaders() : {})
     },
     body: JSON.stringify(body || {})
   });
@@ -117,16 +120,112 @@ async function getDesktopJson(path, params = {}) {
   return { ok: resp.ok && data.ok !== false, status: resp.status, data };
 }
 
-async function forwardSubtitleToDesktop(message) {
-  const paired = desktopExtensionToken ? { ok: true } : await loadExtensionIdentity();
-  if (!desktopExtensionToken && !(paired && paired.paired)) {
-    return { ok: false, error: "Desktop extension token is missing. Pair the extension first." };
+async function getDesktopPublicJson(path, params = {}) {
+  const url = new URL(`${desktopBaseUrl()}${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    url.searchParams.set(key, String(value));
   }
+  const resp = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store"
+  });
+  const data = await resp.json().catch(() => ({}));
+  return { ok: resp.ok && data.ok !== false, status: resp.status, data };
+}
+
+async function getDesktopPairingCode() {
+  try {
+    const result = await getDesktopPublicJson("/extension/pairing-code");
+    if (!result.ok || !result.data || !result.data.pairingCode) {
+      return {
+        ok: false,
+        error: String(result.data && (result.data.error || result.data.message) || "Could not load pairing code.")
+      };
+    }
+    if (String(result.data.desktopProductId || "") !== EXPECTED_DESKTOP_PRODUCT_ID) {
+      return { ok: false, error: "The local pairing server does not belong to Local Meet Translator." };
+    }
+    return result.data;
+  } catch (error) {
+    return {
+      ok: false,
+      error: String(error && (error.message || error) || "Could not load pairing code.")
+    };
+  }
+}
+
+async function ensureDesktopToken(force = false) {
+  await loadExtensionIdentity();
+  const codeResult = await getDesktopPairingCode();
+  if (!codeResult || !codeResult.ok || !codeResult.pairingCode) {
+    desktopIdentityVerified = false;
+    return {
+      ok: false,
+      error: String(codeResult && (codeResult.error || codeResult.message) || "Desktop pairing code is unavailable.")
+    };
+  }
+  const liveSessionId = String(codeResult.sessionId || "");
+  if (!force && desktopExtensionToken && liveSessionId && desktopSessionId === liveSessionId) {
+    desktopIdentityVerified = true;
+    return {
+      ok: true,
+      paired: true,
+      tokenPresent: true,
+      pairingCode: String(codeResult.pairingCode || ""),
+      sessionId: liveSessionId
+    };
+  }
+  const paired = await pairWithDesktop(codeResult.pairingCode);
+  if (!paired.ok) {
+    desktopIdentityVerified = false;
+    return paired;
+  }
+  return {
+    ...paired,
+    paired: true,
+    pairingCode: String(codeResult.pairingCode || ""),
+    sessionId: String(codeResult.sessionId || desktopSessionId || "")
+  };
+}
+
+async function checkDesktopHealth() {
+  const paired = await ensureDesktopToken(false);
+  if (!paired.ok) return paired;
+  let result = await getDesktopJson("/health");
+  if (!result.ok && (result.status === 401 || result.status === 403)) {
+    const repaired = await ensureDesktopToken(true);
+    if (!repaired.ok) return repaired;
+    result = await getDesktopJson("/health");
+  }
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: String(result.data && (result.data.error || result.data.message) || "Desktop health check failed.")
+    };
+  }
+  if (String(result.data && result.data.desktopProductId || "") !== EXPECTED_DESKTOP_PRODUCT_ID) {
+    desktopIdentityVerified = false;
+    return { ok: false, error: "The running desktop app is not Local Meet Translator." };
+  }
+  desktopIdentityVerified = true;
+  return result.data;
+}
+
+async function forwardSubtitleToDesktop(message) {
+  const paired = await ensureDesktopToken(false);
+  if (!paired.ok) return paired;
   const body = {
     id: String(message && message.id || ""),
     channel: message && message.channel === "outgoing" ? "outgoing" : "incoming",
     translation: String(message && message.translation || ""),
     transcript: String(message && message.transcript || ""),
+    transcriptionTrusted: message && message.transcriptionTrusted !== false,
+    transcriptionUncertain: !!(message && message.transcriptionUncertain),
+    transcriptionConfidence: String(message && message.transcriptionConfidence || "unknown"),
+    transcriptionAgreement: Number(message && message.transcriptionAgreement || 0),
+    detectedLanguage: String(message && message.detectedLanguage || ""),
+    alternativeTranscript: String(message && message.alternativeTranscript || ""),
     ts: Number(message && message.ts || Date.now()),
     tabId: message && message.tabId !== undefined ? String(message.tabId) : String(activeTabId || ""),
     url: String(message && message.url || activeTabUrl || ""),
@@ -134,7 +233,8 @@ async function forwardSubtitleToDesktop(message) {
   };
   let result = await postDesktopJson("/extension/subtitle", body);
   if (!result.ok && (result.status === 401 || result.status === 403)) {
-    await loadExtensionIdentity();
+    const repaired = await ensureDesktopToken(true);
+    if (!repaired.ok) return repaired;
     result = await postDesktopJson("/extension/subtitle", body);
   }
   return result.ok
@@ -177,7 +277,7 @@ async function getStartSettings(overrides, tabId) {
     authToken: settings.authToken || "",
     sourceLang: settings.sourceLang || "auto",
     targetLang: settings.targetLang || "en",
-    chunkSeconds: settings.chunkSeconds || 3,
+    chunkSeconds: settings.chunkSeconds || 7,
     audioIsolationMode,
     ttsEnabled: audioIsolationMode ? false : !!settings.ttsEnabled,
     ttsVoice: settings.ttsVoice || "onyx",
@@ -209,13 +309,21 @@ async function rememberActiveTab(tabId) {
 }
 
 async function notifyDesktopArmed(tab) {
-  if (!desktopExtensionToken || !tab) return { ok: false, skipped: true };
+  if (!tab) return { ok: false, skipped: true };
+  const paired = await ensureDesktopToken(false);
+  if (!paired.ok) return paired;
   const clientId = extensionClientId || (await loadExtensionIdentity()).extensionClientId;
-  const result = await postDesktopJson("/extension-client/armed", {
+  const body = {
     clientId,
     url: String(tab.url || activeTabUrl || ""),
     visible: !!tab.active
-  });
+  };
+  let result = await postDesktopJson("/extension-client/armed", body);
+  if (!result.ok && (result.status === 401 || result.status === 403)) {
+    const repaired = await ensureDesktopToken(true);
+    if (!repaired.ok) return repaired;
+    result = await postDesktopJson("/extension-client/armed", body);
+  }
   if (result.ok) {
     status("ok", "Meeting tab connected", "Desktop pairing is ready for the selected meeting tab.");
   }
@@ -232,11 +340,15 @@ async function pairWithDesktop(pairingCode) {
   if (!result.ok || !result.data || !result.data.token) {
     return { ok: false, error: result.data && (result.data.error || result.data.message) || "Pairing failed." };
   }
+  if (String(result.data.desktopProductId || "") !== EXPECTED_DESKTOP_PRODUCT_ID) {
+    return { ok: false, error: "The local pairing server does not belong to Local Meet Translator." };
+  }
   await storeDesktopIdentity({
     desktopExtensionToken: String(result.data.token || ""),
     desktopSessionId: String(result.data.sessionId || desktopSessionId || ""),
     desktopCommandSeq: 0
   });
+  desktopIdentityVerified = true;
   desktopCommandSeq = 0;
   desktopSessionId = String(result.data.sessionId || desktopSessionId || "");
   if (activeTabId) {
@@ -294,9 +406,16 @@ async function syncDesktopCommand() {
     }
     activeTabUrl = String(tab.url || activeTabUrl || "");
     activeTabVisible = !!tab.active;
-    const result = await getDesktopJson("/extension-command", {
+    let result = await getDesktopJson("/extension-command", {
       ...getActiveCommandPayload()
     });
+    if (!result.ok && (result.status === 401 || result.status === 403)) {
+      const repaired = await ensureDesktopToken(true);
+      if (!repaired.ok) return;
+      result = await getDesktopJson("/extension-command", {
+        ...getActiveCommandPayload()
+      });
+    }
     if (!result.ok || !result.data || !result.data.ok) return;
     if (result.data.sessionId && result.data.sessionId !== desktopSessionId) {
       desktopSessionId = String(result.data.sessionId || "");
@@ -326,6 +445,15 @@ function ensureDesktopPolling() {
   desktopPollTimer = setInterval(() => {
     syncDesktopCommand().catch(() => {});
   }, 400);
+}
+
+function ensureDesktopIdentitySync() {
+  if (desktopIdentitySyncTimer) return;
+  desktopIdentitySyncTimer = setInterval(() => {
+    ensureDesktopToken(false).catch(() => {
+      desktopIdentityVerified = false;
+    });
+  }, 2000);
 }
 
 function stopDesktopPolling() {
@@ -426,7 +554,12 @@ async function handleRemoteAudio(message, sender) {
 browser.runtime.onMessage.addListener((message, sender) => {
   if (!message) return undefined;
   if (message.type === "ARM_CURRENT_TAB") return armTab(message.tabId);
-  if (message.type === "PAIR_DESKTOP") return pairWithDesktop(message.pairingCode);
+  if (message.type === "DESKTOP_HEALTH") return checkDesktopHealth();
+  if (message.type === "DESKTOP_PAIRING_CODE") return getDesktopPairingCode();
+  if (message.type === "SYNC_WITH_DESKTOP") return ensureDesktopToken(false);
+  if (message.type === "PAIR_DESKTOP" || message.type === "PAIR_WITH_DESKTOP") {
+    return pairWithDesktop(message.pairingCode);
+  }
   if (message.type === "GET_PAIR_STATUS") {
     return loadExtensionIdentity().then((state) => ({ ok: true, ...state, activeTabId, activeTabUrl }));
   }
@@ -458,7 +591,9 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
-loadExtensionIdentity().then(() => {
+loadExtensionIdentity().then(async () => {
+  await ensureDesktopToken(false).catch(() => {});
+  ensureDesktopIdentitySync();
   ensureDesktopPolling();
   if (desktopExtensionToken && activeTabId) {
     syncDesktopCommand().catch(() => {});

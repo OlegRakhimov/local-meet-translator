@@ -8,6 +8,7 @@ let desktopSessionId = "";
 let desktopCommandSeq = 0;
 
 const DESKTOP_BASE_URL = "http://127.0.0.1:18798";
+const EXPECTED_DESKTOP_PRODUCT_ID = "local.meet.translator.desktop";
 
 function normalizeCommandSeq(value) {
   const seq = Number(value || 0);
@@ -137,19 +138,13 @@ async function getDesktopPairingCode() {
   try {
     const result = await getDesktopPublicJson("/extension/pairing-code");
     if (result.ok && result.data && result.data.pairingCode) {
-      try {
-        await chrome.storage.local.set({ desktopExtensionPairingCode: String(result.data.pairingCode || "") });
-      } catch (_) {}
+      if (String(result.data.desktopProductId || "") !== EXPECTED_DESKTOP_PRODUCT_ID) {
+        return { ok: false, error: "The local pairing server does not belong to Local Meet Translator." };
+      }
       return result.data;
     }
     return { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Could not load pairing code.") };
   } catch (e) {
-    try {
-      const cached = await chrome.storage.local.get("desktopExtensionPairingCode");
-      if (cached && cached.desktopExtensionPairingCode) {
-        return { ok: true, pairingCode: String(cached.desktopExtensionPairingCode || ""), cached: true };
-      }
-    } catch (_) {}
     return { ok: false, error: String(e && (e.message || e) || "Could not load pairing code.") };
   }
 }
@@ -162,6 +157,9 @@ async function pairWithDesktop(pairingCode) {
   }, true);
   if (!result.ok || !result.data || !result.data.token) {
     return { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Pairing failed.") };
+  }
+  if (String(result.data.desktopProductId || "") !== EXPECTED_DESKTOP_PRODUCT_ID) {
+    return { ok: false, error: "The local pairing server does not belong to Local Meet Translator." };
   }
   await storeDesktopIdentity({
     desktopExtensionToken: String(result.data.token || ""),
@@ -272,7 +270,13 @@ async function checkDesktopHealth() {
     if (!repaired.ok) return repaired;
     result = await getDesktopJson("/health");
   }
-  return result.ok ? result.data : { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Desktop health check failed.") };
+  if (!result.ok) {
+    return { ok: false, error: String(result.data && (result.data.error || result.data.message) || "Desktop health check failed.") };
+  }
+  if (String(result.data && result.data.desktopProductId || "") !== EXPECTED_DESKTOP_PRODUCT_ID) {
+    return { ok: false, error: "The running desktop app is not Local Meet Translator." };
+  }
+  return result.data;
 }
 async function forwardSubtitleToDesktop(message) {
   const paired = await ensureDesktopToken(false);
@@ -289,6 +293,12 @@ async function forwardSubtitleToDesktop(message) {
     channel: message && message.channel === "outgoing" ? "outgoing" : "incoming",
     translation: String(message && message.translation || ""),
     transcript: String(message && message.transcript || ""),
+    transcriptionTrusted: message && message.transcriptionTrusted !== false,
+    transcriptionUncertain: !!(message && message.transcriptionUncertain),
+    transcriptionConfidence: String(message && message.transcriptionConfidence || "unknown"),
+    transcriptionAgreement: Number(message && message.transcriptionAgreement || 0),
+    detectedLanguage: String(message && message.detectedLanguage || ""),
+    alternativeTranscript: String(message && message.alternativeTranscript || ""),
     ts: Number(message && message.ts || Date.now()),
     tabId: message && message.tabId !== undefined ? String(message.tabId) : "",
     url: tabUrl,
@@ -526,7 +536,7 @@ async function getStartMessageFromStorage(overrides, tabId) {
     authToken: s.authToken || "",
     sourceLang: s.sourceLang || "auto",
     targetLang: s.targetLang || "en",
-    chunkSeconds: s.chunkSeconds || 3,
+    chunkSeconds: s.chunkSeconds || 7,
     audioIsolationMode,
     ttsEnabled: audioIsolationMode ? false : !!s.ttsEnabled,
     ttsVoice: s.ttsVoice || "onyx",

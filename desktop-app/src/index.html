@@ -78,7 +78,7 @@
               <label><span data-i18n="homeFrom">Speaker</span><input id="homeSourceLang" list="sourceLanguageModes" value="en-expected" placeholder="auto / en-expected / en" /></label>
               <span class="languageArrow">→</span>
               <label><span data-i18n="homeTo">Subtitles</span><input id="homeTargetLang" value="ru" placeholder="ru" /></label>
-              <label><span data-i18n="homeChunk">Chunk</span><input id="homeChunkSeconds" type="number" min="2" max="15" value="3" /></label>
+              <label><span data-i18n="homeChunk">Chunk</span><input id="homeChunkSeconds" type="number" min="2" max="15" value="7" /></label>
             </div>
             <div class="heroActions">
               <button id="quickStartSubtitles" class="primaryLarge" type="button"><svg><use href="#icon-play"></use></svg><span data-i18n="quickStartSubtitles">Start subtitles</span></button>
@@ -175,7 +175,7 @@
 </div>
 <div class="grid">
 <label><span data-i18n="textModel">Text model</span> <input id="textModel" value="gpt-4o-mini"/></label>
-<label><span data-i18n="transcribeModel">Transcribe model</span> <input id="transcribeModel" value="whisper-1"/></label>
+<label><span data-i18n="transcribeModel">Transcribe model</span> <input id="transcribeModel" value="gpt-4o-transcribe"/></label>
 </div>
 <label class="check"><input checked="" id="enableTts" type="checkbox"/> <span data-i18n="enableTts">Enable TTS for outgoing translated voice</span></label>
 <label class="check"><input id="enableVoiceConversion" type="checkbox"/> <span data-i18n="enableVc">Enable voice conversion / RVC hook</span></label>
@@ -199,9 +199,9 @@
 <label><span data-i18n="incomingSource">Incoming source language</span> <input id="extSourceLang" list="sourceLanguageModes" placeholder="auto / en-expected / en / pl / ..." value="en-expected"/></label>
 <label><span data-i18n="incomingTarget">Incoming target language</span> <input id="extTargetLang" placeholder="en" value="en"/></label>
 </div>
-<p class="hint" data-i18n="englishExpectedHint">Use en-expected for interviews: automatic detection runs first, and suspicious non-English text is retried as strict English.</p>
+<p class="hint" data-i18n="englishExpectedHint">Use en-expected for interviews: strict English recognition runs first, and low-confidence audio is checked by a second pass. Uncertain text is shown with a warning and is not sent to Interview Assistant.</p>
 <div class="grid">
-<label><span data-i18n="chunk">Incoming chunk seconds</span> <input id="extChunkSeconds" max="15" min="2" step="1" type="number" value="3"/></label>
+<label><span data-i18n="chunk">Incoming chunk seconds</span> <input id="extChunkSeconds" max="15" min="2" step="1" type="number" value="7"/></label>
 <label><span data-i18n="ttsVoice">TTS voice</span> <select id="extTtsVoice"></select></label>
 </div>
 <div class="grid">
@@ -301,7 +301,7 @@
         <div class="guideGrid">
           <details class="guideCard" open><summary data-i18n="guideQuickStart">Quick start for an English interview</summary><ol><li data-i18n="guideQuick1">Open Settings and save your OpenAI API key.</li><li data-i18n="guideQuick2">Open System and start Bridge.</li><li data-i18n="guideQuick3">Open the meeting tab and connect it from the extension popup.</li><li data-i18n="guideQuick4">On Dashboard choose en → ru and press Start subtitles.</li><li data-i18n="guideQuick5">Open Interview Assistant and start a live session.</li></ol></details>
           <details class="guideCard"><summary data-i18n="guideAssistantTitle">Interview Assistant</summary><p data-i18n="guideAssistantText">Automatic analysis reacts only to stable interview questions. Jokes and remarks remain in subtitles. Coding tasks receive an approach, plan, code, line-by-line explanation, complexity and speaking notes.</p></details>
-          <details class="guideCard"><summary data-i18n="guideTranscriptGuardTitle">English expected and transcript protection</summary><p data-i18n="guideTranscriptGuardText">English expected first uses automatic recognition, retries suspicious text as English, rejects silent chunks before the network request, and blocks prompt echoes before translation. Dropped text never reaches subtitles, history, Coding Focus or the classifier.</p></details>
+          <details class="guideCard"><summary data-i18n="guideTranscriptGuardTitle">English expected and transcript protection</summary><p data-i18n="guideTranscriptGuardText">English expected forces English recognition, checks confidence, and uses a second pass when needed. Uncertain text is shown with a warning and is not sent to Interview Assistant.</p></details>
           <details class="guideCard"><summary data-i18n="guideLearningAidsTitle">Keywords and useful phrases</summary><p data-i18n="guideLearningAidsText">Each Answer Library question may contain a first sentence, English keywords with Russian translations, and reusable English phrases with Russian translations. Generate missing aids for one question or fill all incomplete questions. Reviewed answers are preserved.</p></details>
           <details class="guideCard"><summary data-i18n="guideClassifierTitle">Coding Focus and contextual replies</summary><p data-i18n="guideClassifierText">Remarks only enter the feed. Follow-up questions receive a separate answer. Recommendations are offered, direct requests and constraints revise the solution, corrections replace earlier inputs, and new tasks wait for confirmation.</p></details>          <details class="guideCard"><summary data-i18n="guideVoiceTitle">Voice translation to the other participant</summary><p data-i18n="guideVoiceText">In Translation control select CABLE Input as output, select CABLE Output as the meeting microphone, confirm the checkbox and start outgoing voice translation.</p></details>
           <details class="guideCard"><summary data-i18n="guidePrivacyTitle">Privacy and screen sharing</summary><p data-i18n="guidePrivacyText">Share only the browser tab or meeting window. Keep content protection enabled. The desktop app does not store raw audio.</p></details>
@@ -870,7 +870,7 @@
   </div>
   <script src="i18n.js"></script>
   <datalist id="sourceLanguageModes">
-    <option value="en-expected">English expected — auto + retry</option>
+    <option value="en-expected">English expected — strict English + confidence check</option>
     <option value="auto">Auto detect</option>
     <option value="en">English strict</option>
     <option value="pl">Polish</option>

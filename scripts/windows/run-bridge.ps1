@@ -39,7 +39,7 @@ if (-not $env:OPENAI_API_KEY -or $env:OPENAI_API_KEY.Trim().Length -eq 0) {
 
 if (-not $env:LOCAL_MEET_TRANSLATOR_PORT -or $env:LOCAL_MEET_TRANSLATOR_PORT.Trim().Length -eq 0) { $env:LOCAL_MEET_TRANSLATOR_PORT = "8799" }
 if (-not $env:LOCAL_MEET_TRANSLATOR_TOKEN -or $env:LOCAL_MEET_TRANSLATOR_TOKEN.Trim().Length -eq 0) { $env:LOCAL_MEET_TRANSLATOR_TOKEN = [guid]::NewGuid().ToString("N") }
-if (-not $env:OPENAI_TRANSCRIBE_MODEL -or $env:OPENAI_TRANSCRIBE_MODEL.Trim().Length -eq 0) { $env:OPENAI_TRANSCRIBE_MODEL = "whisper-1" }
+if (-not $env:OPENAI_TRANSCRIBE_MODEL -or $env:OPENAI_TRANSCRIBE_MODEL.Trim().Length -eq 0) { $env:OPENAI_TRANSCRIBE_MODEL = "gpt-4o-transcribe" }
 if (-not $env:OPENAI_TEXT_MODEL -or $env:OPENAI_TEXT_MODEL.Trim().Length -eq 0) { $env:OPENAI_TEXT_MODEL = "gpt-4o-mini" }
 if (-not $env:ENABLE_TTS -or $env:ENABLE_TTS.Trim().Length -eq 0) { $env:ENABLE_TTS = "false" }
 

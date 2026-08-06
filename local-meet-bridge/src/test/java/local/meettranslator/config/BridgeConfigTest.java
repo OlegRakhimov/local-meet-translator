@@ -12,7 +12,7 @@ class BridgeConfigTest {
     void loadsStableDefaults() {
         BridgeConfig config = BridgeConfig.fromEnvironment(Map.of("OPENAI_API_KEY", "test-key"));
         assertEquals(8799, config.port());
-        assertEquals("whisper-1", config.transcribeModel());
+        assertEquals("gpt-4o-transcribe", config.transcribeModel());
         assertEquals("gpt-4o-mini", config.textModel());
         assertFalse(config.ttsEnabled());
         assertFalse(config.authToken().isBlank());

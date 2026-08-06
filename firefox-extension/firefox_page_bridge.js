@@ -10,7 +10,7 @@
   const remoteTracks = new Map();
   let running = false;
   let sessionId = "";
-  let chunkMs = 3000;
+  let chunkMs = 7000;
 
   function post(type, payload = {}, transfer = []) {
     const targetOrigin = location.origin && location.origin !== "null" ? location.origin : "*";
@@ -163,9 +163,14 @@
     const message = event.data;
     if (!message || message.source !== CONTENT_SOURCE) return;
 
+    if (message.type === "probe") {
+      post("bridge-ready");
+      return;
+    }
+
     if (message.type === "start") {
       sessionId = String(message.sessionId || "");
-      chunkMs = Math.max(2000, Math.min(15000, Number(message.chunkSeconds || 3) * 1000));
+      chunkMs = Math.max(2000, Math.min(15000, Number(message.chunkSeconds || 7) * 1000));
       running = true;
       for (const pc of peerConnections) inspectReceivers(pc);
       for (const state of remoteTracks.values()) startRecorder(state);

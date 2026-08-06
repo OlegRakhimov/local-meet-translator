@@ -65,6 +65,7 @@ function defaultLibrary() {
   return {
     schemaVersion: SCHEMA_VERSION,
     profileMode: 'general',
+    presetRevision: 0,
     entries: [],
     updatedAt: ''
   };
@@ -86,9 +87,31 @@ function sanitizeLibrary(input = {}) {
   return {
     schemaVersion: SCHEMA_VERSION,
     profileMode: cleanText(source.profileMode, 80).toLowerCase() || 'general',
+    presetRevision: Number.isFinite(Number(source.presetRevision))
+      ? Math.max(0, Math.floor(Number(source.presetRevision)))
+      : 0,
     entries,
     updatedAt: cleanText(source.updatedAt, 64) || new Date().toISOString()
   };
+}
+
+function syncBundledPreset(currentInput, presetInput) {
+  const current = sanitizeLibrary(currentInput);
+  const preset = sanitizeLibrary(presetInput);
+  if (!preset.entries.length || preset.presetRevision <= current.presetRevision) {
+    return { library: current, updated: false };
+  }
+
+  const presetById = new Map(preset.entries.map(entry => [entry.id, entry]));
+  const customEntries = current.entries.filter(entry => !presetById.has(entry.id));
+  const library = sanitizeLibrary({
+    ...current,
+    profileMode: preset.profileMode || current.profileMode,
+    presetRevision: preset.presetRevision,
+    entries: [...preset.entries, ...customEntries],
+    updatedAt: preset.updatedAt || new Date().toISOString()
+  });
+  return { library, updated: true };
 }
 
 function writeJsonAtomic(filePath, value) {
@@ -122,7 +145,17 @@ function createAnswerLibraryStore({ libraryPath, presetLibrary = null }) {
 
   function load() {
     const result = readJsonSafe(libraryPath, initialLibrary);
-    return { ok: true, path: libraryPath, ...result };
+    const synced = presetLibrary
+      ? syncBundledPreset(result.library, initialLibrary)
+      : { library: result.library, updated: false };
+    if (synced.updated) writeJsonAtomic(libraryPath, synced.library);
+    return {
+      ok: true,
+      path: libraryPath,
+      ...result,
+      library: synced.library,
+      presetUpdated: synced.updated
+    };
   }
 
   function save(input) {
@@ -164,6 +197,7 @@ module.exports = {
   sanitizeEntry,
   defaultLibrary,
   sanitizeLibrary,
+  syncBundledPreset,
   writeJsonAtomic,
   readJsonSafe,
   createAnswerLibraryStore

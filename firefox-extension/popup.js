@@ -28,17 +28,12 @@ function isSupportedMeetingUrl(url) {
 
 async function getPairingStatus() {
   try {
-    const obj = await browser.storage.local.get([
-      "desktopExtensionToken",
-      "desktopExtensionClientId",
-      "desktopExtensionSessionId",
-      "desktopExtensionCommandSeq"
-    ]);
+    const obj = await browser.runtime.sendMessage({ type: "GET_PAIR_STATUS" });
     return {
-      paired: !!obj.desktopExtensionToken,
-      clientId: String(obj.desktopExtensionClientId || ""),
-      sessionId: String(obj.desktopExtensionSessionId || ""),
-      seq: Number(obj.desktopExtensionCommandSeq || 0) || 0
+      paired: !!(obj && obj.ok && obj.paired),
+      clientId: String(obj.extensionClientId || obj.desktopExtensionClientId || ""),
+      sessionId: String(obj.desktopSessionId || obj.desktopExtensionSessionId || ""),
+      seq: Number(obj.desktopCommandSeq || obj.desktopExtensionCommandSeq || 0) || 0
     };
   } catch (_) {
     return { paired: false, clientId: "", sessionId: "", seq: 0 };
@@ -53,6 +48,34 @@ function renderPairStatus(status) {
 async function getActiveTab() {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   return tab || null;
+}
+
+async function preloadPairingCode() {
+  const input = $("pairingCode");
+  if (!input) return false;
+  input.value = "";
+  try {
+    const data = await browser.runtime.sendMessage({ type: "DESKTOP_PAIRING_CODE" });
+    if (data && data.ok && data.pairingCode) {
+      input.value = String(data.pairingCode || "");
+      input.select?.();
+      log(t("pairingCodeLoaded"));
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+async function checkDesktop() {
+  try {
+    const result = await browser.runtime.sendMessage({ type: "DESKTOP_HEALTH" });
+    if (result && result.ok) {
+      renderPairStatus({ paired: true });
+      return true;
+    }
+  } catch (_) {}
+  renderPairStatus(await getPairingStatus());
+  return false;
 }
 
 async function checkCurrentPage() {
@@ -108,16 +131,20 @@ async function connectCurrentMeetingTab() {
 
 async function pairDesktop() {
   const codeEl = $("pairingCode");
-  const code = String(codeEl && codeEl.value || "").trim();
+  let code = String(codeEl && codeEl.value || "").trim();
   const btn = $("pairDesktop");
   try {
     if (btn) btn.disabled = true;
     if (!code) {
-      setText("runtimeStatus", t("pairingRequired"), "warn");
-      log(t("pairingEnterCode"));
-      return;
+      await preloadPairingCode();
+      code = String(codeEl && codeEl.value || "").trim();
+      if (!code) {
+        setText("runtimeStatus", t("pairingRequired"), "warn");
+        log(t("pairingEnterCode"));
+        return;
+      }
     }
-    const res = await browser.runtime.sendMessage({ type: "PAIR_DESKTOP", pairingCode: code });
+    const res = await browser.runtime.sendMessage({ type: "PAIR_WITH_DESKTOP", pairingCode: code });
     if (res && res.ok) {
       const status = await getPairingStatus();
       renderPairStatus(status);
@@ -135,10 +162,46 @@ async function pairDesktop() {
   }
 }
 
+async function autoPairAndCheckDesktop() {
+  const input = $("pairingCode");
+  try {
+    const synced = await browser.runtime.sendMessage({ type: "SYNC_WITH_DESKTOP" });
+    if (synced && synced.ok && synced.pairingCode) {
+      if (input) input.value = String(synced.pairingCode || "");
+      if (await checkDesktop()) {
+        setText("runtimeStatus", t("paired"), "ok");
+        return true;
+      }
+    }
+  } catch (_) {}
+  await preloadPairingCode();
+  if (await checkDesktop()) {
+    setText("runtimeStatus", t("paired"), "ok");
+    return true;
+  }
+  if (input && input.value.trim()) {
+    await pairDesktop();
+    return checkDesktop();
+  }
+  return false;
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   applyI18n();
   setText("runtimeStatus", t("idle"), "warn");
   renderPairStatus(await getPairingStatus());
+  await autoPairAndCheckDesktop();
+  let pairingAttempts = 0;
+  const pairingRetry = setInterval(async () => {
+    pairingAttempts += 1;
+    if (pairingAttempts >= 8) {
+      clearInterval(pairingRetry);
+      return;
+    }
+    if (await autoPairAndCheckDesktop()) {
+      clearInterval(pairingRetry);
+    }
+  }, 500);
   const tab = await checkCurrentPage();
   const btn = $("connectTab");
   if (btn) btn.onclick = connectCurrentMeetingTab;
@@ -167,7 +230,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     browser.storage.onChanged.addListener((changes, area) => {
       if (area !== "local" || !changes) return;
       if (changes.desktopExtensionToken) {
-        renderPairStatus({ paired: !!changes.desktopExtensionToken.newValue });
+        getPairingStatus().then(renderPairStatus).catch(() => {
+          renderPairStatus({ paired: false });
+        });
       }
     });
   } catch (_) {}

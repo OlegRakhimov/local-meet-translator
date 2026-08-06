@@ -3,6 +3,8 @@
 // delivered here as ArrayBuffer chunks. Firefox does not expose Chromium's
 // privileged tab-audio and offscreen-document APIs.
 
+(() => {
+
 let micStream = null;
 let micRecorder = null;
 
@@ -93,6 +95,7 @@ let lastMicAt = 0;
 let lastSpokenNorm = "";
 let lastSpokenAt = 0;
 let recentTabHistory = [];
+let recentIncomingContext = [];
 
 function status(kind, text, log) {
   browser.runtime.sendMessage({ type: "STATUS", kind, text, log }).catch(() => {});
@@ -109,6 +112,17 @@ function blobToBase64(blob) {
     };
     r.readAsDataURL(blob);
   });
+}
+
+function transcriptionContextText() {
+  return recentIncomingContext.slice(-3).join(" ").slice(-900);
+}
+
+function rememberIncomingContext(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return;
+  recentIncomingContext.push(clean.slice(0, 500));
+  if (recentIncomingContext.length > 5) recentIncomingContext = recentIncomingContext.slice(-5);
 }
 
 function normalizeForDedupe(s) {
@@ -542,7 +556,8 @@ async function transcribeAndTranslate(blob, sourceLang, targetLang) {
       audioBase64: base64,
       audioMime: mime,
       sourceLang: sourceLang || "auto",
-      targetLang: targetLang || "en"
+      targetLang: targetLang || "en",
+      transcriptionContext: transcriptionContextText()
     };
 
     const resp = await fetch(`${serverUrl}/transcribe-and-translate`, {
@@ -557,7 +572,10 @@ async function transcribeAndTranslate(blob, sourceLang, targetLang) {
       return null;
     }
     if (data.transcriptionRetried) {
-      status("run", "English expected", "Automatic strict-English retry was used for this audio chunk.");
+      status("run", "English expected", "A second strict-English transcription pass was used for this audio chunk.");
+    }
+    if (data.transcriptionUncertain) {
+      status("run", "Recognition uncertain", "The subtitle is shown with a warning. Interview Assistant will ignore it until speech is recognized confidently.");
     }
     if ((data.transcript || "").trim() && !(data.translation || "").trim()) {
       const fallbackTranslation = await translateTextFallback(data.transcript, sourceLang, targetLang);
@@ -614,6 +632,7 @@ async function processIncomingAudioChunk(arrayBuffer, mimeType, generation) {
   lastIncomingTranscriptNorm = norm;
   lastIncomingTranslationNorm = normalizeForDedupe(translation);
   lastIncomingAt = now;
+  if (data.transcriptionTrusted !== false && !data.transcriptionUncertain) rememberIncomingContext(transcript);
 
   const desktopSubtitle = globalThis.LMTDesktopSubtitles;
   if (!desktopSubtitle || typeof desktopSubtitle.send !== "function") {
@@ -625,7 +644,13 @@ async function processIncomingAudioChunk(arrayBuffer, mimeType, generation) {
     translation,
     transcript,
     ts: now,
-    tabId
+    tabId,
+    transcriptionTrusted: data.transcriptionTrusted !== false,
+    transcriptionUncertain: !!data.transcriptionUncertain,
+    transcriptionConfidence: String(data.transcriptionConfidence || "unknown"),
+    transcriptionAgreement: Number(data.transcriptionAgreement || 0),
+    detectedLanguage: String(data.detectedLanguage || ""),
+    alternativeTranscript: String(data.alternativeTranscript || "")
   }).catch(error => ({ ok: false, error: String(error && (error.message || error) || error) }));
   if (!delivered || !delivered.ok) {
     status("err", "Local subtitle window", String(delivered && delivered.error || "Could not deliver subtitles to desktop."));
@@ -888,7 +913,7 @@ async function startFirefoxAudio(msg) {
 
   tabSourceLang = msg.sourceLang || "auto";
   tabTargetLang = msg.targetLang || "en";
-  tabChunkSeconds = msg.chunkSeconds || 3;
+  tabChunkSeconds = msg.chunkSeconds || 7;
 
   ttsEnabled = audioIsolationMode ? false : !!msg.ttsEnabled;
   ttsVoice = msg.ttsVoice || "onyx";
@@ -972,3 +997,5 @@ globalThis.LMTFirefoxAudio = Object.freeze({
   stop: stopAll,
   isRunning: () => running
 });
+
+})();

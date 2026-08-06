@@ -27,7 +27,7 @@ for (const extension of ['chrome-extension', 'edge-extension']) {
 }
 const recognition = read('local-meet-bridge/src/main/java/local/meettranslator/openai/EnglishExpectedRecognition.java');
 assert(recognition.includes('isPromptEcho'), 'Prompt-echo detector is missing.');
-assert(recognition.includes('TECHNICAL_TRANSCRIPTION_VOCABULARY'), 'Safe technical vocabulary prompt is missing.');
+assert(recognition.includes('BASE_PROMPT') && recognition.includes('RETRY_PROMPT'), 'Contextual strict-English transcription prompts are missing.');
 const openAi = read('local-meet-bridge/src/main/java/local/meettranslator/openai/OpenAiClient.java');
 assert(!openAi.includes('Transcribe exactly in English.'), 'Old natural-language transcription prompt is still present.');
 assert(openAi.includes('generateInterviewLearningAids'), 'Learning-aids AI method is missing.');

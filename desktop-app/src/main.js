@@ -36,6 +36,10 @@ if (!hasSingleInstanceLock) app.quit();
 const isPackaged = app.isPackaged;
 const repoRoot = isPackaged ? process.resourcesPath : path.resolve(__dirname, '..', '..');
 
+const DESKTOP_EXTENSION_PORT = 18798;
+const DESKTOP_EXTENSION_BASE_URL = `http://127.0.0.1:${DESKTOP_EXTENSION_PORT}`;
+const DESKTOP_PRODUCT_ID = 'local.meet.translator.desktop';
+
 // Persistent user config location. This survives app reinstall/update and does not depend on the project folder.
 const userConfigDir = path.join(app.getPath('appData'), 'Local Meet Translator');
 const envPath = path.join(userConfigDir, '.env');
@@ -1013,7 +1017,7 @@ function getExtensionConfig() {
     authToken: s.LOCAL_MEET_TRANSLATOR_TOKEN,
     sourceLang: s.EXT_SOURCE_LANG || 'auto',
     targetLang: s.EXT_TARGET_LANG || getSystemLanguageCode(),
-    chunkSeconds: intFromEnv(s.EXT_CHUNK_SECONDS, 3, 2, 15),
+    chunkSeconds: intFromEnv(s.EXT_CHUNK_SECONDS, 7, 2, 15),
     audioIsolationMode: boolFromEnv(s.EXT_AUDIO_ISOLATION_MODE, true),
     ttsEnabled: boolFromEnv(s.EXT_AUDIO_ISOLATION_MODE, true) ? false : boolFromEnv(s.EXT_TTS_ENABLED, false),
     ttsVoice: s.EXT_TTS_VOICE || 'onyx',
@@ -1154,7 +1158,7 @@ function startConfigServer() {
       return;
     }
 
-    const url = new URL(req.url || '/', 'http://127.0.0.1:18798');
+    const url = new URL(req.url || '/', DESKTOP_EXTENSION_BASE_URL);
     const settings = loadSettings();
     const extensionToken = settings.DESKTOP_EXTENSION_TOKEN || getExtensionToken();
 
@@ -1169,7 +1173,7 @@ function startConfigServer() {
       if (req.method !== 'GET') { writeJsonResponse(res, 405, { ok:false, error:'Method not allowed' }, { Allow: 'GET' }); return; }
       if (!requireExtensionToken(req, res, extensionToken)) return;
       const command = extensionCommandCoordinator.snapshot().command;
-      writeJsonResponse(res, 200, { ok:true, service:'local-meet-translator-desktop', sessionId: desktopSessionId, commandSeq: command.seq, command: command.action });
+      writeJsonResponse(res, 200, { ok:true, service:'local-meet-translator-desktop', desktopProductId: DESKTOP_PRODUCT_ID, sessionId: desktopSessionId, commandSeq: command.seq, command: command.action });
       return;
     }
 
@@ -1184,6 +1188,7 @@ function startConfigServer() {
       if (!rateLimitOrReject(controlRateLimiter, `pairing-code:${origin || 'local'}`, res)) return;
       writeJsonResponse(res, 200, {
         ok: true,
+        desktopProductId: DESKTOP_PRODUCT_ID,
         pairingCode: settings.DESKTOP_EXTENSION_PAIRING_CODE || getPairingCode(),
         sessionId: desktopSessionId
       });
@@ -1204,6 +1209,7 @@ function startConfigServer() {
           }
           writeJsonResponse(res, 200, {
             ok: true,
+            desktopProductId: DESKTOP_PRODUCT_ID,
             token: extensionToken,
             sessionId: desktopSessionId,
             clientId: String(data.clientId || '').slice(0, 256),
@@ -1251,7 +1257,10 @@ function startConfigServer() {
           const assistantSnapshot = assistantOverlay?.snapshot() || {};
           const codingFocusWasActive = !!assistantSnapshot.codingFocus?.active;
           const contextText = cleanQuestionText(deliveredEvent.transcript || deliveredEvent.translation);
-          if (contextText && currentAnswerOwnSpeechEcho(contextText, assistantSnapshot)) {
+          if (deliveredEvent.channel === 'incoming' && deliveredEvent.transcriptionUncertain) {
+            diagnosticsTracker.record('remarkIgnored', { reason: 'transcription-uncertain' });
+            sendLog('Recognition uncertain: subtitle shown, Interview Assistant intentionally skipped this fragment.');
+          } else if (contextText && currentAnswerOwnSpeechEcho(contextText, assistantSnapshot)) {
             diagnosticsTracker.record('remarkIgnored', { reason: 'candidate-answer-echo' });
           } else if (codingFocusWasActive && contextText) {
             assistantOverlay.addUtterance({
@@ -1443,7 +1452,7 @@ function startConfigServer() {
     writeJsonResponse(res, 404, { ok:false, error:'not found' });
   });
   configServer.on('error', (err) => {
-    sendLog(`Extension config server failed on 127.0.0.1:18798: ${err.message}`);
+    sendLog(`Extension config server failed on 127.0.0.1:${DESKTOP_EXTENSION_PORT}: ${err.message}`);
     try {
       if (!appClosing) {
         appClosing = true;
@@ -1451,7 +1460,7 @@ function startConfigServer() {
       }
     } catch (_) {}
   });
-  configServer.listen(18798, '127.0.0.1', () => sendLog('Extension config/command server: http://127.0.0.1:18798'));
+  configServer.listen(DESKTOP_EXTENSION_PORT, '127.0.0.1', () => sendLog(`Extension config/command server: ${DESKTOP_EXTENSION_BASE_URL}`));
 }
 function initializeWindowManager() {
   windowManager = createWindowManager({

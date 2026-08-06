@@ -202,6 +202,11 @@ test('assistant mode follows waiting, answering, next question and coding transi
   controller.finishAnswer();
   assert.equal(controller.snapshot().mode, 'WAITING');
   assert.equal(controller.snapshot().visible, true);
+  controller.setQuestion({id:'q3',text:'Why customer support?'});
+  controller.setSuggestion({question:'Why customer support?',answer:'I enjoy helping people.',firstSentence:'I enjoy helping people.'});
+  assert.equal(controller.snapshot().mode, 'ANSWERING');
+  controller.finishAnswer();
+  assert.equal(controller.snapshot().mode, 'WAITING');
   controller.setQuestion({id:'coding',text:'Implement a stack.',kind:'coding-task'});
   controller.setSuggestion({question:'Implement a stack.',responseType:'coding_solution',answer:'Use an array.',firstSentence:'I will use an array.'});
   assert.equal(controller.snapshot().mode, 'CODING');

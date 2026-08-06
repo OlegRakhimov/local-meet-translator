@@ -82,19 +82,11 @@ async function preloadPairingCode() {
     if (data && data.ok && data.pairingCode) {
       input.value = String(data.pairingCode || "");
       input.select?.();
-      log("Pairing code loaded from desktop app.");
-      return;
+      log(t("pairingCodeLoaded"));
+      return true;
     }
   } catch (_) {}
-  if (input.value.trim()) return;
-  try {
-    const cached = await chrome.storage.local.get("desktopExtensionPairingCode");
-    if (cached && cached.desktopExtensionPairingCode) {
-      input.value = String(cached.desktopExtensionPairingCode || "");
-      input.select?.();
-      log("Pairing code loaded from extension cache.");
-    }
-  } catch (_) {}
+  return false;
 }
 
 async function checkCurrentPage() {

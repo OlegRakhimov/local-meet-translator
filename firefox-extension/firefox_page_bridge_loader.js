@@ -7,10 +7,21 @@
   let activeSessionId = "";
   const readyWaiters = new Set();
   const startWaiters = new Map();
+  let bridgeProbeTimer = null;
 
   function postToPage(type, payload = {}) {
     const targetOrigin = location.origin && location.origin !== "null" ? location.origin : "*";
     window.postMessage({ source: CONTENT_SOURCE, type, ...payload }, targetOrigin);
+  }
+
+  function stopBridgeProbe() {
+    if (!bridgeProbeTimer) return;
+    clearInterval(bridgeProbeTimer);
+    bridgeProbeTimer = null;
+  }
+
+  function probeBridge() {
+    postToPage("probe");
   }
 
   function waitForBridge(timeoutMs = 3000) {
@@ -18,8 +29,13 @@
     return new Promise((resolve, reject) => {
       const waiter = { resolve, reject };
       readyWaiters.add(waiter);
+      probeBridge();
+      if (!bridgeProbeTimer) {
+        bridgeProbeTimer = setInterval(probeBridge, 100);
+      }
       setTimeout(() => {
         if (!readyWaiters.delete(waiter)) return;
+        if (!readyWaiters.size) stopBridgeProbe();
         reject(new Error("Firefox page audio bridge did not initialize."));
       }, timeoutMs);
     });
@@ -47,6 +63,7 @@
 
     if (message.type === "bridge-ready") {
       bridgeReady = true;
+      stopBridgeProbe();
       for (const waiter of readyWaiters) waiter.resolve();
       readyWaiters.clear();
       return;
@@ -90,7 +107,7 @@
         const started = waitForStart(activeSessionId);
         postToPage("start", {
           sessionId: activeSessionId,
-          chunkSeconds: message.chunkSeconds || 3
+          chunkSeconds: message.chunkSeconds || 7
         });
         return started;
       })();
@@ -105,13 +122,8 @@
     return undefined;
   });
 
-  const script = document.createElement("script");
-  script.src = browser.runtime.getURL("firefox_page_bridge.js");
-  script.async = false;
-  script.onload = () => script.remove();
-  script.onerror = () => {
-    for (const waiter of readyWaiters) waiter.reject(new Error("Could not inject Firefox page audio bridge."));
-    readyWaiters.clear();
-  };
-  (document.documentElement || document.head).appendChild(script);
+  // The page bridge is declared as a MAIN-world content script in manifest.json.
+  // A probe/ready handshake avoids a startup race between the MAIN and ISOLATED
+  // content-script worlds, including after reloading the temporary extension.
+  probeBridge();
 })();

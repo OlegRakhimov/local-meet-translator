@@ -69,6 +69,8 @@ body { padding: 8px; }
 }
 .subtitleLine { border-left: 3px solid rgba(88,166,255,.75); padding-left: 12px; }
 .subtitleLine.outgoing { border-left-color: rgba(63,185,80,.75); }
+.subtitleLine.uncertain { border-left-color: rgba(210,153,34,.95); }
+.recognitionWarning { margin-bottom: 4px; color: #ffd866; font-size: 12px; font-weight: 800; letter-spacing: .06em; }
 .translation {
   color: #fff;
   font-size: var(--subtitle-font-size);
@@ -127,7 +129,8 @@ body.minimalMode .subtitleLine {
   padding: 0;
 }
 body.minimalMode .translation,
-body.minimalMode .original {
+body.minimalMode .original,
+body.minimalMode .recognitionWarning {
   text-shadow:
     0 2px 3px rgba(0,0,0,.98),
     0 0 8px rgba(0,0,0,.92),

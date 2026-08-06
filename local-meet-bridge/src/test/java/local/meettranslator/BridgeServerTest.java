@@ -19,6 +19,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -153,6 +154,35 @@ class BridgeServerTest {
         assertFalse(response.body().contains("Exception"));
     }
 
+
+
+    @Test
+    void marksLowAgreementEnglishRecognitionAsUncertain() throws Exception {
+        String audio = Base64.getEncoder().encodeToString("uncertain".getBytes(StandardCharsets.UTF_8));
+        String body = """
+                {
+                  "audioBase64":"%s",
+                  "audioMime":"audio/webm",
+                  "sourceLang":"en-expected",
+                  "targetLang":"ru",
+                  "transcriptionContext":"The interview is about customer support."
+                }
+                """.formatted(audio);
+        HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl() + "/transcribe-and-translate"))
+                .header("X-Auth-Token", "test-token")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+        JsonNode json = MAPPER.readTree(response.body());
+        assertTrue(json.path("transcriptionRetried").asBoolean());
+        assertFalse(json.path("transcriptionTrusted").asBoolean(true));
+        assertTrue(json.path("transcriptionUncertain").asBoolean());
+        assertEquals("Why do you want to work in customer support?", json.path("transcript").asText());
+        assertFalse(json.path("alternativeTranscript").asText().isBlank());
+    }
+
     private String baseUrl() {
         return "http://127.0.0.1:" + port;
     }
@@ -171,6 +201,28 @@ class BridgeServerTest {
         @Override
         public String transcribe(RequestContext context, byte[] audio, String audioMime, String sourceLang) {
             return new String(audio, StandardCharsets.UTF_8);
+        }
+
+        @Override
+        public local.meettranslator.openai.TranscriptionResult transcribeDetailed(
+                RequestContext context,
+                byte[] audio,
+                String audioMime,
+                String sourceLang,
+                String transcriptionContext
+        ) {
+            String value = new String(audio, StandardCharsets.UTF_8);
+            if ("uncertain".equals(value)) {
+                if (local.meettranslator.openai.EnglishExpectedRecognition.RETRY_MODE.equals(sourceLang)) {
+                    return new local.meettranslator.openai.TranscriptionResult(
+                            "Why do you want to work in customer support?", "en", -0.55, 0.12, "medium"
+                    );
+                }
+                return new local.meettranslator.openai.TranscriptionResult(
+                        "Where do we want to go after customer support?", "en", -1.15, 0.50, "low"
+                );
+            }
+            return local.meettranslator.openai.TranscriptionResult.unknown(value);
         }
 
         @Override

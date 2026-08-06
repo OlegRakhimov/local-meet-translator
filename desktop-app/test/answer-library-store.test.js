@@ -81,3 +81,51 @@ test('answer library preserves aliases and restores a bundled vacancy preset', (
   assert.equal(restored.entries.length, 1);
   assert.equal(restored.entries[0].id, 'intro');
 });
+
+test('bundled preset revision replaces reviewed entries and preserves custom answers', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'lmt-answer-library-revision-'));
+  const libraryPath = path.join(directory, 'answer-library-speakit.json');
+  fs.writeFileSync(libraryPath, JSON.stringify({
+    profileMode: 'speakit_polish_support',
+    presetRevision: 1,
+    entries: [
+      {
+        id: 'speakit-003',
+        question: 'Why are you interested in customer support?',
+        answer: 'Old reviewed answer.',
+        locked: true
+      },
+      {
+        id: 'custom-question',
+        question: 'What is your personal example?',
+        answer: 'My custom answer.',
+        locked: false
+      }
+    ]
+  }));
+
+  const store = createAnswerLibraryStore({
+    libraryPath,
+    presetLibrary: {
+      profileMode: 'speakit_polish_support',
+      presetRevision: 2,
+      entries: [{
+        id: 'speakit-003',
+        question: 'Why do you want to work in customer support?',
+        aliases: ['Why do we want to go to customer support?'],
+        answer: 'I want to work in customer support because I enjoy helping people.',
+        locked: true
+      }]
+    }
+  });
+
+  const loaded = store.load();
+  assert.equal(loaded.presetUpdated, true);
+  assert.equal(loaded.library.presetRevision, 2);
+  assert.equal(loaded.library.entries.find(entry => entry.id === 'speakit-003').answer,
+    'I want to work in customer support because I enjoy helping people.');
+  assert.equal(loaded.library.entries.find(entry => entry.id === 'custom-question').answer, 'My custom answer.');
+
+  const secondLoad = store.load();
+  assert.equal(secondLoad.presetUpdated, false);
+});

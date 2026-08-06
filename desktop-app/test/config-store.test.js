@@ -51,6 +51,9 @@ test('config store generates security values and writes atomically', () => {
     });
     const initial = store.loadSettings();
     assert.equal(initial.EXT_TARGET_LANG, 'ru');
+    assert.equal(initial.OPENAI_TRANSCRIBE_MODEL, 'gpt-4o-transcribe');
+    assert.equal(initial.EXT_CHUNK_SECONDS, '7');
+    assert.equal(initial.INCOMING_ACCURACY_MIGRATED_20260805, 'true');
     assert.equal(initial.INTERVIEW_ASSISTANT_PROFILE_MODE, 'general');
     assert.match(initial.LOCAL_MEET_TRANSLATOR_TOKEN, /^[a-f0-9]{48}$/);
     assert.match(initial.DESKTOP_EXTENSION_PAIRING_CODE, /^[A-Z2-9]{4}(?:-[A-Z2-9]{4}){2}$/);
@@ -90,6 +93,45 @@ test('config store generates security values and writes atomically', () => {
     assert.equal(restored.SUBTITLE_WINDOW_CONTENT_PROTECTION, 'true');
     assert.equal(fs.readFileSync(envPath, 'utf8').includes('EXAM_COMPLIANCE_PREVIOUS_SETTINGS'), false);
     assert.equal(fs.readdirSync(userConfigDir).filter((name) => name.endsWith('.tmp')).length, 0);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+
+test('config store migrates legacy incoming transcription settings once', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'lmt-accuracy-migration-test-'));
+  try {
+    const home = path.join(temp, 'home');
+    const userConfigDir = path.join(temp, 'appdata', 'Local Meet Translator');
+    const envPath = path.join(userConfigDir, '.env');
+    const repoRoot = path.join(temp, 'repo');
+    fs.mkdirSync(home, { recursive: true });
+    fs.mkdirSync(userConfigDir, { recursive: true });
+    fs.mkdirSync(repoRoot, { recursive: true });
+    fs.writeFileSync(envPath, 'OPENAI_TRANSCRIBE_MODEL=whisper-1\nEXT_CHUNK_SECONDS=3\n', 'utf8');
+    const app = {
+      getPath(name) {
+        if (name === 'home') return home;
+        throw new Error(`Unexpected path: ${name}`);
+      },
+      getLocale() { return 'en-US'; }
+    };
+    const store = createConfigStore({
+      app,
+      repoRoot,
+      userConfigDir,
+      envPath,
+      legacyEnvPath: path.join(repoRoot, '.env')
+    });
+    const migrated = store.loadSettings();
+    assert.equal(migrated.OPENAI_TRANSCRIBE_MODEL, 'gpt-4o-transcribe');
+    assert.equal(migrated.EXT_CHUNK_SECONDS, '7');
+    assert.equal(migrated.INCOMING_ACCURACY_MIGRATED_20260805, 'true');
+
+    const customized = store.saveSettings({ EXT_CHUNK_SECONDS: '9' });
+    assert.equal(customized.EXT_CHUNK_SECONDS, '9');
+    assert.equal(customized.INCOMING_ACCURACY_MIGRATED_20260805, 'true');
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }

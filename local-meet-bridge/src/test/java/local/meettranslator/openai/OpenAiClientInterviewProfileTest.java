@@ -23,6 +23,9 @@ class OpenAiClientInterviewProfileTest {
 
         String rules = OpenAiClient.profileSpecificInterviewRules(request);
         assertTrue(rules.contains("answer in natural spoken English"));
+        assertTrue(rules.contains("first-person singular"));
+        assertTrue(rules.contains("Never use we, us or our"));
+        assertTrue(rules.contains("go to customer support"));
         assertTrue(rules.contains("prepared library is not a closed list"));
         assertTrue(rules.contains("unsupportedClaims"));
     }
